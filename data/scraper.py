@@ -100,71 +100,68 @@ def fetch_historical_prices(ticker: str, start_date: Optional[str] = None,
                             months_back: int = 60) -> pd.DataFrame:
     """
     Recupere l'historique des prix depuis sikafinance.com.
-    Le site limite a 1 mois par requete, donc on boucle.
-
-    Args:
-        ticker: Code du titre (ex: "ECOC.ci", "SNTS.sn")
-        start_date: Date de debut (format YYYY-MM-DD), defaut = months_back mois avant
-        end_date: Date de fin (format YYYY-MM-DD), defaut = aujourd'hui
-        months_back: Nombre de mois en arriere si start_date non specifie
-
-    Returns:
-        DataFrame avec colonnes: date, open, high, low, close, volume
+    Utilise le formulaire POST avec token CSRF.
+    Le site limite a ~1 mois par requete, donc on boucle.
     """
     session = _get_session()
 
     if end_date:
-        dt_end = datetime.strptime(end_date, "%Y-%m-%d")
+        dt_end = datetime.strptime(end_date, "%Y-%m-%d") if isinstance(end_date, str) else end_date
     else:
         dt_end = datetime.now()
 
     if start_date:
-        dt_start = datetime.strptime(start_date, "%Y-%m-%d")
+        dt_start = datetime.strptime(start_date, "%Y-%m-%d") if isinstance(start_date, str) else start_date
     else:
         dt_start = dt_end - timedelta(days=months_back * 30)
 
+    url = f"{SIKA_DOWNLOAD_URL}{ticker}"
+
+    # 1. GET la page pour obtenir le token CSRF
+    try:
+        page_resp = session.get(url, timeout=30)
+        page_resp.raise_for_status()
+    except requests.RequestException:
+        return pd.DataFrame(columns=["date", "open", "high", "low", "close", "volume"])
+
+    soup = BeautifulSoup(page_resp.text, "lxml")
+    token_input = soup.find("input", {"name": "__RequestVerificationToken"})
+    csrf_token = token_input.get("value", "") if token_input else ""
+
+    # 2. POST par tranches de 1 mois
     all_data = []
     current_end = dt_end
 
     while current_end > dt_start:
         current_start = max(current_end - timedelta(days=30), dt_start)
 
-        params = {
-            "Du": current_start.strftime("%d/%m/%Y"),
-            "au": current_end.strftime("%d/%m/%Y"),
+        form_data = {
+            "dtFrom": current_start.strftime("%Y-%m-%d"),
+            "dtTo": current_end.strftime("%Y-%m-%d"),
+            "__RequestVerificationToken": csrf_token,
         }
 
-        url = f"{SIKA_DOWNLOAD_URL}{ticker}"
         try:
-            resp = session.get(url, params=params, timeout=30)
-            if resp.status_code == 200 and len(resp.content) > 50:
-                # Essayer de parser le CSV
+            resp = session.post(url, data=form_data, timeout=30)
+            content_type = resp.headers.get("Content-Type", "")
+
+            if resp.status_code == 200 and ("csv" in content_type or "octet" in content_type or ";" in resp.text[:200]):
                 try:
-                    df = pd.read_csv(
-                        io.StringIO(resp.text),
-                        sep=";",
-                        encoding="utf-8",
-                        decimal=",",
-                    )
-                    if not df.empty:
+                    df = pd.read_csv(io.StringIO(resp.text), sep=";", encoding="utf-8", decimal=",")
+                    if not df.empty and len(df.columns) >= 3:
                         all_data.append(df)
                 except Exception:
-                    # Essayer avec virgule comme separateur
                     try:
-                        df = pd.read_csv(
-                            io.StringIO(resp.text),
-                            sep=",",
-                            encoding="utf-8",
-                        )
-                        if not df.empty:
+                        df = pd.read_csv(io.StringIO(resp.text), sep=",", encoding="utf-8")
+                        if not df.empty and len(df.columns) >= 3:
                             all_data.append(df)
                     except Exception:
                         pass
         except requests.RequestException:
-            pass  # Skip ce mois en cas d'erreur
+            pass
 
         current_end = current_start - timedelta(days=1)
-        time.sleep(0.5)  # Politeness delay
+        time.sleep(0.5)
 
     if not all_data:
         return pd.DataFrame(columns=["date", "open", "high", "low", "close", "volume"])
@@ -173,46 +170,34 @@ def fetch_historical_prices(ticker: str, start_date: Optional[str] = None,
 
     # Normaliser les noms de colonnes
     col_map = {
-        "Code de la valeur": "ticker_code",
-        "Date": "date",
-        "Cours d'ouverture": "open",
-        "Plus haut": "high",
-        "Plus bas": "low",
-        "Cours de clôture": "close",
-        "Cours de cloture": "close",
-        "Volume d'actions échangées": "volume",
-        "Volume d'actions echangees": "volume",
+        "code": "ticker_code", "date": "date",
+        "ouverture": "open", "plus haut": "high", "plus bas": "low",
+        "cl": "close", "volume": "volume",
     }
-
-    # Mapper les colonnes qu'on trouve
     rename = {}
-    for old, new in col_map.items():
-        for col in df.columns:
-            if old.lower() in col.lower() or col.lower() in old.lower():
-                rename[col] = new
+    for col in df.columns:
+        col_lower = col.strip().lower()
+        for pattern, target in col_map.items():
+            if pattern in col_lower:
+                rename[col] = target
                 break
-
     if rename:
         df = df.rename(columns=rename)
 
-    # Convertir la date
     if "date" in df.columns:
         df["date"] = pd.to_datetime(df["date"], dayfirst=True, errors="coerce")
         df = df.dropna(subset=["date"])
-        df = df.sort_values("date").reset_index(drop=True)
-        df = df.drop_duplicates(subset=["date"], keep="last")
+        df = df.sort_values("date").drop_duplicates(subset=["date"], keep="last").reset_index(drop=True)
 
-    # Assurer les colonnes numeriques
     for col in ["open", "high", "low", "close", "volume"]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    expected_cols = ["date", "open", "high", "low", "close", "volume"]
-    for col in expected_cols:
+    expected = ["date", "open", "high", "low", "close", "volume"]
+    for col in expected:
         if col not in df.columns:
             df[col] = 0.0
-
-    return df[expected_cols]
+    return df[expected]
 
 
 def fetch_historical_prices_page(ticker: str, period: str = "mensuel",

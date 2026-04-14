@@ -76,13 +76,18 @@ def render():
                 data[k] = None
         try:
             ratios = compute_ratios(data)
+            # Use market_dividend_yield as fallback
+            dy = ratios.get("dividend_yield")
+            if not dy and data.get("market_dividend_yield"):
+                dy = data["market_dividend_yield"]
+
             results.append({
                 "ticker": ticker,
                 "name": data.get("company_name") or "",
                 "sector": data.get("sector") or "",
                 "price": data.get("price") or 0,
                 "has_fundamentals": bool(data.get("has_fundamentals")),
-                "dividend_yield": ratios.get("dividend_yield"),
+                "dividend_yield": dy,
                 "per": ratios.get("per"),
                 "roe": ratios.get("roe"),
                 "net_margin": ratios.get("net_margin"),
@@ -90,7 +95,9 @@ def render():
                 "debt_equity": ratios.get("debt_equity"),
                 "pb": ratios.get("pb"),
                 "eps": ratios.get("eps"),
-                "dps": ratios.get("dps"),
+                "dps": ratios.get("dps") or data.get("dps"),
+                "beta": data.get("beta"),
+                "rsi": data.get("rsi"),
                 "fundamental_score": ratios.get("fundamental_score"),
                 "checklist_passed": sum(1 for c in ratios.get("checklist", []) if c["passed"] is True),
                 "checklist_total": len(ratios.get("checklist", [])),
@@ -139,10 +146,15 @@ def render():
     display_df["score"] = display_df["fundamental_score"].apply(lambda x: f"{x:.0f}/50")
     display_df["data"] = display_df["has_fundamentals"].apply(lambda x: "📊" if x else "📈")
 
+    display_df["beta_fmt"] = display_df.get("beta", pd.Series()).apply(lambda x: f"{x:.2f}" if pd.notna(x) and x else "—")
+    display_df["rsi_fmt"] = display_df.get("rsi", pd.Series()).apply(lambda x: f"{x:.0f}" if pd.notna(x) and x else "—")
+    display_df["dps_fmt"] = display_df["dps"].apply(lambda x: f"{x:,.0f}" if pd.notna(x) and x else "—")
+
     show_cols = {
         "data": "", "ticker": "Ticker", "name": "Nom", "sector": "Secteur", "price": "Prix",
-        "dividend_yield": "Yield", "per": "PER", "roe": "ROE", "net_margin": "Marge",
-        "payout_ratio": "Payout", "debt_equity": "D/E", "checklist": "Check", "score": "Score",
+        "dividend_yield": "Yield", "dps_fmt": "DPS", "per": "PER", "roe": "ROE",
+        "beta_fmt": "Beta", "rsi_fmt": "RSI",
+        "checklist": "Check", "score": "Score",
     }
 
     st.dataframe(
