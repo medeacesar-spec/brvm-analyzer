@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+data/brvm_analyzer.db
+data/brvm_analyzer.db-shm
+data/brvm_analyzer.db-wal
+data/discovered_reports.json
+.streamlit/
+*.egg-info/
