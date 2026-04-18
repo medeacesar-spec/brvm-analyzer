@@ -203,66 +203,75 @@ def fetch_historical_prices(ticker: str, start_date: Optional[str] = None,
 def fetch_historical_prices_page(ticker: str, period: str = "mensuel",
                                  years_back: int = 5) -> pd.DataFrame:
     """
-    Scrape la page /marches/historiques/ de sikafinance pour les prix
-    hebdomadaires ou mensuels (plus complets que le CSV journalier).
+    Recupere l'historique des prix via l'API JSON sikafinance /api/general/GetHistos.
+    Supporte les periodicites: journalier, hebdomadaire, mensuel, trimestriel, annuel.
+    Le mode mensuel donne jusqu'a 5 ans d'historique en une seule requete.
 
     Args:
         ticker: ex "SNTS.sn"
-        period: "hebdomadaire" ou "mensuel"
+        period: "journalier", "hebdomadaire", "mensuel", "trimestriel", "annuel"
         years_back: nombre d'annees en arriere
 
     Returns:
         DataFrame avec colonnes: date, open, high, low, close, volume
     """
+    period_map = {
+        "journalier": "0",
+        "hebdomadaire": "7",
+        "mensuel": "30",
+        "trimestriel": "91",
+        "annuel": "365",
+    }
+    xperiod = period_map.get(period, "30")
+
+    dt_end = datetime.now()
+    dt_start = dt_end - timedelta(days=years_back * 365)
+
+    payload = {
+        "ticker": ticker,
+        "datedeb": dt_start.strftime("%d/%m/%Y"),
+        "datefin": dt_end.strftime("%d/%m/%Y"),
+        "xperiod": xperiod,
+    }
+
     session = _get_session()
-    base_url = f"{SIKA_BASE_URL}/marches/historiques/{ticker}"
+    session.headers["Content-Type"] = "application/json"
+    session.headers["Accept"] = "application/json"
 
-    # La page historiques utilise des parametres de periode
-    period_map = {"journalier": "Journaliere", "hebdomadaire": "Hebdomadaire", "mensuel": "Mensuelle"}
-    period_label = period_map.get(period, "Mensuelle")
-
-    all_rows = []
     try:
-        # Premiere requete pour obtenir la page et le token
-        resp = session.get(base_url, timeout=30)
-        if resp.status_code != 200:
-            return pd.DataFrame(columns=["date", "open", "high", "low", "close", "volume"])
-
-        soup = BeautifulSoup(resp.text, "lxml")
-
-        # Chercher le tableau de prix historiques
-        tables = soup.find_all("table")
-        for table in tables:
-            headers = [th.get_text(strip=True).lower() for th in table.find_all("th")]
-            if any(h in headers for h in ["date", "ouverture", "clôture", "cloture"]):
-                for tr in table.find_all("tr")[1:]:
-                    cells = tr.find_all("td")
-                    if len(cells) >= 5:
-                        def _p(cell):
-                            t = cell.get_text(strip=True).replace("\xa0", "").replace(" ", "").replace(",", ".")
-                            try:
-                                return float(t)
-                            except (ValueError, TypeError):
-                                return None
-
-                        date_text = cells[0].get_text(strip=True)
-                        all_rows.append({
-                            "date": date_text,
-                            "open": _p(cells[1]),
-                            "high": _p(cells[2]),
-                            "low": _p(cells[3]),
-                            "close": _p(cells[4]),
-                            "volume": _p(cells[5]) if len(cells) > 5 else None,
-                        })
+        resp = session.post(
+            f"{SIKA_BASE_URL}/api/general/GetHistos",
+            json=payload,
+            timeout=30,
+        )
+        resp.raise_for_status()
+        data = resp.json()
     except Exception:
-        pass
-
-    if not all_rows:
         return pd.DataFrame(columns=["date", "open", "high", "low", "close", "volume"])
 
-    df = pd.DataFrame(all_rows)
+    lst = data.get("lst", [])
+    if not lst:
+        return pd.DataFrame(columns=["date", "open", "high", "low", "close", "volume"])
+
+    rows = []
+    for item in lst:
+        rows.append({
+            "date": item.get("Date"),
+            "open": item.get("Open"),
+            "high": item.get("High"),
+            "low": item.get("Low"),
+            "close": item.get("Close"),
+            "volume": item.get("Volume"),
+        })
+
+    df = pd.DataFrame(rows)
     df["date"] = pd.to_datetime(df["date"], dayfirst=True, errors="coerce")
     df = df.dropna(subset=["date"]).sort_values("date").reset_index(drop=True)
+
+    for col in ["open", "high", "low", "close", "volume"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
     return df
 
 
@@ -617,3 +626,213 @@ def fetch_all_quotes_with_details() -> pd.DataFrame:
             time.sleep(0.3)  # Politeness
 
     return pd.DataFrame(enriched) if enriched else quotes
+
+
+def fetch_company_profile(ticker: str) -> dict:
+    """
+    Scrape la page SOCIETE de sikafinance pour recuperer le profil qualitatif :
+    description, dirigeants, contact, actionnariat.
+    """
+    import re
+
+    url = f"{SIKA_BASE_URL}/marches/societe/{ticker}"
+    result = {
+        "ticker": ticker,
+        "description": None,
+        "business": None,
+        "president": None,
+        "dg": None,
+        "dga": None,
+        "phone": None,
+        "fax": None,
+        "address": None,
+        "website": None,
+        "major_shareholder": None,
+        "major_shareholder_pct": None,
+    }
+
+    session = _get_session()
+    try:
+        resp = session.get(url, timeout=30)
+        resp.raise_for_status()
+    except requests.RequestException:
+        return result
+
+    soup = BeautifulSoup(resp.text, "lxml")
+
+    # --- Extract description from <p> tags only (not divs, to avoid concatenated noise) ---
+    desc_candidates = []
+    for p in soup.find_all("p"):
+        text = p.get_text(strip=True)
+        # Skip short, nav, or script text
+        if len(text) < 80:
+            continue
+        if any(kw in text.lower() for kw in ["javascript", "cookie", "navigateur", "copyright"]):
+            continue
+        # Skip if it looks like a page header (contains ticker codes, navigation items)
+        if "COURSGRAPHIQUES" in text.replace(" ", "") or "ACTUSANALYSE" in text.replace(" ", ""):
+            continue
+        lower = text.lower()
+        if any(kw in lower for kw in [
+            "creee en", "cree en", "fondee en", "fonde en",
+            "est un", "est une", "est le", "est la",
+            "operateur", "banque", "societe", "filiale", "groupe",
+            "activite", "entreprise", "compagnie",
+        ]):
+            desc_candidates.append(text)
+
+    if desc_candidates:
+        # Pick the best description paragraph (longest, but only from actual <p> tags)
+        result["description"] = max(desc_candidates, key=len)
+
+    # --- Extract individual <p> tags for structured info ---
+    for p in soup.find_all("p"):
+        text = p.get_text(strip=True)
+        if not text or len(text) > 500:
+            continue  # Skip very long concatenated blocks
+
+        # Phone
+        if ("phone" in text.lower() or "tel" in text.lower() or "(+2" in text) and "fax" not in text.lower():
+            phone_match = re.search(r"\(\+\d+\)\s*[\d\s\-\.]+", text)
+            if phone_match and not result["phone"]:
+                result["phone"] = phone_match.group(0).strip()
+
+        # Fax
+        if "fax" in text.lower():
+            fax_match = re.search(r"Fax.*?(\(\+\d+\)\s*[\d\s\-\.]+)", text, re.IGNORECASE)
+            if fax_match:
+                result["fax"] = fax_match.group(1).strip()
+
+        # Address - look for lines with country names or city names
+        if any(loc in text for loc in ["Abidjan", "Dakar", "Bamako", "Cotonou", "Lome",
+                                        "Ouagadougou", "Niger", "Senegal", "Ivoire", "Togo",
+                                        "Benin", "Burkina", "Mali", "Guinee"]):
+            if len(text) < 200 and not result["address"]:
+                # Avoid picking up description paragraphs as address
+                if not any(kw in text.lower() for kw in ["creee", "fondee", "filiale", "activite"]):
+                    result["address"] = text
+
+        # President / DG / DGA - only from short, focused lines
+        lower_text = text.lower()
+        if len(text) < 200:
+            # President du Conseil
+            pca_match = re.search(r"[Pp]r[eé]sident[e]?\s+(?:du\s+)?[Cc]onseil[^:]*:\s*(.+?)(?:Directeur|Administrateur|Secr|$)", text)
+            if pca_match and not result["president"]:
+                result["president"] = pca_match.group(1).strip().rstrip(",").strip()
+
+            # PDG (President Directeur General)
+            pdg_match = re.search(r"[Pp]r[eé]sident[e]?\s+[Dd]irecteur\s+[Gg][eé]n[eé]ral[e]?\s*:?\s*(.+?)$", text)
+            if pdg_match and not result["dg"]:
+                name = pdg_match.group(1).strip().rstrip(",").strip()
+                if len(name) > 2:
+                    result["dg"] = name
+                    result["president"] = result["president"] or name
+
+            # DG (Directeur General) - but not "Directeur General Adjoint"
+            if "directeur" in lower_text and "g" in lower_text and "adjoint" not in lower_text and "president" not in lower_text:
+                dg_match = re.search(r"[Dd]irecteur\s+[Gg][eé]n[eé]ral[e]?\s*:?\s*(.+?)(?:Administrateur|Secr|Directeur|$)", text)
+                if dg_match and not result["dg"]:
+                    name = dg_match.group(1).strip().rstrip(",").strip()
+                    if len(name) > 2 and len(name) < 80:
+                        result["dg"] = name
+
+            # DGA
+            if "adjoint" in lower_text:
+                dga_match = re.search(r"[Aa]djoint[e]?\s*:?\s*(.+?)$", text)
+                if dga_match and not result["dga"]:
+                    name = dga_match.group(1).strip().rstrip(",").strip()
+                    if len(name) > 2 and len(name) < 80:
+                        result["dga"] = name
+
+        # Major shareholder
+        if ("actionnaire" in lower_text or ("capital" in lower_text and "%" in text)) and len(text) < 300:
+            pct_match = re.search(r"([\d,\.]+)\s*%", text)
+            if pct_match:
+                try:
+                    result["major_shareholder_pct"] = float(pct_match.group(1).replace(",", "."))
+                except ValueError:
+                    pass
+                # Extract name: typically before the percentage
+                name_part = text.split(":")[1].strip() if ":" in text else text
+                before_pct = name_part[:name_part.find(pct_match.group(0))].strip().rstrip("(").strip()
+                if before_pct and len(before_pct) > 2:
+                    result["major_shareholder"] = before_pct
+
+    return result
+
+
+def fetch_company_news(ticker: str, max_articles: int = 10) -> list:
+    """
+    Scrape les actualites recentes d'un titre depuis sikafinance.
+    Retourne une liste de dicts: title, date, url, summary.
+    """
+    url = f"{SIKA_COTATION_URL}{ticker}"
+    articles = []
+
+    session = _get_session()
+    try:
+        resp = session.get(url, timeout=30)
+        resp.raise_for_status()
+    except requests.RequestException:
+        return articles
+
+    soup = BeautifulSoup(resp.text, "lxml")
+
+    # News articles are typically in divs/lists with links containing dates
+    # Look for article-like elements
+    import re
+
+    # Pattern 1: Look for news items with dates (dd/mm/yy format)
+    for container in soup.find_all(["div", "li", "tr"]):
+        links = container.find_all("a")
+        for link in links:
+            href = link.get("href", "")
+            title = link.get_text(strip=True)
+
+            # Filter: must be a meaningful article title (not navigation)
+            if len(title) < 20 or len(title) > 300:
+                continue
+            if any(kw in title.lower() for kw in ["connexion", "inscription", "accueil", "forum",
+                                                    "cookie", "politique", "mention",
+                                                    "actualités du march", "actualites du march"]):
+                continue
+
+            # Check if it looks like a news article URL
+            if "/actualites/" in href or "/blog/" in href or "/article/" in href or "actualite" in href:
+                full_url = href if href.startswith("http") else f"{SIKA_BASE_URL}{href}"
+
+                # Try to find a date near this link
+                parent = link.parent
+                date_text = parent.get_text() if parent else ""
+                date_match = re.search(r"(\d{2}/\d{2}/\d{2,4})", date_text)
+                article_date = date_match.group(1) if date_match else None
+
+                # Avoid duplicates
+                if not any(a["title"] == title for a in articles):
+                    articles.append({
+                        "title": title,
+                        "date": article_date,
+                        "url": full_url,
+                    })
+
+                if len(articles) >= max_articles:
+                    break
+        if len(articles) >= max_articles:
+            break
+
+    # Pattern 2: Look for "communiques" / corporate documents
+    for link in soup.find_all("a"):
+        href = link.get("href", "")
+        title = link.get_text(strip=True)
+        if any(kw in title.lower() for kw in ["communique", "avis de convocation", "assemblee",
+                                                "publication", "rapport", "etats financiers"]):
+            if len(title) > 10:
+                full_url = href if href.startswith("http") else f"{SIKA_BASE_URL}{href}"
+                if not any(a["title"] == title for a in articles):
+                    articles.append({
+                        "title": title,
+                        "date": None,
+                        "url": full_url,
+                    })
+
+    return articles[:max_articles]

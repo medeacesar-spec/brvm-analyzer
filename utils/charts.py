@@ -7,17 +7,19 @@ from plotly.subplots import make_subplots
 import pandas as pd
 import numpy as np
 
-# Palette BRVM
+# Palette BRVM — Light theme
 COLORS = {
-    "primary": "#1a5276",
-    "secondary": "#2e86c1",
-    "accent": "#f39c12",
-    "green": "#28a745",
-    "red": "#dc3545",
-    "yellow": "#ffc107",
-    "bg": "#0e1117",
-    "card_bg": "#1e2130",
-    "text": "#fafafa",
+    "primary": "#4318FF",
+    "secondary": "#6C5DD3",
+    "accent": "#FFB547",
+    "green": "#05CD99",
+    "red": "#EE5D50",
+    "yellow": "#FFB547",
+    "bg": "#FFFFFF",
+    "card_bg": "#F5F6FA",
+    "text": "#1B2559",
+    "text_secondary": "#8F9BBA",
+    "border": "#E9EDF7",
 }
 
 
@@ -30,6 +32,7 @@ def candlestick_chart(
     show_rsi: bool = True,
     show_macd: bool = True,
     height: int = 800,
+    sma_labels: dict = None,
 ) -> go.Figure:
     """
     Crée un graphique chandelier complet avec indicateurs techniques.
@@ -77,10 +80,11 @@ def candlestick_chart(
 
     # SMA
     if show_sma:
+        _labels = sma_labels or {"short": "MM20", "medium": "MM50", "long": "MM200"}
         for col, name, color in [
-            ("sma20", "MM20", "#e74c3c"),
-            ("sma50", "MM50", "#f39c12"),
-            ("sma200", "MM200", "#3498db"),
+            ("sma20", _labels["short"], "#e74c3c"),
+            ("sma50", _labels["medium"], "#f39c12"),
+            ("sma200", _labels["long"], "#3498db"),
         ]:
             if col in df.columns:
                 fig.add_trace(
@@ -148,13 +152,14 @@ def candlestick_chart(
 
     fig.update_layout(
         height=height,
-        template="plotly_dark",
+        template="plotly_white",
         paper_bgcolor=COLORS["bg"],
         plot_bgcolor=COLORS["bg"],
-        font=dict(color=COLORS["text"]),
+        font=dict(color=COLORS["text"], family="Inter, system-ui, sans-serif"),
         xaxis_rangeslider_visible=False,
         showlegend=True,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
+                    font=dict(size=11, color=COLORS["text_secondary"])),
         margin=dict(l=50, r=20, t=60, b=30),
     )
 
@@ -189,7 +194,7 @@ def radar_chart(data: dict, title: str = "Comparaison") -> go.Figure:
             radialaxis=dict(visible=True, range=[0, 100]),
             bgcolor=COLORS["bg"],
         ),
-        template="plotly_dark",
+        template="plotly_white",
         paper_bgcolor=COLORS["bg"],
         title=title,
         font=dict(color=COLORS["text"]),
@@ -223,7 +228,7 @@ def performance_chart(data: dict, title: str = "Performance comparee") -> go.Fig
     fig.update_layout(
         title=title,
         yaxis_title="Performance (base 100)",
-        template="plotly_dark",
+        template="plotly_white",
         paper_bgcolor=COLORS["bg"],
         plot_bgcolor=COLORS["bg"],
         font=dict(color=COLORS["text"]),
@@ -235,6 +240,9 @@ def performance_chart(data: dict, title: str = "Performance comparee") -> go.Fig
 
 def gauge_chart(value: float, max_value: float = 100, title: str = "Score") -> go.Figure:
     """Crée un indicateur de type jauge pour les scores."""
+    import math
+    if value is None or (isinstance(value, float) and math.isnan(value)):
+        value = 0
     if value >= 60:
         color = COLORS["green"]
     elif value >= 40:
@@ -253,9 +261,9 @@ def gauge_chart(value: float, max_value: float = 100, title: str = "Score") -> g
             bgcolor=COLORS["card_bg"],
             borderwidth=0,
             steps=[
-                dict(range=[0, max_value * 0.3], color="rgba(220,53,69,0.2)"),
-                dict(range=[max_value * 0.3, max_value * 0.6], color="rgba(255,193,7,0.2)"),
-                dict(range=[max_value * 0.6, max_value], color="rgba(40,167,69,0.2)"),
+                dict(range=[0, max_value * 0.3], color="rgba(238,93,80,0.15)"),
+                dict(range=[max_value * 0.3, max_value * 0.6], color="rgba(255,181,71,0.15)"),
+                dict(range=[max_value * 0.6, max_value], color="rgba(5,205,153,0.15)"),
             ],
         ),
     ))
@@ -283,7 +291,7 @@ def pie_chart(labels: list, values: list, title: str = "") -> go.Figure:
 
     fig.update_layout(
         title=title,
-        template="plotly_dark",
+        template="plotly_white",
         paper_bgcolor=COLORS["bg"],
         font=dict(color=COLORS["text"]),
         height=400,
@@ -296,16 +304,27 @@ def pie_chart(labels: list, values: list, title: str = "") -> go.Figure:
 def flag_badge(flag: str, label: str) -> str:
     """Retourne du HTML pour un badge de drapeau coloré."""
     color_map = {
-        "OK": "#28a745",
-        "Vigilance": "#ffc107",
-        "Risque": "#dc3545",
+        "OK": "#05CD99",
+        "Vigilance": "#FFB547",
+        "Risque": "#EE5D50",
     }
-    color = color_map.get(flag, "#6c757d")
-    return f'<span style="background-color:{color};color:white;padding:2px 8px;border-radius:4px;font-size:0.85em;">{flag}</span> {label}'
+    bg_map = {
+        "OK": "rgba(5,205,153,0.12)",
+        "Vigilance": "rgba(255,181,71,0.12)",
+        "Risque": "rgba(238,93,80,0.12)",
+    }
+    color = color_map.get(flag, "#8F9BBA")
+    bg = bg_map.get(flag, "rgba(143,155,186,0.1)")
+    return f'<span style="background:{bg};color:{color};padding:3px 10px;border-radius:8px;font-size:0.85em;font-weight:600;">{flag}</span> {label}'
 
 
-def stars_display(count: int, max_stars: int = 5) -> str:
+def stars_display(count, max_stars: int = 5) -> str:
     """Retourne des étoiles pour le rating."""
+    import math
+    if count is None or (isinstance(count, float) and math.isnan(count)):
+        count = 0
+    count = int(count)
+    count = max(0, min(count, max_stars))
     filled = "★" * count
     empty = "☆" * (max_stars - count)
     return filled + empty

@@ -1,270 +1,234 @@
 """
-Page 8 : Suivi des Publications, Rapports & Info Qualitative
-Rapports annuels, calendrier publications, notes qualitatives.
+Page 8 : Informations Générales du Marché
+Actualités du marche, panorama des profils d'entreprise, notes d'analyse.
+Les infos qualitatives spécifiques à chaque titre sont dans l'onglet Profil de la page Analyse.
 """
 
 import streamlit as st
 import pandas as pd
+import time
 
 from config import load_tickers
 from data.storage import (
-    get_publication_calendar, get_publications, save_publication,
-    mark_publications_read, get_quarterly_data, save_quarterly_data,
-    list_tickers_with_fundamentals, get_report_links, seed_known_report_links,
-    get_qualitative_notes, save_qualitative_note, delete_qualitative_note,
+    get_all_company_profiles, get_company_news,
+    save_company_news, save_company_profile,
+    get_connection, get_publication_calendar,
 )
-from data.scraper import fetch_brvm_publications
+
+
+def _sync_all_profiles():
+    """Scrape les profils et actus de tous les tickers."""
+    from data.scraper import fetch_company_profile, fetch_company_news
+
+    tickers = load_tickers()
+    progress = st.progress(0, text="Chargement des profils et actualités...")
+    ok = 0
+    for i, t in enumerate(tickers):
+        ticker = t["ticker"]
+        try:
+            profile = fetch_company_profile(ticker)
+            if profile.get("description") or profile.get("dg"):
+                save_company_profile(profile)
+                ok += 1
+            articles = fetch_company_news(ticker, max_articles=8)
+            if articles:
+                save_company_news(ticker, articles)
+        except Exception:
+            pass
+        progress.progress((i + 1) / len(tickers), text=f"{ticker}... ({i+1}/{len(tickers)})")
+        time.sleep(0.3)
+    progress.empty()
+    return ok
 
 
 def render():
-    st.markdown('<div class="main-header">📅 Publications & Info Qualitative</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">Rapports annuels, calendrier des publications, notes qualitatives</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header">📅 Infos Générales Marché</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-header">Actualités, panorama des sociétés et calendrier des publications BRVM</div>', unsafe_allow_html=True)
 
-    tab1, tab2, tab3, tab4 = st.tabs([
-        "📄 Rapports annuels",
-        "📅 Calendrier publications",
-        "📝 Notes qualitatives",
-        "📊 Donnees trimestrielles",
+    tab1, tab2, tab3 = st.tabs([
+        "📰 Fil d'actualités",
+        "🏢 Panorama des sociétés",
+        "📅 Calendrier des publications",
     ])
 
     with tab1:
-        _render_reports()
+        _render_news_feed()
 
     with tab2:
-        _render_calendar()
+        _render_company_overview()
 
     with tab3:
-        _render_qualitative()
-
-    with tab4:
-        _render_quarterly()
+        _render_publication_calendar()
 
 
-def _render_reports():
-    """Rapports annuels et etats financiers par titre."""
-    st.subheader("Rapports annuels & etats financiers")
+def _render_news_feed():
+    """Fil d'actualités agrege pour tous les titres."""
+    st.subheader("Actualités du marché BRVM")
 
-    # Seed if needed
-    reports = get_report_links()
-    if reports.empty:
-        seed_known_report_links()
-        reports = get_report_links()
+    tickers_data = load_tickers()
+    ticker_names = {t["ticker"]: t["name"] for t in tickers_data}
 
-    if reports.empty:
-        st.warning("Aucun rapport disponible.")
+    col1, col2 = st.columns([4, 1])
+    with col1:
+        filter_options = ["Tous les titres"] + [f"{t['ticker']} - {t['name']}" for t in tickers_data]
+        filter_sel = st.selectbox("Filtrer par titre", filter_options, key="news_filter")
+    with col2:
+        st.write("")
+        st.write("")
+        if st.button("🔄 Actualiser", key="refresh_news"):
+            from data.scraper import fetch_company_news
+            progress = st.progress(0)
+            for i, t in enumerate(tickers_data):
+                try:
+                    articles = fetch_company_news(t["ticker"], max_articles=5)
+                    if articles:
+                        save_company_news(t["ticker"], articles)
+                except Exception:
+                    pass
+                progress.progress((i + 1) / len(tickers_data))
+                time.sleep(0.2)
+            progress.empty()
+            st.rerun()
+
+    selected_ticker = None
+    if filter_sel != "Tous les titres":
+        selected_ticker = filter_sel.split(" - ")[0]
+
+    news = get_company_news(selected_ticker, limit=80)
+    if news.empty:
+        st.info("Aucune actualité chargée. Cliquez sur 'Actualiser' ou lancez `scripts/scrape_profiles.py`.")
         return
 
-    st.success(f"**{len(reports)} rapports** disponibles pour **{reports['ticker'].nunique()} titres**")
+    st.caption(f"{len(news)} article(s)")
 
-    # Filter
-    col_filter1, col_filter2 = st.columns(2)
-    with col_filter1:
-        years = sorted(reports["fiscal_year"].dropna().unique().tolist(), reverse=True)
-        selected_year = st.selectbox("Annee", ["Toutes"] + [str(int(y)) for y in years])
-    with col_filter2:
-        tickers = sorted(reports["ticker"].unique().tolist())
-        tickers_data = load_tickers()
-        ticker_names = {t["ticker"]: t["name"] for t in tickers_data}
-        ticker_options = ["Tous"] + [f"{t} - {ticker_names.get(t, '')}" for t in tickers]
-        selected_ticker_opt = st.selectbox("Titre", ticker_options)
-
-    filtered = reports.copy()
-    if selected_year != "Toutes":
-        filtered = filtered[filtered["fiscal_year"] == int(selected_year)]
-    if selected_ticker_opt != "Tous":
-        sel_ticker = selected_ticker_opt.split(" - ")[0]
-        filtered = filtered[filtered["ticker"] == sel_ticker]
-
-    # Display by ticker
-    for ticker in filtered["ticker"].unique():
-        ticker_reports = filtered[filtered["ticker"] == ticker]
+    for _, art in news.iterrows():
+        ticker = art.get("ticker", "")
         name = ticker_names.get(ticker, ticker)
-        with st.expander(f"📁 {name} ({ticker}) — {len(ticker_reports)} document(s)", expanded=False):
-            for _, row in ticker_reports.iterrows():
-                type_emoji = {
-                    "etats_financiers": "📊",
-                    "rapport_annuel": "📘",
-                    "rapport_semestriel": "📗",
-                    "rapport_trimestriel": "📋",
-                    "analyse": "🔬",
-                }.get(row.get("report_type", ""), "📄")
+        date_str = art.get("article_date", "")
+        url = art.get("url", "")
 
-                is_pdf = row["url"].endswith(".pdf")
-                link_text = "📥 Telecharger PDF" if is_pdf else "🔗 Voir sur BRVM"
-
-                col1, col2, col3 = st.columns([4, 1, 2])
-                col1.write(f"{type_emoji} **{row['title']}**")
-                col2.write(f"{int(row['fiscal_year'])}")
-                col3.markdown(f"[{link_text}]({row['url']})")
-
-    # Stats
-    st.markdown("---")
-    st.markdown("#### Couverture des rapports")
-    all_tickers = load_tickers()
-    covered = set(reports["ticker"].unique())
-    not_covered = [t for t in all_tickers if t["ticker"] not in covered]
-
-    col_s1, col_s2 = st.columns(2)
-    with col_s1:
-        st.metric("Titres couverts", f"{len(covered)}/48")
-    with col_s2:
-        st.metric("Rapports 2024", f"{len(reports[reports['fiscal_year'] == 2024])}")
-
-    if not_covered:
-        with st.expander(f"⚪ {len(not_covered)} titres sans rapport disponible"):
-            for t in not_covered:
-                st.write(f"- {t['name']} ({t['ticker']})")
+        col_info, col_content = st.columns([1, 5])
+        with col_info:
+            if date_str:
+                st.caption(date_str)
+            st.caption(f"**{name}**")
+        with col_content:
+            if url and url.startswith("http"):
+                st.markdown(f"[{art['title']}]({url})")
+            else:
+                st.write(art["title"])
+        st.markdown("<hr style='margin:0.2rem 0;border-color:#333;'>", unsafe_allow_html=True)
 
 
-def _render_calendar():
-    """Calendrier des publications attendues."""
-    st.subheader("Calendrier des publications attendues")
-    st.markdown(
-        "Les entreprises BRVM publient generalement :\n"
-        "- **Annuel** : fin mars / debut avril\n"
-        "- **T1** : fin avril / debut mai\n"
-        "- **S1** : fin aout / debut septembre\n"
-        "- **T3** : fin octobre / debut novembre"
+def _render_company_overview():
+    """Panorama des sociétés BRVM avec profils."""
+    st.subheader("Panorama des sociétés BRVM")
+
+    profiles = get_all_company_profiles()
+    if profiles.empty:
+        st.info("Les profils n'ont pas encore ete charges.")
+        if st.button("📥 Charger les profils (~30s)", key="load_all_profiles"):
+            count = _sync_all_profiles()
+            st.success(f"✅ {count} profils charges !")
+            st.rerun()
+        return
+
+    tickers_data = load_tickers()
+    ticker_names = {t["ticker"]: t["name"] for t in tickers_data}
+    ticker_sectors = {t["ticker"]: t.get("sector", "") for t in tickers_data}
+
+    # Filter by sector
+    all_sectors = sorted(set(ticker_sectors.values()) - {""})
+    selected_sector = st.selectbox("Filtrer par secteur", ["Tous"] + all_sectors)
+
+    # Get market data for all tickers
+    conn = get_connection()
+    md = pd.read_sql_query(
+        "SELECT ticker, price, market_cap, shares, float_pct FROM market_data WHERE price > 0",
+        conn,
     )
+    conn.close()
+    md_map = {row["ticker"]: row.to_dict() for _, row in md.iterrows()} if not md.empty else {}
+
+    # Display profiles as expandable cards
+    st.caption(f"💡 Pour l'analyse détaillée d'un titre, utilisez **Analyse d'un Titre > Onglet Profil**")
+    st.markdown("---")
+
+    displayed = 0
+    for _, profile in profiles.iterrows():
+        ticker = profile["ticker"]
+        name = ticker_names.get(ticker, ticker)
+        sector = ticker_sectors.get(ticker, "")
+
+        if selected_sector != "Tous" and sector != selected_sector:
+            continue
+
+        mdata = md_map.get(ticker, {})
+        price = mdata.get("price", 0) or 0
+        mcap = mdata.get("market_cap", 0) or 0
+
+        # Summary line
+        price_str = f" | Prix: {price:,.0f} FCFA" if price else ""
+        mcap_str = f" | Cap: {mcap/1e3:,.1f} Mds" if mcap else ""
+
+        with st.expander(f"**{name}** ({ticker}) — {sector}{price_str}{mcap_str}"):
+            if profile.get("description"):
+                desc = profile["description"]
+                for prefix in ["La société :", "La société :", "La société:", "La société:"]:
+                    if desc.startswith(prefix):
+                        desc = desc[len(prefix):].strip()
+                st.markdown(desc[:500] + ("..." if len(desc) > 500 else ""))
+
+            col_a, col_b = st.columns(2)
+            with col_a:
+                if profile.get("dg"):
+                    st.markdown(f"**DG :** {profile['dg']}")
+                if profile.get("president"):
+                    st.markdown(f"**PCA :** {profile['president']}")
+            with col_b:
+                if profile.get("major_shareholder"):
+                    pct = profile.get("major_shareholder_pct")
+                    pct_str = f" ({pct:.1f}%)" if pct else ""
+                    st.markdown(f"**Actionnaire :** {profile['major_shareholder']}{pct_str}")
+                if profile.get("phone"):
+                    st.caption(f"📞 {profile['phone']}")
+
+        displayed += 1
+
+    st.caption(f"{displayed} société(s) affichée(s)")
+
+
+def _render_publication_calendar():
+    """Calendrier des publications financières attendues."""
+    st.subheader("Calendrier des publications attendues")
+
+    tickers_data = load_tickers()
+    all_sectors = sorted(set(t.get("sector", "") for t in tickers_data) - {""})
+    selected_sector = st.selectbox("Filtrer par secteur", ["Tous les secteurs"] + all_sectors, key="cal_sector_filter")
 
     calendar = get_publication_calendar()
     if calendar.empty:
-        st.info("Importez des donnees pour voir le calendrier.")
+        st.info("Aucune publication enregistrée. Importez des données fondamentales pour alimenter le calendrier.")
         return
 
-    status_filter = st.multiselect(
-        "Filtrer par statut",
-        ["en_retard", "attendu_ce_mois", "a_venir"],
-        default=["en_retard", "attendu_ce_mois"],
-        format_func=lambda x: {"en_retard": "🔴 En retard", "attendu_ce_mois": "🟡 Ce mois", "a_venir": "🔵 A venir"}[x],
-    )
+    if selected_sector != "Tous les secteurs":
+        sector_tickers = {t["ticker"] for t in tickers_data if t.get("sector") == selected_sector}
+        calendar = calendar[calendar["ticker"].isin(sector_tickers)]
 
-    filtered = calendar[calendar["status"].isin(status_filter)]
-    if filtered.empty:
-        st.info("Aucune publication correspondante.")
+    if calendar.empty:
+        st.info("Aucune publication attendue pour ce secteur.")
         return
 
     status_emoji = {"a_venir": "🔵", "attendu_ce_mois": "🟡", "en_retard": "🔴"}
 
-    for pub_type in ["annuel", "semestriel", "trimestriel"]:
-        type_df = filtered[filtered["type"] == pub_type]
-        if type_df.empty:
-            continue
-        st.markdown(f"#### {pub_type.capitalize()}")
-        for _, row in type_df.iterrows():
-            emoji = status_emoji.get(row["status"], "⚪")
-            st.write(f"{emoji} **{row['company_name']}** ({row['ticker']}) — {row['period']} — {row['sector']}")
-
-
-def _render_qualitative():
-    """Notes qualitatives par titre."""
-    st.subheader("Notes qualitatives")
-    st.markdown("Ajoutez des notes d'analyse (strategie, position concurrentielle, risques, etc.) pour chaque titre.")
-
-    tickers_data = load_tickers()
-    options = [f"{t['ticker']} - {t['name']}" for t in tickers_data]
-    selection = st.selectbox("Titre", options, key="quali_ticker")
-    ticker = selection.split(" - ")[0]
-
-    # Show existing notes
-    notes = get_qualitative_notes(ticker)
-    if not notes.empty:
-        st.markdown(f"#### Notes existantes ({len(notes)})")
-        for _, note in notes.iterrows():
-            cat_emoji = {
-                "strategie": "🎯", "concurrence": "⚔️", "risques": "⚠️",
-                "gouvernance": "🏛️", "perspectives": "🔮", "dividendes": "💰",
-                "general": "📝",
-            }.get(note.get("category", ""), "📝")
-
-            with st.container():
-                col1, col2, col3 = st.columns([1, 5, 0.5])
-                col1.write(f"{cat_emoji} **{note.get('category', 'general').capitalize()}**")
-                col2.write(note["content"])
-                if note.get("source"):
-                    col2.caption(f"Source: {note['source']} | {note.get('note_date', '')}")
-                if col3.button("🗑️", key=f"del_note_{note['id']}"):
-                    delete_qualitative_note(note["id"])
-                    st.rerun()
+    # Group by status for better readability
+    for status, label in [("en_retard", "🔴 En retard"), ("attendu_ce_mois", "🟡 Attendu ce mois"), ("a_venir", "🔵 À venir")]:
+        group = calendar[calendar["status"] == status] if "status" in calendar.columns else pd.DataFrame()
+        if not group.empty:
+            st.markdown(f"**{label}** ({len(group)})")
+            for _, row in group.iterrows():
+                emoji = status_emoji.get(row.get("status", ""), "⚪")
+                st.write(f"{emoji} **{row['company_name']}** — {row['period']} ({row['type']}) — {row['status'].replace('_', ' ')}")
             st.markdown("---")
 
-    # Add new note
-    st.markdown("#### Ajouter une note")
-    with st.form("add_note"):
-        category = st.selectbox("Categorie", [
-            "strategie", "concurrence", "risques", "gouvernance",
-            "perspectives", "dividendes", "general",
-        ])
-        content = st.text_area(
-            "Contenu de la note",
-            placeholder="Ex: Plan strategique 2025-2028 axe sur la diversification data/fibre...",
-            height=150,
-        )
-        col1, col2 = st.columns(2)
-        source = col1.text_input("Source", placeholder="Ex: Rapport annuel 2024, Assemblee generale...")
-        note_date = col2.date_input("Date")
-
-        if st.form_submit_button("💾 Enregistrer la note"):
-            if content.strip():
-                save_qualitative_note(ticker, category, content.strip(), source, str(note_date))
-                st.success("✅ Note enregistree")
-                st.rerun()
-            else:
-                st.warning("Le contenu ne peut pas etre vide")
-
-
-def _render_quarterly():
-    """Saisie et consultation des donnees trimestrielles."""
-    st.subheader("Donnees trimestrielles")
-
-    tracked = list_tickers_with_fundamentals()
-    tickers_data = load_tickers()
-
-    if not tracked:
-        options = [f"{t['ticker']} - {t['name']}" for t in tickers_data]
-    else:
-        options = [f"{t['ticker']} - {t['name']}" for t in tracked]
-
-    selection = st.selectbox("Titre", options, key="quarterly_ticker")
-    ticker = selection.split(" - ")[0]
-
-    quarterly = get_quarterly_data(ticker)
-    if not quarterly.empty:
-        st.markdown("#### Historique trimestriel")
-        display = quarterly.copy()
-        display["revenue_fmt"] = display["revenue"].apply(lambda x: f"{x:,.0f}" if pd.notna(x) else "—")
-        display["net_income_fmt"] = display["net_income"].apply(lambda x: f"{x:,.0f}" if pd.notna(x) else "—")
-        st.dataframe(
-            display[["fiscal_year", "quarter", "revenue_fmt", "net_income_fmt", "source"]].rename(columns={
-                "fiscal_year": "Annee", "quarter": "Trimestre", "revenue_fmt": "CA (FCFA)",
-                "net_income_fmt": "RN (FCFA)", "source": "Source",
-            }),
-            use_container_width=True, hide_index=True,
-        )
-
-    st.markdown("---")
-    st.markdown("#### Ajouter des donnees trimestrielles")
-
-    with st.form("quarterly_form"):
-        col1, col2 = st.columns(2)
-        fiscal_year = col1.number_input("Annee", value=2024, min_value=2020, max_value=2030)
-        quarter = col2.selectbox("Trimestre", [1, 2, 3, 4])
-
-        col3, col4, col5 = st.columns(3)
-        revenue = col3.number_input("CA (FCFA)", value=0, min_value=0)
-        net_income = col4.number_input("RN (FCFA)", value=0, min_value=0)
-        ebit = col5.number_input("EBIT (FCFA)", value=0, min_value=0)
-
-        source = st.text_input("Source", placeholder="Publication BRVM T1 2024...")
-        notes = st.text_area("Notes", placeholder="Faits marquants du trimestre...")
-
-        if st.form_submit_button("💾 Enregistrer"):
-            save_quarterly_data({
-                "ticker": ticker, "fiscal_year": fiscal_year, "quarter": quarter,
-                "revenue": revenue if revenue > 0 else None,
-                "net_income": net_income if net_income > 0 else None,
-                "ebit": ebit if ebit > 0 else None,
-                "source": source, "notes": notes,
-            })
-            st.success(f"✅ T{quarter} {fiscal_year} enregistre")
-            st.rerun()
+    st.caption(f"{len(calendar)} publication(s) au total")

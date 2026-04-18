@@ -1,6 +1,6 @@
 """
-Page 3 : Screening multi-criteres
-Affiche uniquement les titres avec des donnees exploitables.
+Page 3 : Screening multi-critères
+Affiche uniquement les titres avec des données exploitables.
 """
 
 import streamlit as st
@@ -8,15 +8,16 @@ import pandas as pd
 
 from data.storage import get_all_stocks_for_analysis, get_analyzable_tickers
 from analysis.fundamental import compute_ratios, format_ratio
+from utils.nav import ticker_quick_picker
 
 
 def render():
-    st.markdown('<div class="main-header">🎯 Screening Multi-Criteres</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">Filtrez les titres BRVM ayant des donnees disponibles</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header">🎯 Screening Multi-Critères</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-header">Filtrez les titres BRVM ayant des données disponibles</div>', unsafe_allow_html=True)
 
     all_stocks = get_all_stocks_for_analysis()
     if all_stocks.empty:
-        st.warning("Aucune donnee disponible. Lancez l'enrichissement depuis sikafinance.")
+        st.warning("Aucune donnée disponible. Lancez l'enrichissement depuis sikafinance.")
         return
 
     # --- Selection Secteurs & Titres ---
@@ -31,7 +32,7 @@ def render():
             selected_sectors = available_sectors
 
     with col_info:
-        st.metric("Titres avec donnees", f"{len(all_stocks)}")
+        st.metric("Titres avec données", f"{len(all_stocks)}")
 
     # Filter by sector
     filtered_stocks = all_stocks[all_stocks["sector"].isin(selected_sectors)]
@@ -49,18 +50,29 @@ def render():
 
     # --- Ratio Filters ---
     st.markdown("### Filtres fondamentaux")
+
     col_f1, col_f2, col_f3, col_f4, col_f5 = st.columns(5)
 
     with col_f1:
-        min_yield = st.slider("Yield min (%)", 0.0, 15.0, 0.0, 0.5) / 100
+        st.markdown("**Dividend Yield (%)**")
+        min_yield = st.number_input("Yield min", min_value=0.0, max_value=30.0, value=0.0, step=0.5, key="yield_min") / 100
+        max_yield = st.number_input("Yield max", min_value=0.0, max_value=30.0, value=30.0, step=0.5, key="yield_max") / 100
     with col_f2:
-        max_per = st.slider("PER max", 0.0, 50.0, 50.0, 1.0)
+        st.markdown("**PER**")
+        min_per = st.number_input("PER min", min_value=0.0, max_value=100.0, value=0.0, step=1.0, key="per_min")
+        max_per = st.number_input("PER max", min_value=0.0, max_value=100.0, value=100.0, step=1.0, key="per_max")
     with col_f3:
-        min_roe = st.slider("ROE min (%)", 0.0, 40.0, 0.0, 1.0) / 100
+        st.markdown("**ROE (%)**")
+        min_roe = st.number_input("ROE min", min_value=0.0, max_value=100.0, value=0.0, step=1.0, key="roe_min") / 100
+        max_roe = st.number_input("ROE max", min_value=0.0, max_value=100.0, value=100.0, step=1.0, key="roe_max") / 100
     with col_f4:
-        max_payout = st.slider("Payout max (%)", 0.0, 150.0, 150.0, 5.0) / 100
+        st.markdown("**Payout Ratio (%)**")
+        min_payout = st.number_input("Payout min", min_value=0.0, max_value=200.0, value=0.0, step=5.0, key="payout_min") / 100
+        max_payout = st.number_input("Payout max", min_value=0.0, max_value=200.0, value=200.0, step=5.0, key="payout_max") / 100
     with col_f5:
-        max_de = st.slider("D/E max", 0.0, 10.0, 10.0, 0.5)
+        st.markdown("**D/E (Dette/Equity)**")
+        min_de = st.number_input("D/E min", min_value=0.0, max_value=20.0, value=0.0, step=0.5, key="de_min")
+        max_de = st.number_input("D/E max", min_value=0.0, max_value=20.0, value=20.0, step=0.5, key="de_max")
 
     # --- Compute ratios ---
     st.markdown("---")
@@ -106,32 +118,47 @@ def render():
             continue
 
     if not results:
-        st.warning("Aucun titre avec des donnees dans la selection.")
+        st.warning("Aucun titre avec des données dans la selection.")
         return
 
     screen_df = pd.DataFrame(results)
 
     # Apply ratio filters
     mask = pd.Series(True, index=screen_df.index)
+    # Yield filter (min/max)
     if min_yield > 0:
         mask &= screen_df["dividend_yield"].fillna(0) >= min_yield
-    if max_per < 50:
+    if max_yield < 0.30:
+        mask &= screen_df["dividend_yield"].fillna(0) <= max_yield
+    # PER filter (min/max) — only apply to stocks with PER > 0
+    if min_per > 0:
+        mask &= (screen_df["per"].fillna(0) >= min_per) | (screen_df["per"].fillna(0) <= 0)
+    if max_per < 100:
         mask &= (screen_df["per"].fillna(999) <= max_per) & (screen_df["per"].fillna(0) > 0)
+    # ROE filter (min/max)
     if min_roe > 0:
         mask &= screen_df["roe"].fillna(0) >= min_roe
-    if max_payout < 1.5:
+    if max_roe < 1.0:
+        mask &= screen_df["roe"].fillna(0) <= max_roe
+    # Payout filter (min/max)
+    if min_payout > 0:
+        mask &= screen_df["payout_ratio"].fillna(0) >= min_payout
+    if max_payout < 2.0:
         mask &= screen_df["payout_ratio"].fillna(0) <= max_payout
-    if max_de < 10:
+    # D/E filter (min/max)
+    if min_de > 0:
+        mask &= screen_df["debt_equity"].fillna(0) >= min_de
+    if max_de < 20:
         mask &= screen_df["debt_equity"].fillna(0) <= max_de
 
     filtered = screen_df[mask].sort_values("fundamental_score", ascending=False)
 
     # --- Results ---
     st.markdown("---")
-    st.markdown(f"### {len(filtered)} titre(s) correspondent a vos criteres")
+    st.markdown(f"### {len(filtered)} titre(s) correspondent à vos critères")
 
     if filtered.empty:
-        st.info("Aucun titre ne correspond. Elargissez vos criteres.")
+        st.info("Aucun titre ne correspond. Élargissez vos critères.")
         return
 
     display_df = filtered.copy()
@@ -153,6 +180,7 @@ def render():
     show_cols = {
         "data": "", "ticker": "Ticker", "name": "Nom", "sector": "Secteur", "price": "Prix",
         "dividend_yield": "Yield", "dps_fmt": "DPS", "per": "PER", "roe": "ROE",
+        "payout_ratio": "Payout", "debt_equity": "D/E",
         "beta_fmt": "Beta", "rsi_fmt": "RSI",
         "checklist": "Check", "score": "Score",
     }
@@ -162,6 +190,13 @@ def render():
         use_container_width=True,
         height=min(len(filtered) * 40 + 50, 700),
     )
+
+    # Quick jump to analysis
+    picker_options = [
+        (row["ticker"], f"{row['ticker']} — {row['name']}")
+        for _, row in filtered.iterrows()
+    ]
+    ticker_quick_picker(picker_options, key="screen_goto", label="🔍 Ouvrir l'analyse d'un titre")
 
     csv = filtered[["ticker", "name", "sector", "price", "dividend_yield", "per", "roe",
                      "net_margin", "payout_ratio", "debt_equity", "fundamental_score"]].to_csv(index=False)

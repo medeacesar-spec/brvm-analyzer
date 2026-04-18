@@ -13,6 +13,7 @@ from data.storage import (
     get_all_stocks_for_analysis, get_analyzable_tickers,
 )
 from analysis.fundamental import compute_ratios, format_ratio
+from utils.nav import ticker_analyze_button
 from utils.charts import radar_chart, performance_chart
 
 
@@ -24,7 +25,7 @@ def render():
     all_stocks = get_all_stocks_for_analysis()
 
     if not analyzable:
-        st.warning("Aucune donnee disponible.")
+        st.warning("Aucune donnée disponible.")
         return
 
     # --- Mode de selection ---
@@ -35,11 +36,11 @@ def render():
         selected_sector = st.selectbox("Choisir un secteur", sectors)
 
         sector_tickers = [t for t in analyzable if t["sector"] == selected_sector]
-        st.info(f"**{len(sector_tickers)} titres** avec donnees dans le secteur {selected_sector}")
+        st.info(f"**{len(sector_tickers)} titres** avec données dans le secteur {selected_sector}")
 
         options = [f"{t['ticker']} - {t['name']}" + (" 📊" if t.get("has_fundamentals") else " 📈") for t in sector_tickers]
         selected = st.multiselect(
-            "Titres a comparer",
+            "Titres à comparer",
             options,
             default=options[:min(5, len(options))],
         )
@@ -47,12 +48,22 @@ def render():
 
     else:
         all_options = [f"{t['ticker']} - {t['name']}" + (" 📊" if t.get("has_fundamentals") else " 📈") for t in analyzable]
-        selected = st.multiselect("Selectionnez 2 a 5 titres", all_options, default=[])
+        selected = st.multiselect("Sélectionnez 2 à 5 titres", all_options, default=[])
         tickers = [s.split(" - ")[0] for s in selected]
 
     if len(tickers) < 2:
-        st.info("Selectionnez au moins 2 titres pour comparer.")
+        st.info("Sélectionnez au moins 2 titres pour comparer.")
         return
+
+    # Quick analyze buttons for selected tickers
+    if tickers:
+        btn_cols = st.columns(len(tickers))
+        for i, ticker in enumerate(tickers):
+            with btn_cols[i]:
+                ticker_analyze_button(
+                    ticker, label=f"🔍 {ticker}",
+                    key=f"cmp_goto_{ticker}", use_container_width=True,
+                )
 
     # Load data for selected tickers
     stocks = {}
@@ -71,7 +82,7 @@ def render():
                     stocks[ticker] = {"fundamentals": data, "ratios": ratios}
 
     if len(stocks) < 2:
-        st.warning("Donnees insuffisantes pour au moins 2 titres. Importez des donnees fondamentales.")
+        st.warning("Données insuffisantes pour au moins 2 titres. Importez des données fondamentales.")
         return
 
     # --- Tableau comparatif ---
@@ -93,7 +104,7 @@ def render():
 
     comp_data = {"Indicateur": [m[0] for m in metrics]}
     for ticker, data in stocks.items():
-        name = data["fundamentals"].get("company_name", ticker)
+        name = data["fundamentals"].get("company_name") or ticker
         values = []
         for _, key, fmt in metrics:
             if key == "price":
@@ -115,7 +126,7 @@ def render():
     radar_data = {}
     for ticker, data in stocks.items():
         r = data["ratios"]
-        name = data["fundamentals"].get("company_name", ticker)
+        name = data["fundamentals"].get("company_name") or ticker
 
         roe = min((r.get("roe") or 0) / 0.30 * 100, 100)
         margin = min((r.get("net_margin") or 0) / 0.25 * 100, 100)
@@ -146,18 +157,18 @@ def render():
     st.subheader("Checklist Value & Dividendes")
 
     for ticker, data in stocks.items():
-        name = data["fundamentals"].get("company_name", ticker)
+        name = data["fundamentals"].get("company_name") or ticker
         checklist = data["ratios"].get("checklist", [])
         passed = sum(1 for c in checklist if c["passed"] is True)
         total = len(checklist)
 
         col1, col2 = st.columns([1, 4])
         col1.write(f"**{name}**")
-        col2.progress(passed / total if total > 0 else 0, text=f"{passed}/{total} criteres")
+        col2.progress(passed / total if total > 0 else 0, text=f"{passed}/{total} critères")
 
     # --- Performance Chart ---
     st.markdown("---")
-    st.subheader("Performance comparee des prix")
+    st.subheader("Performance comparée des prix")
 
     price_data = {}
     for ticker in tickers:
@@ -169,4 +180,4 @@ def render():
         fig = performance_chart(price_data, "Performance normalisee (base 100)")
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("Pas assez de donnees de prix pour comparer les performances. Chargez les prix depuis la page Analyse.")
+        st.info("Pas assez de données de prix pour comparer les performances. Chargez les prix depuis la page Analyse.")

@@ -24,7 +24,7 @@ RATIO_THRESHOLDS = {
         "excellent": 0.20,
         "good": 0.15,
         "label": "ROE",
-        "formula": "Resultat net / Capitaux propres",
+        "formula": "Résultat net / Capitaux propres",
         "rules": [
             (0.20, "OK", "Excellent"),
             (0.15, "OK", "Solide"),
@@ -36,7 +36,7 @@ RATIO_THRESHOLDS = {
         "excellent": 0.15,
         "good": 0.10,
         "label": "Marge nette",
-        "formula": "Resultat net / Chiffre d'affaires",
+        "formula": "Résultat net / Chiffre d'affaires",
         "rules": [
             (0.15, "OK", "Tres bon"),
             (0.10, "OK", "Bon"),
@@ -56,8 +56,8 @@ RATIO_THRESHOLDS = {
     "interest_coverage": {
         "comfortable": 3.0,
         "tension": 2.0,
-        "label": "Couverture des interets",
-        "formula": "EBIT / Charges d'interets",
+        "label": "Couverture des intérêts",
+        "formula": "EBIT / Charges d'intérêts",
         "rules": [
             (3.0, "OK", "Confortable"),
             (2.0, "Vigilance", "Tendu"),

@@ -16,6 +16,7 @@ from data.storage import (
 from analysis.fundamental import compute_ratios, format_ratio
 from analysis.scoring import compute_hybrid_score, rank_stocks, recommend_for_profile
 from utils.charts import radar_chart, gauge_chart, pie_chart, stars_display
+from utils.nav import ticker_analyze_button
 
 
 def render():
@@ -30,7 +31,7 @@ def render():
     all_stocks = get_all_stocks_for_analysis()
 
     if df_fund.empty and all_stocks.empty:
-        st.warning("Aucune donnee disponible. Lancez l'enrichissement ou importez des fichiers Excel.")
+        st.warning("Aucune donnée disponible. Lancez l'enrichissement ou importez des fichiers Excel.")
         return
 
     # Use all_stocks if fundamentals are limited
@@ -66,7 +67,7 @@ def render():
     if step == 1:
         st.subheader("1️⃣ Quel est votre profil de risque ?")
         st.markdown(
-            "Cela determine le type de titres qui vous seront recommandes "
+            "Cela détermine le type de titres qui vous seront recommandés "
             "et le niveau de risque acceptable."
         )
 
@@ -75,10 +76,10 @@ def render():
         with col1:
             st.markdown("### 🛡️ Prudent")
             st.markdown(
-                "- Priorite a la **securite du capital**\n"
+                "- Priorité à la **sécurité du capital**\n"
                 "- Recherche de **dividendes reguliers**\n"
-                "- Faible tolerance aux pertes\n"
-                "- Titres solides a faible volatilite"
+                "- Faible tolérance aux pertes\n"
+                "- Titres solides à faible volatilité"
             )
             if st.button("Choisir Prudent", key="risk_prudent", use_container_width=True):
                 profile["risk_profile"] = "prudent"
@@ -89,8 +90,8 @@ def render():
             st.markdown("### ⚖️ Equilibre")
             st.markdown(
                 "- **Compromis** rendement / risque\n"
-                "- Mix dividendes + **croissance moderate**\n"
-                "- Tolerance moyenne aux fluctuations\n"
+                "- Mix dividendes + **croissance modérée**\n"
+                "- Tolérance moyenne aux fluctuations\n"
                 "- Diversification sectorielle"
             )
             if st.button("Choisir Equilibre", key="risk_balanced", use_container_width=True):
@@ -102,9 +103,9 @@ def render():
             st.markdown("### 🚀 Dynamique")
             st.markdown(
                 "- Recherche de **forte croissance**\n"
-                "- Accepte une **volatilite elevee**\n"
+                "- Accepte une **volatilité élevée**\n"
                 "- Horizon long terme\n"
-                "- Titres a fort potentiel d'appreciation"
+                "- Titres à fort potentiel d'appréciation"
             )
             if st.button("Choisir Dynamique", key="risk_dynamic", use_container_width=True):
                 profile["risk_profile"] = "dynamique"
@@ -167,19 +168,19 @@ def render():
         st.subheader("4️⃣ Quels secteurs vous interessent ?")
         _show_profile_badge(profile)
 
-        st.markdown("Selectionnez les secteurs dans lesquels vous souhaitez investir. "
+        st.markdown("Sélectionnez les secteurs dans lesquels vous souhaitez investir. "
                      "Laissez vide pour considerer tous les secteurs.")
 
         available_sectors = sorted(df_fund["sector"].dropna().unique().tolist())
 
         selected_sectors = st.multiselect(
-            "Secteurs preferes",
+            "Secteurs préférés",
             available_sectors,
             default=profile.get("preferred_sectors", []),
         )
 
         # Specific tickers
-        st.markdown("##### Titres specifiques (optionnel)")
+        st.markdown("##### Titres spécifiques (optionnel)")
         tracked_tickers = df_fund["ticker"].unique().tolist()
         tickers_data = load_tickers()
         ticker_options = [
@@ -189,16 +190,16 @@ def render():
         ]
 
         preferred = st.multiselect(
-            "Titres a privilegier",
+            "Titres à privilégier",
             ticker_options,
             default=[],
             help="Ces titres seront prioritaires dans les recommandations",
         )
         excluded = st.multiselect(
-            "Titres a exclure",
+            "Titres à exclure",
             ticker_options,
             default=[],
-            help="Ces titres ne seront jamais recommandes",
+            help="Ces titres ne seront jamais recommandés",
         )
 
         if st.button("Continuer ➡️", key="sector_next"):
@@ -219,7 +220,7 @@ def render():
             st.markdown("### 💰 Rendement")
             st.markdown(
                 "Maximiser les **dividendes**\n\n"
-                "- Dividend Yield eleve\n"
+                "- Dividend Yield élevé\n"
                 "- Payout soutenable\n"
                 "- Revenus reguliers"
             )
@@ -293,7 +294,7 @@ def _show_results(profile, df_fund):
         price_df = get_cached_prices(ticker)
         stocks_data.append({
             "ticker": ticker,
-            "name": data.get("company_name", ""),
+            "name": data.get("company_name") or ticker,
             "fundamentals": data,
             "price_df": price_df,
         })
@@ -302,7 +303,7 @@ def _show_results(profile, df_fund):
         ranked = rank_stocks(stocks_data)
 
     if ranked.empty:
-        st.error("Impossible de generer les recommandations. Verifiez les donnees importees.")
+        st.error("Impossible de générér les recommandations. Verifiez les données importees.")
         return
 
     # Get personalized recommendations
@@ -310,11 +311,11 @@ def _show_results(profile, df_fund):
 
     if not recommendations:
         st.warning(
-            "Aucun titre ne correspond a vos criteres avec le niveau de confiance requis. "
-            "Essayez d'elargir vos preferences sectorielles ou d'ajuster votre profil de risque."
+            "Aucun titre ne correspond à vos critères avec le niveau de confiance requis. "
+            "Essayez d'élargir vos préférences sectorielles ou d'ajuster votre profil de risque."
         )
         # Show best available anyway
-        st.markdown("### Meilleurs titres disponibles (tous criteres)")
+        st.markdown("### Meilleurs titres disponibles (tous critères)")
         _display_ranking_table(ranked.head(5))
         return
 
@@ -325,7 +326,16 @@ def _show_results(profile, df_fund):
         medal = ["🥇", "🥈", "🥉"][i] if i < 3 else f"#{i+1}"
 
         with st.container():
-            st.markdown(f"## {medal} {reco['name']} ({reco['ticker']})")
+            col_title, col_btn = st.columns([6, 1])
+            with col_title:
+                st.markdown(f"## {medal} {reco['name']} ({reco['ticker']})")
+            with col_btn:
+                st.markdown('<div style="padding-top:1.5rem"></div>', unsafe_allow_html=True)
+                ticker_analyze_button(
+                    reco["ticker"], label="🔍 Analyser",
+                    key=f"assistant_goto_{reco['ticker']}",
+                    use_container_width=True,
+                )
 
             col1, col2, col3, col4 = st.columns(4)
             col1.metric("Score hybride", f"{reco['hybrid_score']:.0f}/100")
@@ -341,7 +351,7 @@ def _show_results(profile, df_fund):
 
             # Allocation
             weight_pct = reco["weight"] * 100
-            col8.metric("Poids suggere", f"{weight_pct:.0f}%")
+            col8.metric("Poids suggéré", f"{weight_pct:.0f}%")
 
             st.markdown(
                 f"**Allocation**: {reco['allocated_budget']:,.0f} {CURRENCY} → "
@@ -351,7 +361,7 @@ def _show_results(profile, df_fund):
             st.markdown("---")
 
     # ─── ALLOCATION SUMMARY ───
-    st.subheader("📊 Allocation recommandee")
+    st.subheader("📊 Allocation recommandée")
 
     col_alloc, col_pie = st.columns([1, 1])
 
@@ -360,10 +370,17 @@ def _show_results(profile, df_fund):
         remaining = profile.get("budget", 0) - total_allocated
 
         for reco in recommendations:
-            st.write(
-                f"**{reco['name']}**: {reco['nb_shares']} actions x {reco['price']:,.0f} = "
-                f"**{reco['actual_amount']:,.0f} {CURRENCY}** ({reco['weight']*100:.0f}%)"
-            )
+            col_txt, col_btn = st.columns([5, 1])
+            with col_txt:
+                st.write(
+                    f"**{reco['name']}**: {reco['nb_shares']} actions x {reco['price']:,.0f} = "
+                    f"**{reco['actual_amount']:,.0f} {CURRENCY}** ({reco['weight']*100:.0f}%)"
+                )
+            with col_btn:
+                ticker_analyze_button(
+                    reco["ticker"], label="🔍",
+                    key=f"assistant_alloc_{reco['ticker']}",
+                )
 
         st.markdown("---")
         st.write(f"**Total investi**: {total_allocated:,.0f} {CURRENCY}")
@@ -401,7 +418,7 @@ def _show_results(profile, df_fund):
 def _display_ranking_table(ranked_df):
     """Affiche un tableau de classement."""
     if ranked_df.empty:
-        st.info("Aucune donnee")
+        st.info("Aucune donnée")
         return
 
     display = ranked_df.copy()

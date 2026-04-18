@@ -8,6 +8,132 @@ from typing import Optional
 from config import RATIO_THRESHOLDS, VALUE_CHECKLIST
 
 
+def get_sector_benchmarks(sector: str = None) -> dict:
+    """Retourne les médianes/min/max par secteur pour PER, P/B, ROE, Yield, Marge nette.
+    Si sector=None, retourne aussi la médiane globale BRVM.
+    Cache léger via fonctools non nécessaire ici, appelé 1 fois par page.
+    """
+    import pandas as pd
+    from data.storage import get_all_stocks_for_analysis
+
+    try:
+        df = get_all_stocks_for_analysis()
+    except Exception:
+        return {}
+
+    if df.empty:
+        return {}
+
+    # Compute ratios for each row
+    records = []
+    for _, row in df.iterrows():
+        d = row.to_dict()
+        price = d.get("price") or 0
+        shares = d.get("shares") or 0
+        revenue = d.get("revenue") or 0
+        ni = d.get("net_income") or 0
+        equity = d.get("equity") or 0
+        dps = d.get("dps") or 0
+
+        eps = (ni / shares) if shares and shares > 0 and ni else None
+        per = (price / eps) if eps and eps > 0 else None
+        bvps = (equity / shares) if shares and shares > 0 and equity else None
+        pb = (price / bvps) if bvps and bvps > 0 else None
+        roe = (ni / equity) if equity and equity > 0 and ni else None
+        margin = (ni / revenue) if revenue and revenue > 0 and ni else None
+        yield_ = (dps / price) if price and price > 0 and dps else None
+
+        records.append({
+            "ticker": d.get("ticker"),
+            "sector": d.get("sector") or "",
+            "per": per if per and 0 < per < 100 else None,  # exclude extremes
+            "pb": pb if pb and 0 < pb < 20 else None,
+            "roe": roe if roe and -1 < roe < 2 else None,
+            "net_margin": margin if margin and -1 < margin < 1 else None,
+            "dividend_yield": yield_ if yield_ and 0 < yield_ < 0.5 else None,
+        })
+
+    df_r = pd.DataFrame(records)
+
+    def _stats(subdf):
+        out = {}
+        for col in ["per", "pb", "roe", "net_margin", "dividend_yield"]:
+            vals = subdf[col].dropna()
+            if len(vals) >= 2:
+                out[col] = {
+                    "median": float(vals.median()),
+                    "min": float(vals.min()),
+                    "max": float(vals.max()),
+                    "count": int(len(vals)),
+                }
+        return out
+
+    result = {"global": _stats(df_r)}
+    if sector:
+        sub = df_r[df_r["sector"] == sector]
+        if len(sub) >= 2:
+            result["sector"] = _stats(sub)
+            result["sector_name"] = sector
+            result["sector_peers"] = sub["ticker"].tolist()
+    return result
+
+
+def compare_to_sector(ratio_name: str, value: float, benchmarks: dict,
+                       prefer_low: bool = False) -> dict:
+    """Compare une valeur à la médiane sectorielle. Retourne un dict avec
+    badge, couleur, écart %.
+    - prefer_low=True pour PER, P/B (plus bas = mieux)
+    - prefer_low=False pour ROE, Yield, Marge (plus haut = mieux)
+    """
+    if value is None or not benchmarks:
+        return None
+    bench = benchmarks.get("sector", {}).get(ratio_name)
+    scope = "secteur"
+    if not bench:
+        bench = benchmarks.get("global", {}).get(ratio_name)
+        scope = "marché"
+    if not bench:
+        return None
+    median = bench["median"]
+    if median == 0:
+        return None
+    diff = (value - median) / abs(median)
+
+    if prefer_low:
+        if diff <= -0.20:
+            badge, color = "⬇️ Bien sous médiane", "#28a745"
+        elif diff <= -0.05:
+            badge, color = "⬇️ Sous médiane", "#7ED957"
+        elif diff <= 0.05:
+            badge, color = "= Médiane", "#ffc107"
+        elif diff <= 0.20:
+            badge, color = "⬆️ Au-dessus médiane", "#fd7e14"
+        else:
+            badge, color = "⬆️ Bien au-dessus", "#dc3545"
+    else:
+        if diff >= 0.20:
+            badge, color = "⬆️ Bien au-dessus", "#28a745"
+        elif diff >= 0.05:
+            badge, color = "⬆️ Au-dessus médiane", "#7ED957"
+        elif diff >= -0.05:
+            badge, color = "= Médiane", "#ffc107"
+        elif diff >= -0.20:
+            badge, color = "⬇️ Sous médiane", "#fd7e14"
+        else:
+            badge, color = "⬇️ Bien sous médiane", "#dc3545"
+
+    return {
+        "badge": badge,
+        "color": color,
+        "diff": diff,
+        "median": median,
+        "min": bench["min"],
+        "max": bench["max"],
+        "count": bench["count"],
+        "scope": scope,
+    }
+
+
 def compute_ratios(data: dict) -> dict:
     """
     Calcule tous les ratios fondamentaux à partir des données financières.
@@ -253,11 +379,13 @@ def _compute_flags(ratios: dict, is_bank: bool) -> dict:
         if per < 0:
             flags["per"] = ("Risque", "Negatif (perte)")
         elif per < 10:
-            flags["per"] = ("OK", "Attractif")
+            flags["per"] = ("OK", "Attractif (absolu)")
         elif per <= 15:
-            flags["per"] = ("OK", "Value")
+            flags["per"] = ("OK", "Value (absolu)")
+        elif per <= 20:
+            flags["per"] = ("Vigilance", "Elevé - vérifier secteur")
         else:
-            flags["per"] = ("Risque", "Cher")
+            flags["per"] = ("Risque", "Cher - vérifier secteur")
     else:
         flags["per"] = ("Risque", "N/A")
 
@@ -426,7 +554,13 @@ def _compute_fundamental_score(ratios: dict, is_bank: bool) -> float:
 
 def format_ratio(value, fmt: str = "pct") -> str:
     """Formate un ratio pour l'affichage."""
+    import math
     if value is None:
+        return "N/A"
+    try:
+        if math.isnan(value):
+            return "N/A"
+    except (TypeError, ValueError):
         return "N/A"
     if fmt == "pct":
         return f"{value:.2%}"
