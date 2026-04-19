@@ -74,26 +74,27 @@ def _generate_recommendation(
     """
     Génère une recommandation structurée basée sur le score hybride.
     """
-    # Verdict global
-    if score >= 75:
+    # Verdict global — seuils elargis pour ACHAT et CONSERVER
+    # (adaptes au contexte BRVM ou les signaux techniques sont moins marques)
+    if score >= 70:
         verdict = "ACHAT FORT"
-        verdict_color = "#28a745"
+        verdict_color = "#1F5D3A"
         stars = 5
-    elif score >= 60:
+    elif score >= 52:
         verdict = "ACHAT"
-        verdict_color = "#28a745"
+        verdict_color = "#1F5D3A"
         stars = 4
-    elif score >= 45:
+    elif score >= 38:
         verdict = "CONSERVER"
-        verdict_color = "#ffc107"
+        verdict_color = "#B5730E"
         stars = 3
-    elif score >= 30:
+    elif score >= 25:
         verdict = "PRUDENCE"
-        verdict_color = "#fd7e14"
+        verdict_color = "#B5730E"
         stars = 2
     else:
         verdict = "EVITER"
-        verdict_color = "#dc3545"
+        verdict_color = "#B42318"
         stars = 1
 
     # Points forts

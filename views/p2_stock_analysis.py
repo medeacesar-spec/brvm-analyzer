@@ -172,14 +172,14 @@ def render():
             tech_score_snap = snap.get("technical_score") or 0
             hybrid_local = fund_score_local + tech_score_snap
 
-            # Verdict recalculé selon nouveau hybrid_score (seuils 75/60/45/30)
-            if hybrid_local >= 75:
+            # Verdict recalculé selon nouveau hybrid_score (seuils 70/52/38/25)
+            if hybrid_local >= 70:
                 verdict, stars = "ACHAT FORT", 5
-            elif hybrid_local >= 60:
+            elif hybrid_local >= 52:
                 verdict, stars = "ACHAT", 4
-            elif hybrid_local >= 45:
+            elif hybrid_local >= 38:
                 verdict, stars = "CONSERVER", 3
-            elif hybrid_local >= 30:
+            elif hybrid_local >= 25:
                 verdict, stars = "PRUDENCE", 2
             else:
                 verdict, stars = "EVITER", 1
