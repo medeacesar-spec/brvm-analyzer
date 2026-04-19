@@ -24,6 +24,11 @@ ta>=0.11
 pdfplumber>=0.11
 PyMuPDF>=1.24
 
+# OCR léger (import portefeuille depuis screenshot)
+# Nécessite aussi tesseract-ocr au niveau OS (cf packages.txt)
+pytesseract>=0.3.10
+Pillow>=10.0
+
 # Base de données Postgres (Supabase)
 psycopg[binary]>=3.2
 

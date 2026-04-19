@@ -28,28 +28,46 @@ def render():
     if _ocr_available():
         with st.expander("📸 Importer depuis un screenshot SGI", expanded=False):
             st.markdown(
-                "Uploadez une capture d'écran de votre portefeuille SGI. "
-                "L'application analysera l'image et extraira automatiquement vos positions."
+                "Uploadez une capture d'écran de votre portefeuille SGI "
+                "(**max 1 Mo**, format PNG/JPG). L'application analyse l'image "
+                "et extrait automatiquement vos positions. La photo est "
+                "supprimée dès que l'OCR a tourné."
             )
+
+            # Nonce dans la clé pour pouvoir reset le file_uploader après extraction
+            _uploader_nonce = st.session_state.get("sgi_uploader_nonce", 0)
             screenshot = st.file_uploader(
-                "Screenshot du portefeuille SGI",
+                "Screenshot du portefeuille SGI (max 1 Mo)",
                 type=["png", "jpg", "jpeg"],
-                key="sgi_screenshot",
+                key=f"sgi_screenshot_{_uploader_nonce}",
             )
-            if screenshot:
-                st.image(screenshot, caption="Votre portefeuille SGI", use_container_width=True)
-                st.markdown("---")
-                with st.spinner("Analyse de l'image en cours (OCR)…"):
-                    extracted = _extract_portfolio_from_image(screenshot)
-                if extracted:
-                    st.success(f"✅ {len(extracted)} position(s) détectée(s) dans l'image")
-                    _render_extracted_positions(extracted, load_tickers())
+
+            if screenshot is not None:
+                # Limite de taille : 1 Mo
+                MAX_BYTES = 1 * 1024 * 1024
+                size = getattr(screenshot, "size", None) or len(screenshot.getvalue())
+                if size > MAX_BYTES:
+                    st.error(
+                        f"⚠️ Image trop lourde ({size/1024:.0f} Ko). "
+                        "Limite : 1 Mo. Réduisez la résolution du screenshot."
+                    )
                 else:
-                    st.warning("L'extraction automatique n'a pas détecté de positions. Saisissez manuellement :")
-                    _render_batch_input(load_tickers())
-    # Sinon : pas d'expander OCR du tout — la saisie manuelle ci-dessous
-    # reste la seule voie d'import, ce qui est cohérent avec les capacités
-    # du déploiement (Streamlit Cloud free tier n'installe pas easyocr/torch).
+                    with st.spinner("Analyse de l'image (OCR)…"):
+                        extracted = _extract_portfolio_from_image(screenshot)
+                    # Photo éliminée dès l'OCR fini : on reset le file_uploader
+                    # en incrémentant le nonce (la clé change → widget vidé).
+                    st.session_state["sgi_uploader_nonce"] = _uploader_nonce + 1
+                    if extracted:
+                        st.success(f"✅ {len(extracted)} position(s) détectée(s)")
+                        _render_extracted_positions(extracted, load_tickers())
+                    else:
+                        st.warning(
+                            "L'extraction automatique n'a pas détecté de positions. "
+                            "Saisissez manuellement :"
+                        )
+                        _render_batch_input(load_tickers())
+                    # On ne conserve pas l'image en session_state : une fois
+                    # l'OCR fait, le fichier original disparaît de la mémoire.
 
     # --- Add position ---
     with st.expander("➕ Ajouter une position", expanded=portfolio.empty):
