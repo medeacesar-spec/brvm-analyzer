@@ -596,30 +596,55 @@ def _check_data_status():
 
 
 # ─── CHARGEMENT INITIAL ───
-count, is_fresh = _check_data_status()
+# Vérification unique par session : dès qu'on a vu des données en base,
+# on ne relance JAMAIS de sync automatique (évite les boucles sur Streamlit Cloud
+# où chaque navigation ré-exécute app.py).
+if not st.session_state.get("db_verified"):
+    count, is_fresh = _check_data_status()
 
-if count == 0:
-    # Premiere utilisation : sync complet obligatoire (~30s)
-    st.markdown("## 📊 BRVM Analyzer")
-    st.markdown("### Premier lancement — Chargement des données…")
-    st.markdown(
-        "Cette opération prend **quelques minutes** (scraping de sikafinance "
-        "pour les 48 titres BRVM + prix historiques). Elle ne se fait qu'une seule fois."
-    )
-    with st.spinner("Téléchargement des 48 titres BRVM…"):
-        result = _sync_full_details()
-    st.success(f"✅ {result} titres chargés !")
-    # Aussi charger les prix recents
-    with st.spinner("Chargement des prix historiques récents..."):
-        _sync_incremental_prices()
-    st.rerun()
-elif not is_fresh and "sync_done" not in st.session_state:
-    # Données existantes → sync incremental rapide (~2-5s)
-    with st.spinner("Mise à jour des cotations du jour..."):
-        _sync_daily_quotes()
-        _sync_incremental_prices()
-    st.session_state.sync_done = True
-# Si données fraiches (< 24h) → pas de sync, chargement instantane
+    if count > 0:
+        # DB OK → on mémorise définitivement pour cette session
+        st.session_state.db_verified = True
+        # Sync incrémental optionnel, seulement si vraiment pas frais
+        if not is_fresh and not st.session_state.get("sync_done"):
+            with st.spinner("Mise à jour des cotations du jour…"):
+                try:
+                    _sync_daily_quotes()
+                    _sync_incremental_prices()
+                except Exception:
+                    pass  # Erreur transitoire → on continue, l'utilisateur peut rafraîchir
+            st.session_state.sync_done = True
+    else:
+        # count == 0 : vraiment vide (ou erreur de connexion)
+        # On tente un sync complet MAIS on ne boucle pas indéfiniment
+        if st.session_state.get("full_sync_attempted"):
+            st.error(
+                "⚠️ Impossible de charger les données. "
+                "Problème de connexion à la base ? Rechargez la page ou contactez l'admin."
+            )
+            st.stop()
+        st.session_state.full_sync_attempted = True
+
+        st.markdown("## 📊 BRVM Analyzer")
+        st.markdown("### Premier lancement — Chargement des données…")
+        st.markdown(
+            "Cette opération prend **quelques minutes** (scraping de sikafinance "
+            "pour les 48 titres BRVM + prix historiques). Elle ne se fait qu'une seule fois."
+        )
+        with st.spinner("Téléchargement des 48 titres BRVM…"):
+            try:
+                result = _sync_full_details()
+                st.success(f"✅ {result} titres chargés !")
+            except Exception as e:
+                st.error(f"Erreur scraping : {e}")
+                st.stop()
+        with st.spinner("Chargement des prix historiques récents…"):
+            try:
+                _sync_incremental_prices()
+            except Exception:
+                pass
+        st.session_state.db_verified = True
+        st.rerun()
 
 # ─── Revue mensuelle automatique des poids de calibration ───
 if "calibration_review_checked" not in st.session_state:

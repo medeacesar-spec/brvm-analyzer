@@ -103,6 +103,16 @@ def init_db():
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS indices_cache (
+            name TEXT PRIMARY KEY,
+            value REAL,
+            variation REAL,
+            prev_close REAL,
+            ytd_variation REAL,
+            category TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS market_data (
             ticker TEXT PRIMARY KEY,
             company_name TEXT,
