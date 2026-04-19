@@ -27,6 +27,26 @@ from analysis.scoring import compute_hybrid_score
 from utils.charts import candlestick_chart, gauge_chart, flag_badge, stars_display
 from utils.auth import is_admin
 
+import json as _json
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _load_one_scoring_snapshot(ticker: str) -> dict:
+    """Lit la ligne scoring_snapshot pour ce ticker (si existe)."""
+    try:
+        df = read_sql_df(
+            "SELECT hybrid_score, fundamental_score, technical_score, "
+            "verdict, stars, trend, signals_json, consolidated_json "
+            "FROM scoring_snapshot WHERE ticker = ?",
+            params=(ticker,),
+        )
+        if df.empty:
+            return {}
+        row = df.iloc[0].to_dict()
+        return row
+    except Exception:
+        return {}
+
 
 def render():
     st.markdown('<div class="main-header">🔍 Analyse d\'un Titre</div>', unsafe_allow_html=True)
@@ -116,8 +136,24 @@ def render():
                     price_df = pd.DataFrame()
         st.session_state[_pdf_key] = price_df
 
-    # --- Compute scores ---
-    result = compute_hybrid_score(fundamentals, price_df)
+    # --- Compute scores (cache session pour éviter 7s de recalcul à chaque clic) ---
+    # Clé : ticker + dernière date prix + hash des fondamentaux. Si inchangé,
+    # on réutilise le résultat précédent.
+    import hashlib as _h
+    _pdf_sig = ""
+    if not price_df.empty and "date" in price_df.columns:
+        _pdf_sig = str(price_df["date"].max())
+    _fund_sig = _h.md5(
+        str(sorted((k, str(v)[:30]) for k, v in fundamentals.items())).encode()
+    ).hexdigest()[:8]
+    _score_key = f"score_{selected_ticker}_{_pdf_sig}_{_fund_sig}"
+
+    if _score_key in st.session_state:
+        result = st.session_state[_score_key]
+    else:
+        with st.spinner("Calcul des scores…"):
+            result = compute_hybrid_score(fundamentals, price_df)
+        st.session_state[_score_key] = result
     ratios = result["ratios"]
     reco = result["recommendation"]
 

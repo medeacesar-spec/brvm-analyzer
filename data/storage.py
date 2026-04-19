@@ -472,7 +472,11 @@ def get_analyzable_tickers() -> list:
     Retourne les tickers qui ont assez de donnees pour etre analyses.
     Un titre est analysable s'il a des fondamentaux (Excel import)
     OU des donnees de marche avec prix + DPS.
+
+    Noms et secteurs : fallback sur brvm_tickers.json si la DB contient
+    company_name/sector à NULL (cas de market_data tronqué).
     """
+    from config import load_tickers as _load_cfg
     conn = get_connection()
     rows = conn.execute("""
         SELECT DISTINCT ticker, company_name, sector, 'fundamentals' as source
@@ -485,12 +489,21 @@ def get_analyzable_tickers() -> list:
     """).fetchall()
     conn.close()
 
+    # Fallback config : {ticker: {name, sector}} depuis brvm_tickers.json
+    cfg = {t["ticker"]: t for t in _load_cfg()}
+
     # Deduplicate by ticker, prefer fundamentals source
     seen = {}
     for r in rows:
         t = r["ticker"]
+        cfg_t = cfg.get(t, {})
+        db_name = r["company_name"]
+        db_sector = r["sector"]
+        # Remplace None/"" par le nom/secteur du config
+        name = db_name if (db_name and str(db_name).strip() and str(db_name).lower() != "none") else cfg_t.get("name", t)
+        sector = db_sector if (db_sector and str(db_sector).strip()) else cfg_t.get("sector", "")
         if t not in seen or r["source"] == "fundamentals":
-            seen[t] = {"ticker": t, "name": r["company_name"], "sector": r["sector"],
+            seen[t] = {"ticker": t, "name": name, "sector": sector,
                        "has_fundamentals": r["source"] == "fundamentals"}
     return list(seen.values())
 

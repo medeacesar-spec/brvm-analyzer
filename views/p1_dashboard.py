@@ -81,12 +81,22 @@ def _load_indices_from_db() -> pd.DataFrame:
 
 
 def _compute_period_performance(quotes: pd.DataFrame) -> dict:
+    """Calcule les variations jour/semaine/mois pour tous les tickers.
+
+    Optimisation : utilise get_all_cached_prices (1 requête batch cachée 5 min)
+    au lieu de get_cached_prices(ticker) dans une boucle = 48 round-trips
+    Supabase. Réduit le Dashboard de ~1 min 30 à < 2 s.
+    """
+    from data.storage import get_all_cached_prices
     results = {"day": [], "week": [], "month": []}
     today = datetime.now()
     days_since_monday = today.weekday()
     last_friday = today - timedelta(days=days_since_monday + 3)
     last_monday = last_friday - timedelta(days=4)
     month_ago = today - timedelta(days=30)
+
+    # 1 seule requête pour tous les tickers (mise en cache 5 min)
+    all_prices = get_all_cached_prices()
 
     for _, row in quotes.iterrows():
         ticker, name, last_price = row.get("ticker", ""), row.get("name", ""), row.get("last", 0)
@@ -95,7 +105,7 @@ def _compute_period_performance(quotes: pd.DataFrame) -> dict:
         day_var = row.get("variation", 0) or 0
         results["day"].append({"ticker": ticker, "name": name, "price": last_price, "variation": day_var})
 
-        prices = get_cached_prices(ticker)
+        prices = all_prices.get(ticker, pd.DataFrame())
         if prices.empty or len(prices) < 5:
             results["week"].append({"ticker": ticker, "name": name, "price": last_price, "variation": 0})
             results["month"].append({"ticker": ticker, "name": name, "price": last_price, "variation": 0})

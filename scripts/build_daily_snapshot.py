@@ -46,14 +46,17 @@ from analysis.scoring import compute_hybrid_score, compute_consolidated_verdict
 
 def build_scoring_snapshot(conn, all_stocks: pd.DataFrame, all_prices: dict) -> int:
     """Pour chaque ticker : calcule hybrid_score + consolidated verdict,
-    stocke signals_json dans scoring_snapshot."""
+    stocke signals_json dans scoring_snapshot.
+
+    Optimisation : compute en boucle Python, puis INSERT batch via executemany
+    (1 seul round-trip au lieu de 49).
+    """
     if all_stocks.empty:
         print("  [scoring] all_stocks vide — skip")
         return 0
 
     import math as _m
-    count = 0
-    conn.execute("DELETE FROM scoring_snapshot")
+    rows_to_insert = []
 
     for _, row in all_stocks.iterrows():
         ticker = row["ticker"]
@@ -73,36 +76,38 @@ def build_scoring_snapshot(conn, all_stocks: pd.DataFrame, all_prices: dict) -> 
         signals = result.get("signals", []) or []
         nb_signals = sum(1 for s in signals if s.get("type") in ("achat", "vente"))
 
-        conn.execute(
+        rows_to_insert.append((
+            ticker,
+            fund.get("company_name") or ticker,
+            fund.get("sector", ""),
+            fund.get("price") or 0,
+            result.get("hybrid_score"),
+            result.get("fundamental_score"),
+            result.get("technical_score"),
+            reco.get("verdict"),
+            reco.get("stars"),
+            trend,
+            nb_signals,
+            json.dumps(signals, default=str),
+            json.dumps(consolidated, default=str),
+        ))
+
+    # Batch insert via executemany (1 round-trip au lieu de 49)
+    conn.execute("DELETE FROM scoring_snapshot")
+    if rows_to_insert:
+        cur = conn.cursor()
+        cur.executemany(
             """INSERT INTO scoring_snapshot
                (ticker, company_name, sector, price,
                 hybrid_score, fundamental_score, technical_score,
                 verdict, stars, trend, nb_signals,
-                signals_json, consolidated_json, computed_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)""",
-            (
-                ticker,
-                fund.get("company_name") or ticker,
-                fund.get("sector", ""),
-                fund.get("price") or 0,
-                result.get("hybrid_score"),
-                result.get("fundamental_score"),
-                result.get("technical_score"),
-                reco.get("verdict"),
-                reco.get("stars"),
-                trend,
-                nb_signals,
-                json.dumps(signals, default=str),
-                json.dumps(consolidated, default=str),
-            ),
+                signals_json, consolidated_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            rows_to_insert,
         )
-        count += 1
-        if count % 25 == 0:
-            conn.commit()
-
     conn.commit()
-    print(f"  [scoring] {count} tickers écrits")
-    return count
+    print(f"  [scoring] {len(rows_to_insert)} tickers écrits (batch)")
+    return len(rows_to_insert)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -136,11 +141,10 @@ def _perf_from_cutoff(df: pd.DataFrame, cutoff) -> float:
 
 
 def build_ticker_performance(conn, all_prices: dict) -> int:
-    """Pour chaque ticker : calcule perf 1M/3M/6M/1A/2A/3A/Max."""
+    """Pour chaque ticker : calcule perf 1M/3M/6M/1A/2A/3A/Max (batch insert)."""
     tickers_meta = {t["ticker"]: t for t in load_tickers()}
     today = datetime.now().date()
-    count = 0
-    conn.execute("DELETE FROM ticker_performance_snapshot")
+    rows_to_insert = []
 
     for ticker, df in all_prices.items():
         if df.empty or "close" not in df.columns:
@@ -151,35 +155,35 @@ def build_ticker_performance(conn, all_prices: dict) -> int:
         last_price = last_row["close"]
         last_date = last_row["date"]
 
-        row = {
-            "ticker": ticker,
-            "company_name": meta.get("name", ticker),
-            "sector": meta.get("sector", ""),
-            "last_price": float(last_price) if last_price else None,
-            "last_date": str(last_date)[:10] if last_date is not None else None,
-        }
+        perfs = {}
         for col, delta in PERIODS.items():
             cutoff = (today - delta) if delta else None
-            row[col] = _perf_from_cutoff(df, cutoff)
+            perfs[col] = _perf_from_cutoff(df, cutoff)
 
-        conn.execute(
+        rows_to_insert.append((
+            ticker,
+            meta.get("name", ticker),
+            meta.get("sector", ""),
+            float(last_price) if last_price else None,
+            str(last_date)[:10] if last_date is not None else None,
+            perfs.get("perf_1m"), perfs.get("perf_3m"), perfs.get("perf_6m"),
+            perfs.get("perf_1a"), perfs.get("perf_2a"), perfs.get("perf_3a"),
+            perfs.get("perf_max"),
+        ))
+
+    conn.execute("DELETE FROM ticker_performance_snapshot")
+    if rows_to_insert:
+        cur = conn.cursor()
+        cur.executemany(
             """INSERT INTO ticker_performance_snapshot
                (ticker, company_name, sector, last_price, last_date,
-                perf_1m, perf_3m, perf_6m, perf_1a, perf_2a, perf_3a, perf_max,
-                computed_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)""",
-            (
-                row["ticker"], row["company_name"], row["sector"],
-                row["last_price"], row["last_date"],
-                row["perf_1m"], row["perf_3m"], row["perf_6m"],
-                row["perf_1a"], row["perf_2a"], row["perf_3a"], row["perf_max"],
-            ),
+                perf_1m, perf_3m, perf_6m, perf_1a, perf_2a, perf_3a, perf_max)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            rows_to_insert,
         )
-        count += 1
-
     conn.commit()
-    print(f"  [ticker_perf] {count} tickers écrits")
-    return count
+    print(f"  [ticker_perf] {len(rows_to_insert)} tickers écrits (batch)")
+    return len(rows_to_insert)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -222,9 +226,12 @@ def build_signal_performance(conn, all_prices: dict) -> int:
         for tkr, pdf in all_prices.items() if not pdf.empty and "close" in pdf.columns
     }
 
-    count = 0
-    conn.execute("DELETE FROM signal_performance_snapshot")
+    def _f(v):
+        if v is None or pd.isna(v):
+            return None
+        return float(v)
 
+    rows_to_insert = []
     for _, row in df.iterrows():
         event_id = row.get("id")
         if event_id is None or pd.isna(event_id):
@@ -236,13 +243,7 @@ def build_signal_performance(conn, all_prices: dict) -> int:
 
         pdf = prices_sorted.get(ticker)
         if pdf is None or pdf.empty or not start_date:
-            # Pas de prix → on écrit quand même une ligne vide pour event_id
-            conn.execute(
-                """INSERT INTO signal_performance_snapshot
-                   (event_id, computed_at) VALUES (?, CURRENT_TIMESTAMP)""",
-                (int(event_id),),
-            )
-            count += 1
+            rows_to_insert.append((int(event_id), None, None, None, None, None, None, None))
             continue
 
         try:
@@ -250,29 +251,22 @@ def build_signal_performance(conn, all_prices: dict) -> int:
         except Exception:
             continue
 
-        # Fallback ref_price
         if not ref_price or (isinstance(ref_price, float) and pd.isna(ref_price)):
             ref_price = _price_at_or_before(pdf, start_dt)
 
-        # Latest close
         latest = pdf.iloc[-1]["close"] if not pdf.empty else None
         current_price = float(latest) if latest else None
         perf_since = None
         if ref_price and current_price:
             perf_since = (current_price - ref_price) / ref_price
 
-        # Horizons (30/91/182/365 jours à partir de first_seen_date)
         horizons = {"perf_1m": 30, "perf_3m": 91, "perf_6m": 182, "perf_1a": 365}
         perfs = {}
         for col, days in horizons.items():
             target = start_dt + _td(days=days)
             p = _price_at_or_after(pdf, target)
-            if ref_price and p:
-                perfs[col] = (p - ref_price) / ref_price
-            else:
-                perfs[col] = None
+            perfs[col] = (p - ref_price) / ref_price if (ref_price and p) else None
 
-        # Duration
         duration = None
         try:
             if start_date and last_seen:
@@ -282,36 +276,31 @@ def build_signal_performance(conn, all_prices: dict) -> int:
         except Exception:
             pass
 
-        def _f(v):
-            if v is None or pd.isna(v):
-                return None
-            return float(v)
+        rows_to_insert.append((
+            int(event_id),
+            _f(current_price),
+            _f(perfs.get("perf_1m")),
+            _f(perfs.get("perf_3m")),
+            _f(perfs.get("perf_6m")),
+            _f(perfs.get("perf_1a")),
+            _f(perf_since),
+            duration,
+        ))
 
-        conn.execute(
+    # Batch insert via executemany (1 round-trip au lieu de N)
+    conn.execute("DELETE FROM signal_performance_snapshot")
+    if rows_to_insert:
+        cur = conn.cursor()
+        cur.executemany(
             """INSERT INTO signal_performance_snapshot
                (event_id, current_price, perf_1m, perf_3m, perf_6m, perf_1a,
-                perf_since_start, duration_days, computed_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)""",
-            (
-                int(event_id),
-                _f(current_price),
-                _f(perfs.get("perf_1m")),
-                _f(perfs.get("perf_3m")),
-                _f(perfs.get("perf_6m")),
-                _f(perfs.get("perf_1a")),
-                _f(perf_since),
-                duration,
-            ),
+                perf_since_start, duration_days)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            rows_to_insert,
         )
-        count += 1
-
-        # Commit périodique (tous les 25 events) pour garder le pooler content
-        if count % 25 == 0:
-            conn.commit()
-
     conn.commit()
-    print(f"  [signal_perf] {count} événements écrits")
-    return count
+    print(f"  [signal_perf] {len(rows_to_insert)} événements écrits (batch)")
+    return len(rows_to_insert)
 
 
 # ─────────────────────────────────────────────────────────────
