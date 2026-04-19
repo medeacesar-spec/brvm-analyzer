@@ -25,27 +25,37 @@ def _load_quotes_from_db() -> pd.DataFrame:
            variation, market_cap, beta, rsi, dps, updated_at
            FROM market_data WHERE price > 0 ORDER BY ticker""")
 
-    # Compute variation from price_cache if market_data.variation is 0
-    if not df.empty and (df["variation"].fillna(0).abs().sum() < 0.01):
-        # Get last 2 trading days from price_cache
-        dates = read_sql_df("SELECT DISTINCT date FROM price_cache ORDER BY date DESC LIMIT 2")
-        if len(dates) >= 2:
-            last_date = dates.iloc[0]["date"]
-            prev_date = dates.iloc[1]["date"]
-            prices = read_sql_df("""SELECT p1.ticker, p1.close as last_close, p2.close as prev_close
-                   FROM price_cache p1
-                   JOIN price_cache p2 ON p1.ticker = p2.ticker AND p2.date = ?
-                   WHERE p1.date = ?""", params=(prev_date, last_date),
-            )
-            if not prices.empty:
-                prices["var_pct"] = ((prices["last_close"] - prices["prev_close"]) / prices["prev_close"] * 100).round(2)
-                var_map = dict(zip(prices["ticker"], prices["var_pct"]))
-                df["variation"] = df["ticker"].map(var_map).fillna(0)
-                df["_last_trading_date"] = last_date
-            else:
-                df["_last_trading_date"] = None
+    # Source unique de verite : price_cache. La date affichee dans la caption
+    # correspond EXACTEMENT a la date la plus recente presente dans le cache,
+    # et les variations sont calculees entre cette date et la precedente.
+    # Plus de desynchro entre "Cloture du Vendredi" et "Aucune hausse" :
+    # si le cache est pollue (ex. entrees Dimanche d'un ancien bug), on
+    # affiche honnetement "Dimanche" et on compare Dimanche vs jour d'avant.
+    dates = read_sql_df("SELECT DISTINCT date FROM price_cache ORDER BY date DESC LIMIT 2")
+    if len(dates) >= 2:
+        last_date = dates.iloc[0]["date"]
+        prev_date = dates.iloc[1]["date"]
+        prices = read_sql_df(
+            """SELECT p1.ticker, p1.close as last_close, p2.close as prev_close
+               FROM price_cache p1
+               JOIN price_cache p2 ON p1.ticker = p2.ticker AND p2.date = ?
+               WHERE p1.date = ?""",
+            params=(prev_date, last_date),
+        )
+        if not prices.empty:
+            prices["var_pct"] = (
+                (prices["last_close"] - prices["prev_close"]) / prices["prev_close"] * 100
+            ).round(2)
+            var_map = dict(zip(prices["ticker"], prices["var_pct"]))
+            df["variation"] = df["ticker"].map(var_map).fillna(df["variation"]).fillna(0)
+            df["_last_trading_date"] = last_date
         else:
-            df["_last_trading_date"] = None
+            # Pas de paire comparable → on utilise market_data.variation telle quelle
+            df["_last_trading_date"] = last_date
+    elif len(dates) == 1:
+        df["_last_trading_date"] = dates.iloc[0]["date"]
+    else:
+        df["_last_trading_date"] = None
 
     # Compute market_cap from price * shares (from fundamentals) if market_cap is 0
     if not df.empty and (df["market_cap"].fillna(0).abs().sum() < 1):
@@ -568,24 +578,10 @@ def render():
         quotes.get("_last_trading_date", pd.Series()).iloc[0]
         if "_last_trading_date" in quotes.columns and len(quotes) > 0 else None
     )
-    # Si la date récupérée tombe un week-end (Sat/Sun), rétrograder au vendredi.
-    # La BRVM est fermée le samedi et le dimanche ; les données affichées datent
-    # donc forcément de la dernière clôture vendredi.
-    if last_trading_date is not None:
-        try:
-            _dt = pd.to_datetime(last_trading_date)
-            while _dt.weekday() >= 5:  # 5=sam, 6=dim
-                _dt -= pd.Timedelta(days=1)
-            last_trading_date = _dt
-        except Exception:
-            pass
-    else:
-        # Aucune date fournie → on calcule le dernier vendredi ouvré
-        from datetime import datetime as _dtm, timedelta as _td
-        _d = _dtm.now()
-        while _d.weekday() >= 5:
-            _d -= _td(days=1)
-        last_trading_date = _d
+    # Plus de rollback artificiel au vendredi : on affiche la vraie date
+    # de la plus recente entree dans price_cache (source unique de verite).
+    # Les variations ci-dessous comparent cette date a la date precedente
+    # distincte → coherence garantie entre titre et Hausses/Baisses.
     date_caption = "Bourse régionale des valeurs mobilières · 48 titres suivis"
     if last_trading_date:
         try:
