@@ -508,6 +508,24 @@ def render():
         quotes.get("_last_trading_date", pd.Series()).iloc[0]
         if "_last_trading_date" in quotes.columns and len(quotes) > 0 else None
     )
+    # Si la date récupérée tombe un week-end (Sat/Sun), rétrograder au vendredi.
+    # La BRVM est fermée le samedi et le dimanche ; les données affichées datent
+    # donc forcément de la dernière clôture vendredi.
+    if last_trading_date is not None:
+        try:
+            _dt = pd.to_datetime(last_trading_date)
+            while _dt.weekday() >= 5:  # 5=sam, 6=dim
+                _dt -= pd.Timedelta(days=1)
+            last_trading_date = _dt
+        except Exception:
+            pass
+    else:
+        # Aucune date fournie → on calcule le dernier vendredi ouvré
+        from datetime import datetime as _dtm, timedelta as _td
+        _d = _dtm.now()
+        while _d.weekday() >= 5:
+            _d -= _td(days=1)
+        last_trading_date = _d
     date_caption = "Bourse régionale des valeurs mobilières · 48 titres suivis"
     if last_trading_date:
         try:

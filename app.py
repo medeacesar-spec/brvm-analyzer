@@ -47,11 +47,23 @@ if _css_path.exists():
 
 
 # ─── AUTO-SYNC AU DEMARRAGE ───
+def _last_business_day_str() -> str:
+    """Retourne la date du dernier jour ouvrable BRVM (lun-ven) au format
+    YYYY-MM-DD. Sur le week-end, retourne le vendredi précédent.
+    Hors BRVM jours fériés UEMOA non gérés (rares et difficiles à maintenir)."""
+    from datetime import datetime, timedelta
+    d = datetime.now()
+    while d.weekday() >= 5:  # 5=samedi, 6=dimanche
+        d -= timedelta(days=1)
+    return d.strftime("%Y-%m-%d")
+
+
 def _sync_daily_quotes():
     """
     Sync rapide : cotations du jour uniquement (~2 secondes).
     Met a jour prix et variation pour les 48 titres,
-    ET append aujourd'hui dans price_cache (close/high/low/open/volume).
+    ET append le dernier jour ouvré dans price_cache (close/high/low/open/volume).
+    Sur un week-end, utilise la date du vendredi précédent (BRVM fermée).
     """
     from data.scraper import fetch_daily_quotes
     from config import load_tickers
@@ -64,7 +76,8 @@ def _sync_daily_quotes():
 
     tickers = load_tickers()
     ticker_meta = {t["ticker"]: t for t in tickers}
-    today_str = datetime.now().strftime("%Y-%m-%d")
+    # Date écrite dans price_cache = dernier jour ouvré (jamais le week-end)
+    today_str = _last_business_day_str()
 
     conn = get_connection()
     updated = 0
@@ -194,9 +207,17 @@ def _scrape_brvm_indices():
                 except Exception:
                     pass
     conn.execute("DELETE FROM indices_cache")
+    # INSERT idempotent : même si un nom apparaît plusieurs fois dans le
+    # scrape (cf brvm.org qui répète parfois un indice dans plusieurs
+    # sections), ON CONFLICT DO UPDATE met à jour au lieu de lever.
     for name, close, var, ytd, cat in indices:
         conn.execute(
-            "INSERT INTO indices_cache (name, value, variation, ytd_variation, category, updated_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
+            "INSERT INTO indices_cache (name, value, variation, ytd_variation, category, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP) "
+            "ON CONFLICT (name) DO UPDATE SET "
+            "  value = EXCLUDED.value, variation = EXCLUDED.variation, "
+            "  ytd_variation = EXCLUDED.ytd_variation, category = EXCLUDED.category, "
+            "  updated_at = CURRENT_TIMESTAMP",
             (name, close, var, ytd, cat),
         )
     conn.commit()
