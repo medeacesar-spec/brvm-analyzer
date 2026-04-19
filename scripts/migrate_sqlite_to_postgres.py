@@ -97,7 +97,7 @@ def _truncate_postgres(tables: List[str]):
 
 def _copy_table(sqlite_conn, pg_conn_raw, table: str) -> int:
     """Copie toutes les lignes d'une table SQLite vers Postgres via psycopg brut.
-    Utilise autocommit pour éviter les transactions bloquées Postgres."""
+    Utilise executemany pour batch insert (bien plus rapide que ligne par ligne)."""
     try:
         cur = sqlite_conn.execute(f"SELECT * FROM {table}")
     except sqlite3.OperationalError as e:
@@ -117,22 +117,33 @@ def _copy_table(sqlite_conn, pg_conn_raw, table: str) -> int:
     inserted = 0
     errors = 0
     first_err = None
-    for r in rows:
+    BATCH = 500
+
+    for i in range(0, len(rows), BATCH):
+        batch_rows = [tuple(r) for r in rows[i:i+BATCH]]
         try:
             with pg_conn_raw.cursor() as cur:
-                cur.execute(sql, tuple(r))
-            inserted += 1
+                cur.executemany(sql, batch_rows)
+            inserted += len(batch_rows)
+            print(f"    {table}: {inserted}/{len(rows)}…", flush=True)
         except Exception as e:
-            errors += 1
+            # En cas d'erreur sur le batch, fallback ligne par ligne pour isoler
             if first_err is None:
                 first_err = str(e)[:200]
+            for r in batch_rows:
+                try:
+                    with pg_conn_raw.cursor() as cur:
+                        cur.execute(sql, r)
+                    inserted += 1
+                except Exception as e2:
+                    errors += 1
 
     status = f"{inserted}/{len(rows)} lignes"
     if errors:
         status += f" · {errors} erreurs"
-    print(f"    {table}: {status}")
+    print(f"    {table}: {status}", flush=True)
     if first_err:
-        print(f"    ↳ 1re erreur: {first_err}")
+        print(f"    ↳ 1re erreur: {first_err}", flush=True)
     return inserted
 
 

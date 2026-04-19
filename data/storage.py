@@ -39,12 +39,17 @@ def init_db():
             net_income REAL,
             equity REAL,
             total_debt REAL,
+            total_assets REAL,
             ebit REAL,
             interest_expense REAL,
             cfo REAL,
             capex REAL,
             dividends_total REAL,
             dps REAL,
+            eps REAL,
+            per REAL,
+            revenue_growth REAL,
+            net_income_growth REAL,
             -- Historique N-3 à N
             revenue_n3 REAL,
             revenue_n2 REAL,
@@ -108,7 +113,11 @@ def init_db():
             beta REAL,
             rsi REAL,
             dps REAL,
+            dividend_yield REAL,
             dividend_history TEXT,
+            shares REAL,
+            float_pct REAL,
+            per REAL,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
@@ -249,13 +258,13 @@ def init_db():
             ON calibration_reviews(review_date DESC);
     """)
     # Ensure 'ignored' column exists on publications (for old DBs)
-    cols = [r[1] for r in conn.execute("PRAGMA table_info(publications)").fetchall()]
+    cols = _table_columns(conn, "publications")
     if "ignored" not in cols:
-        conn.execute("ALTER TABLE publications ADD COLUMN ignored INTEGER DEFAULT 0")
+        _safe_alter(conn, "ALTER TABLE publications ADD COLUMN ignored INTEGER DEFAULT 0")
     if "source" not in cols:
-        conn.execute("ALTER TABLE publications ADD COLUMN source TEXT")
+        _safe_alter(conn, "ALTER TABLE publications ADD COLUMN source TEXT")
     if "fiscal_year" not in cols:
-        conn.execute("ALTER TABLE publications ADD COLUMN fiscal_year INTEGER")
+        _safe_alter(conn, "ALTER TABLE publications ADD COLUMN fiscal_year INTEGER")
 
     # ─────────────────────────────────────────────────────────────
     # Migration multi-utilisateurs : ajout de user_id sur les tables
@@ -268,10 +277,42 @@ def init_db():
     conn.close()
 
 
+def _table_columns(conn, table: str) -> list:
+    """Retourne la liste des noms de colonnes d'une table — compatible SQLite & Postgres."""
+    try:
+        from data.db import is_postgres
+        if is_postgres():
+            rows = conn.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = ? ORDER BY ordinal_position",
+                (table,),
+            ).fetchall()
+            # dict_row → col name key varies
+            out = []
+            for r in rows:
+                if isinstance(r, dict):
+                    out.append(r.get("column_name"))
+                else:
+                    out.append(r[0])
+            return out
+    except Exception:
+        pass
+    # SQLite fallback
+    return [r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+
+
+def _safe_alter(conn, sql: str):
+    """Exécute un ALTER TABLE en ignorant l'erreur si la colonne existe déjà."""
+    try:
+        conn.execute(sql)
+    except Exception:
+        pass
+
+
 def _migrate_user_scoped_tables(conn):
     """Ajoute `user_id` aux tables par-utilisateur. Sûr à relancer."""
     def cols_of(table):
-        return [r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+        return _table_columns(conn, table)
 
     # 1) portfolio : simple ALTER TABLE ADD COLUMN
     if "user_id" not in cols_of("portfolio"):
