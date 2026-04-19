@@ -964,14 +964,24 @@ def _render_recommendation(result, fundamentals):
         if not reco.get("warnings"):
             st.caption("Aucun point de vigilance")
 
-    # Zones d'entrée
+    # Zones d'entrée — même style que points forts/vigilance (dots + 13px)
     section_heading("Zones d'entrée suggérées", spacing="loose")
     entry_zones = reco.get("entry_zones", [])
     if entry_zones:
         for zone in entry_zones:
-            st.write(f"🟢 **{zone['label']}**: {zone['zone']} — Risque/Rendement: {zone['risk_reward']}")
+            st.markdown(
+                f"<div style='padding:3px 0;font-size:13px;'>"
+                f"<span class='dot up'></span>"
+                f"<b>{zone['label']}</b> "
+                f"<span class='muted'>·</span> "
+                f"<span style='font-variant-numeric:tabular-nums'>{zone['zone']}</span> "
+                f"<span class='muted'>·</span> "
+                f"Risque/Rendement : {zone['risk_reward']}"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
     else:
-        st.info("Pas assez de données pour déterminer les zones d'entree")
+        st.caption("Pas assez de données pour déterminer les zones d'entrée")
 
 
 def _render_input_form(ticker, tickers_data):
