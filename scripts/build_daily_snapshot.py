@@ -97,6 +97,8 @@ def build_scoring_snapshot(conn, all_stocks: pd.DataFrame, all_prices: dict) -> 
             ),
         )
         count += 1
+        if count % 25 == 0:
+            conn.commit()
 
     conn.commit()
     print(f"  [scoring] {count} tickers écrits")
@@ -184,33 +186,101 @@ def build_ticker_performance(conn, all_prices: dict) -> int:
 # 3. Signal performance snapshot (remplace p10 Historique)
 # ─────────────────────────────────────────────────────────────
 
-def build_signal_performance(conn) -> int:
-    """Calcule les horizons 1M/3M/6M/1A pour chaque événement signal_history."""
+def build_signal_performance(conn, all_prices: dict) -> int:
+    """Calcule les horizons 1M/3M/6M/1A pour chaque événement signal_history.
+
+    Optimisation : utilise all_prices déjà chargé (1 requête batch) au lieu
+    des ~6 queries par événement de compute_signal_performance. Évite de
+    saturer le transaction pooler Supabase (qui coupe après ~1 min d'activité).
+    """
+    from datetime import timedelta as _td
+
     df = get_signal_history()
     if df.empty:
         print("  [signal_perf] signal_history vide — skip")
         return 0
 
-    # Délègue au calcul existant (même logique que compute_signal_performance)
-    df_perf = compute_signal_performance(df)
+    def _price_at_or_before(sorted_prices: pd.DataFrame, target_date) -> float:
+        """Dernier close ≤ target_date. sorted_prices a déjà date croissante."""
+        mask = sorted_prices["date"] <= pd.Timestamp(target_date)
+        sub = sorted_prices[mask]
+        if sub.empty:
+            return None
+        return sub.iloc[-1]["close"]
+
+    def _price_at_or_after(sorted_prices: pd.DataFrame, target_date) -> float:
+        """Premier close ≥ target_date."""
+        mask = sorted_prices["date"] >= pd.Timestamp(target_date)
+        sub = sorted_prices[mask]
+        if sub.empty:
+            return None
+        return sub.iloc[0]["close"]
+
+    # Préparer : price_df trié par date pour chaque ticker
+    prices_sorted = {
+        tkr: pdf.sort_values("date").reset_index(drop=True)
+        for tkr, pdf in all_prices.items() if not pdf.empty and "close" in pdf.columns
+    }
 
     count = 0
     conn.execute("DELETE FROM signal_performance_snapshot")
-    for _, row in df_perf.iterrows():
+
+    for _, row in df.iterrows():
         event_id = row.get("id")
         if event_id is None or pd.isna(event_id):
             continue
-
-        first_seen = row.get("first_seen_date")
+        ticker = row.get("ticker")
+        start_date = row.get("first_seen_date")
         last_seen = row.get("last_seen_date")
+        ref_price = row.get("price_at_start")
+
+        pdf = prices_sorted.get(ticker)
+        if pdf is None or pdf.empty or not start_date:
+            # Pas de prix → on écrit quand même une ligne vide pour event_id
+            conn.execute(
+                """INSERT INTO signal_performance_snapshot
+                   (event_id, computed_at) VALUES (?, CURRENT_TIMESTAMP)""",
+                (int(event_id),),
+            )
+            count += 1
+            continue
+
+        try:
+            start_dt = datetime.strptime(str(start_date)[:10], "%Y-%m-%d")
+        except Exception:
+            continue
+
+        # Fallback ref_price
+        if not ref_price or (isinstance(ref_price, float) and pd.isna(ref_price)):
+            ref_price = _price_at_or_before(pdf, start_dt)
+
+        # Latest close
+        latest = pdf.iloc[-1]["close"] if not pdf.empty else None
+        current_price = float(latest) if latest else None
+        perf_since = None
+        if ref_price and current_price:
+            perf_since = (current_price - ref_price) / ref_price
+
+        # Horizons (30/91/182/365 jours à partir de first_seen_date)
+        horizons = {"perf_1m": 30, "perf_3m": 91, "perf_6m": 182, "perf_1a": 365}
+        perfs = {}
+        for col, days in horizons.items():
+            target = start_dt + _td(days=days)
+            p = _price_at_or_after(pdf, target)
+            if ref_price and p:
+                perfs[col] = (p - ref_price) / ref_price
+            else:
+                perfs[col] = None
+
+        # Duration
         duration = None
         try:
-            if first_seen and last_seen:
-                d1 = datetime.strptime(str(first_seen)[:10], "%Y-%m-%d")
+            if start_date and last_seen:
+                d1 = datetime.strptime(str(start_date)[:10], "%Y-%m-%d")
                 d2 = datetime.strptime(str(last_seen)[:10], "%Y-%m-%d")
                 duration = max(0, (d2 - d1).days)
         except Exception:
-            duration = None
+            pass
 
         def _f(v):
             if v is None or pd.isna(v):
@@ -224,16 +294,20 @@ def build_signal_performance(conn) -> int:
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)""",
             (
                 int(event_id),
-                _f(row.get("current_price")),
-                _f(row.get("perf_1m")),
-                _f(row.get("perf_3m")),
-                _f(row.get("perf_6m")),
-                _f(row.get("perf_1a")),
-                _f(row.get("perf_since_start")),
+                _f(current_price),
+                _f(perfs.get("perf_1m")),
+                _f(perfs.get("perf_3m")),
+                _f(perfs.get("perf_6m")),
+                _f(perfs.get("perf_1a")),
+                _f(perf_since),
                 duration,
             ),
         )
         count += 1
+
+        # Commit périodique (tous les 25 events) pour garder le pooler content
+        if count % 25 == 0:
+            conn.commit()
 
     conn.commit()
     print(f"  [signal_perf] {count} événements écrits")
@@ -275,7 +349,7 @@ def build_all() -> dict:
 
         result["scoring"] = build_scoring_snapshot(conn, all_stocks, all_prices)
         result["ticker_perf"] = build_ticker_performance(conn, all_prices)
-        result["signal_perf"] = build_signal_performance(conn)
+        result["signal_perf"] = build_signal_performance(conn, all_prices)
 
         duration = round(time.time() - t0, 1)
         set_meta(conn, "last_build_at", datetime.now().isoformat(timespec="seconds"))
