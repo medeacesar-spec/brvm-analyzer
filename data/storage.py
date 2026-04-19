@@ -16,6 +16,19 @@ from config import DB_PATH
 from data.db import get_connection, current_user_id, read_sql_df  # noqa: F401 — réexportés
 
 
+def _maybe_cache_data(ttl: int = 300):
+    """Décorateur qui utilise st.cache_data si Streamlit est dispo, sinon no-op.
+    Permet de mémoiser un résultat DB pendant `ttl` secondes côté process,
+    évitant les aller-retours Supabase lors de la navigation entre pages."""
+    try:
+        import streamlit as _st
+        return _st.cache_data(ttl=ttl, show_spinner=False)
+    except Exception:
+        def _no_op(fn):
+            return fn
+        return _no_op
+
+
 def _resolve_user(user_id: Optional[str]) -> str:
     """Retourne le user_id donné ou celui de l'utilisateur courant ('local' par défaut)."""
     return user_id if user_id else current_user_id()
@@ -799,6 +812,26 @@ def get_cached_prices(ticker: str) -> pd.DataFrame:
     return df
 
 
+@_maybe_cache_data(ttl=300)
+def get_all_cached_prices() -> dict:
+    """Retourne {ticker: DataFrame} pour TOUS les tickers en une seule requête.
+    Utile pour les pages qui bouclent sur tous les titres (Signaux, Comparateur)
+    → évite ~48 round-trips Supabase en réduisant à 1."""
+    conn = get_connection()
+    try:
+        df = read_sql_df(
+            "SELECT ticker, date, open, high, low, close, volume "
+            "FROM price_cache ORDER BY ticker, date",
+            parse_dates=["date"],
+        )
+    finally:
+        conn.close()
+    if df.empty:
+        return {}
+    return {tkr: grp.drop(columns=["ticker"]).reset_index(drop=True)
+            for tkr, grp in df.groupby("ticker")}
+
+
 # --- Portfolio (user-scoped) ---
 
 def save_position(ticker: str, company_name: str, quantity: float, avg_price: float,
@@ -971,17 +1004,6 @@ def get_market_data(ticker: str = None) -> pd.DataFrame:
         df = read_sql_df("SELECT * FROM market_data ORDER BY ticker")
     conn.close()
     return df
-
-
-def _maybe_cache_data(ttl: int = 300):
-    """Décorateur qui utilise st.cache_data si Streamlit est dispo, sinon no-op."""
-    try:
-        import streamlit as _st
-        return _st.cache_data(ttl=ttl, show_spinner=False)
-    except Exception:
-        def _no_op(fn):
-            return fn
-        return _no_op
 
 
 @_maybe_cache_data(ttl=300)

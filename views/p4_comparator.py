@@ -65,21 +65,23 @@ def render():
                     key=f"cmp_goto_{ticker}", use_container_width=True,
                 )
 
-    # Load data for selected tickers
+    # Load data for selected tickers — depuis all_stocks (1 requête cachée)
+    # au lieu de N appels get_fundamentals (N round-trips Supabase).
+    import math as _m
     stocks = {}
+    if not all_stocks.empty:
+        stocks_by_ticker = {r["ticker"]: r.to_dict() for _, r in all_stocks.iterrows()}
+    else:
+        stocks_by_ticker = {}
     for ticker in tickers:
-        fund = get_fundamentals(ticker)
-        if fund:
-            ratios = compute_ratios(fund)
-            stocks[ticker] = {"fundamentals": fund, "ratios": ratios}
-        elif not all_stocks.empty:
-            # Try from market_data
-            row = all_stocks[all_stocks["ticker"] == ticker]
-            if not row.empty:
-                data = row.iloc[0].to_dict()
-                if data.get("price") and data.get("dps"):
-                    ratios = compute_ratios(data)
-                    stocks[ticker] = {"fundamentals": data, "ratios": ratios}
+        data = stocks_by_ticker.get(ticker)
+        if not data:
+            continue
+        data = {k: (None if isinstance(v, float) and _m.isnan(v) else v)
+                for k, v in data.items()}
+        if data.get("price"):
+            ratios = compute_ratios(data)
+            stocks[ticker] = {"fundamentals": data, "ratios": ratios}
 
     if len(stocks) < 2:
         st.warning("Données insuffisantes pour au moins 2 titres. Importez des données fondamentales.")

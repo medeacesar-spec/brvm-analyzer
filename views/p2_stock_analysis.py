@@ -122,35 +122,40 @@ def render():
     reco = result["recommendation"]
 
     # --- Auto-capture for long-term calibration ---
-    try:
-        ref_price = fundamentals.get("price") or 0
-        if not price_df.empty and "close" in price_df.columns:
-            try:
-                ref_price = float(price_df.sort_values("date").iloc[-1]["close"]) or ref_price
-            except Exception:
-                pass
-        name = fundamentals.get("company_name") or selected_ticker
-        sector = fundamentals.get("sector", "")
-        save_signal_snapshots(
-            ticker=selected_ticker,
-            signals=result.get("signals", []),
-            price=ref_price,
-            company_name=name,
-            sector=sector,
-        )
-        save_recommendation_snapshot(
-            ticker=selected_ticker,
-            recommendation=reco,
-            hybrid_score=result["hybrid_score"],
-            fundamental_score=result["fundamental_score"],
-            technical_score=result["technical_score"],
-            price=ref_price,
-            trend=result["trend"]["trend"],
-            company_name=name,
-            sector=sector,
-        )
-    except Exception:
-        pass
+    # Gate : 1 seule capture par ticker et par session, et seulement pour les admins.
+    # Évite d'écrire ~15 round-trips Supabase à chaque render.
+    _snap_key = f"snap_captured_{selected_ticker}"
+    if is_admin() and not st.session_state.get(_snap_key):
+        try:
+            ref_price = fundamentals.get("price") or 0
+            if not price_df.empty and "close" in price_df.columns:
+                try:
+                    ref_price = float(price_df.sort_values("date").iloc[-1]["close"]) or ref_price
+                except Exception:
+                    pass
+            name = fundamentals.get("company_name") or selected_ticker
+            sector = fundamentals.get("sector", "")
+            save_signal_snapshots(
+                ticker=selected_ticker,
+                signals=result.get("signals", []),
+                price=ref_price,
+                company_name=name,
+                sector=sector,
+            )
+            save_recommendation_snapshot(
+                ticker=selected_ticker,
+                recommendation=reco,
+                hybrid_score=result["hybrid_score"],
+                fundamental_score=result["fundamental_score"],
+                technical_score=result["technical_score"],
+                price=ref_price,
+                trend=result["trend"]["trend"],
+                company_name=name,
+                sector=sector,
+            )
+            st.session_state[_snap_key] = True
+        except Exception:
+            pass
 
     # --- Header metrics ---
     st.markdown("---")

@@ -642,10 +642,10 @@ if not st.session_state.get("db_verified"):
             # Page de garde pendant la mise à jour quotidienne.
             st.markdown("## 📊 BRVM Analyzer")
             st.info(
-                "⏳ **Mise à jour des cotations en cours**\n\n"
-                "Récupération des prix du jour et des historiques manquants "
-                "(sikafinance.com). Cela peut prendre **1 à 3 minutes** selon le nombre "
-                "de titres à rafraîchir. Cette opération ne se fait qu'une fois par session.\n\n"
+                "⏳ **Mise à jour quotidienne en cours — durée estimée ~1 minute**\n\n"
+                "Récupération des cotations du jour et des prix manquants pour "
+                "les 48 titres (sikafinance.com). Cette opération ne se fait qu'une "
+                "fois par jour et par session.\n\n"
                 "_Merci de patienter — la page se rechargera automatiquement._"
             )
             with st.spinner("Téléchargement des cotations…"):
@@ -678,10 +678,15 @@ if not st.session_state.get("db_verified"):
         st.session_state.full_sync_attempted = True
 
         st.markdown("## 📊 BRVM Analyzer")
-        st.markdown("### Premier lancement — Chargement des données…")
-        st.markdown(
-            "Cette opération prend **quelques minutes** (scraping de sikafinance "
-            "pour les 48 titres BRVM + prix historiques). Elle ne se fait qu'une seule fois."
+        st.markdown("### Premier lancement — Initialisation")
+        st.info(
+            "⏳ **Durée estimée : ~2 minutes**\n\n"
+            "L'application récupère les cotations, profils et prix historiques "
+            "des **48 titres BRVM** depuis sikafinance.com. Un délai anti-ban de "
+            "300 ms est appliqué entre chaque titre (~48 × 1.3 s + rapports + indices).\n\n"
+            "**Cette opération ne se fait qu'une seule fois.** Les sessions "
+            "suivantes utilisent la base de données Supabase et se chargent en "
+            "moins de 3 secondes."
         )
         with st.spinner("Téléchargement des 48 titres BRVM…"):
             try:

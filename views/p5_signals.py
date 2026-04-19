@@ -10,11 +10,13 @@ from config import load_tickers
 from data.storage import (
     get_fundamentals, get_cached_prices,
     get_analyzable_tickers, get_all_stocks_for_analysis,
+    get_all_cached_prices,
     save_signal_snapshots, save_recommendation_snapshot,
 )
 from analysis.scoring import compute_hybrid_score, compute_consolidated_verdict
 from utils.charts import stars_display
 from utils.nav import ticker_quick_picker
+from utils.auth import is_admin
 
 
 def render():
@@ -55,9 +57,21 @@ def render():
     per_ticker = []
 
     all_stocks = get_all_stocks_for_analysis()
+    # Batch-load des prix : 1 requête Supabase pour tous les tickers
+    # (évite 48 × 150ms = 7s de round-trips).
+    all_prices = get_all_cached_prices()
+    # Index fundamentals par ticker pour accès O(1)
+    fund_by_ticker = {}
+    if not all_stocks.empty:
+        for _, r in all_stocks.iterrows():
+            fund_by_ticker[r["ticker"]] = r.to_dict()
 
     # Build name lookup from target_tickers (always has correct names from config)
     ticker_name_map = {t["ticker"]: t.get("name", "") for t in target_tickers}
+
+    # Snapshots : gate admin + 1 fois par session (évite ~700 round-trips/render)
+    _snap_session_key = "p5_snap_done"
+    _capture_snaps = is_admin() and not st.session_state.get(_snap_session_key)
 
     total_snapshots_saved = 0
     total_recos_saved = 0
@@ -65,15 +79,16 @@ def render():
         for t in target_tickers:
             ticker = t["ticker"]
             display_name = t.get("name", ticker)
-            fund = get_fundamentals(ticker)
-            if not fund and not all_stocks.empty:
-                row = all_stocks[all_stocks["ticker"] == ticker]
-                if not row.empty:
-                    fund = row.iloc[0].to_dict()
+            fund = fund_by_ticker.get(ticker)
+            # Clean NaN (pandas row dict)
+            if fund:
+                import math as _m
+                fund = {k: (None if isinstance(v, float) and _m.isnan(v) else v)
+                        for k, v in fund.items()}
             if not fund:
                 continue
 
-            price_df = get_cached_prices(ticker)
+            price_df = all_prices.get(ticker, pd.DataFrame())
             result = compute_hybrid_score(fund, price_df)
 
             # Use display_name from config as fallback for missing/None company_name
@@ -141,24 +156,29 @@ def render():
             })
 
             # --- Auto-capture for long-term calibration ---
-            try:
-                total_snapshots_saved += save_signal_snapshots(
-                    ticker=ticker, signals=ticker_signals, price=current_price,
-                    company_name=name, sector=sector,
-                )
-                if save_recommendation_snapshot(
-                    ticker=ticker,
-                    recommendation=result["recommendation"],
-                    hybrid_score=result["hybrid_score"],
-                    fundamental_score=result["fundamental_score"],
-                    technical_score=result["technical_score"],
-                    price=current_price,
-                    trend=result["trend"]["trend"],
-                    company_name=name, sector=sector,
-                ):
-                    total_recos_saved += 1
-            except Exception:
-                pass
+            # Seulement pour les admins ET seulement 1 fois par session.
+            if _capture_snaps:
+                try:
+                    total_snapshots_saved += save_signal_snapshots(
+                        ticker=ticker, signals=ticker_signals, price=current_price,
+                        company_name=name, sector=sector,
+                    )
+                    if save_recommendation_snapshot(
+                        ticker=ticker,
+                        recommendation=result["recommendation"],
+                        hybrid_score=result["hybrid_score"],
+                        fundamental_score=result["fundamental_score"],
+                        technical_score=result["technical_score"],
+                        price=current_price,
+                        trend=result["trend"]["trend"],
+                        company_name=name, sector=sector,
+                    ):
+                        total_recos_saved += 1
+                except Exception:
+                    pass
+
+    if _capture_snaps:
+        st.session_state[_snap_session_key] = True
 
     if total_snapshots_saved or total_recos_saved:
         st.caption(
