@@ -38,31 +38,62 @@ def _load_scoring_snapshot() -> pd.DataFrame:
 def render():
     from utils.ui_helpers import section_heading
     st.title("Signaux d'achat / vente")
-    st.caption("Synthèse des signaux techniques et fondamentaux par titre")
+    st.caption("Verdict consolidé par titre — recommandation fondamentale + signaux techniques")
 
     analyzable = get_analyzable_tickers()
     if not analyzable:
         st.warning("Aucune donnée disponible.")
         return
 
-    mode = st.radio("Analyser par", ["Secteur", "Titres spécifiques", "Tous les titres"], horizontal=True)
+    # ═══════════════════════════════════════════════════════════════════
+    # Filtres : ANALYSER PAR (pills) · CHOISIR UN SECTEUR · FILTRER VERDICT
+    # (row compacte, 3 colonnes, avec labels-xs au-dessus)
+    # ═══════════════════════════════════════════════════════════════════
+    col_mode, col_sect, col_verdict = st.columns([1.3, 1.5, 1.2])
+
+    with col_mode:
+        st.markdown("<div class='label-xs' style='margin-bottom:4px;'>Analyser par</div>",
+                    unsafe_allow_html=True)
+        mode = st.radio(
+            "Mode", ["Secteur", "Titres spécifiques", "Tout"],
+            horizontal=True, label_visibility="collapsed",
+        )
 
     if mode == "Secteur":
         sectors = sorted(set(t["sector"] for t in analyzable if t.get("sector")))
-        selected_sector = st.selectbox("Secteur", sectors)
+        with col_sect:
+            st.markdown("<div class='label-xs' style='margin-bottom:4px;'>Choisir un secteur</div>",
+                        unsafe_allow_html=True)
+            selected_sector = st.selectbox("Secteur", sectors, label_visibility="collapsed")
         target_tickers = [t for t in analyzable if t["sector"] == selected_sector]
-        if not target_tickers:
-            st.warning(f"Aucun titre avec des données dans le secteur {selected_sector}.")
-            return
     elif mode == "Titres spécifiques":
         options = [f"{t['ticker']} · {t['name']}" for t in analyzable]
-        selected = st.multiselect("Titres", options, default=options[:5])
+        with col_sect:
+            st.markdown("<div class='label-xs' style='margin-bottom:4px;'>Choisir des titres</div>",
+                        unsafe_allow_html=True)
+            selected = st.multiselect(
+                "Titres", options, default=options[:5],
+                label_visibility="collapsed",
+            )
         target_tickers = [
             {"ticker": s.split(" · ")[0], "name": s.split(" · ")[1] if " · " in s else ""}
             for s in selected
         ]
     else:
         target_tickers = analyzable
+        # col_sect reste vide dans ce mode
+
+    with col_verdict:
+        st.markdown("<div class='label-xs' style='margin-bottom:4px;'>Filtrer verdict</div>",
+                    unsafe_allow_html=True)
+        verdict_filter_choice = st.selectbox(
+            "Verdict", ["Tous", "ACHAT FORT", "ACHAT", "CONSERVER", "PRUDENCE", "ÉVITER"],
+            label_visibility="collapsed",
+        )
+
+    if not target_tickers:
+        st.info("Aucun titre à analyser.")
+        return
 
     # --- Scan ---
     all_signals = []
@@ -210,33 +241,184 @@ def render():
 
     total_snapshots_saved = 0
     total_recos_saved = 0
-    if total_snapshots_saved or total_recos_saved:
-        st.caption(
-            f"💾 Snapshot enregistré pour calibrage : {total_snapshots_saved} nouveau(x) signal(aux), "
-            f"{total_recos_saved} recommandation(s)."
+
+    # ═══════════════════════════════════════════════════════════════════
+    # 4 KPI cards : SIGNAUX ACHAT · SIGNAUX VENTE · CONSERVER · CONTRADICTIONS
+    # ═══════════════════════════════════════════════════════════════════
+    n_total = len(per_ticker)
+    n_achat = sum(1 for p in per_ticker
+                  if "ACHAT" in (p.get("consolidated", {}).get("verdict", "").upper()))
+    n_vente = sum(1 for p in per_ticker
+                  if "VENTE" in (p.get("consolidated", {}).get("verdict", "").upper()))
+    n_conserver = sum(1 for p in per_ticker
+                      if "CONSERVER" in (p.get("consolidated", {}).get("verdict", "").upper())
+                      or "NEUTRE" in (p.get("consolidated", {}).get("verdict", "").upper()))
+    n_contra = sum(1 for p in per_ticker
+                   if p.get("consolidated", {}).get("conflict"))
+
+    def _kpi(label, value, sub, tone):
+        arrow = {"up": "▲", "down": "▼"}.get(tone, "—")
+        sub_color = {"up": "var(--up)", "down": "var(--down)",
+                     "warn": "var(--ocre)"}.get(tone, "var(--ink-3)")
+        return (
+            f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
+            f"border-radius:10px;padding:14px 16px;min-height:90px;'>"
+            f"<div class='label-xs' style='margin-bottom:6px;'>{label}</div>"
+            f"<div style='font-size:26px;font-weight:600;letter-spacing:-0.02em;"
+            f"color:var(--ink);font-variant-numeric:tabular-nums;line-height:1;'>{value}</div>"
+            f"<div style='font-size:11.5px;color:{sub_color};margin-top:6px;font-weight:500;'>"
+            f"{arrow} {sub}</div>"
+            f"</div>"
         )
 
-    # Vue consolidée par titre
-    _render_consolidated_view(per_ticker)
+    # Insertion AVANT la barre de filtres pour une hiérarchie visuelle
+    # (on re-utilise les colonnes mais en push via HTML)
+    k1, k2, k3, k4 = st.columns(4)
+    with k1:
+        st.markdown(_kpi("Signaux achat", n_achat, f"sur {n_total} titres", "up"),
+                    unsafe_allow_html=True)
+    with k2:
+        st.markdown(_kpi("Signaux vente", n_vente, f"sur {n_total} titres", "down"),
+                    unsafe_allow_html=True)
+    with k3:
+        st.markdown(_kpi("Conserver", n_conserver, f"sur {n_total} titres", "neutral"),
+                    unsafe_allow_html=True)
+    with k4:
+        st.markdown(_kpi("Contradictions", n_contra, "à surveiller",
+                          "warn" if n_contra else "neutral"),
+                    unsafe_allow_html=True)
 
-    # Résumé
+    # ═══════════════════════════════════════════════════════════════════
+    # Synthèse par titre — tableau HTML éditorial unique
+    # (fusionne les deux anciennes tables Consolidated + Résumé)
+    # ═══════════════════════════════════════════════════════════════════
     from utils.ui_helpers import section_heading
-    section_heading("Résumé", spacing="loose")
-    if stock_summaries:
-        sum_df = pd.DataFrame(stock_summaries).sort_values("hybrid_score", ascending=False)
-        sum_df["stars_display"] = sum_df["stars"].apply(stars_display)
-        sum_df["price_fmt"] = sum_df["price"].apply(lambda x: f"{x:,.0f}" if x else "—")
-        sum_df["score_fmt"] = sum_df["hybrid_score"].apply(lambda x: f"{x:.0f}/100")
-        sum_df["trend_display"] = sum_df["trend"].apply(lambda x: (x or "—").capitalize())
+    section_heading("Synthèse par titre", spacing="loose")
 
-        st.dataframe(
-            sum_df[["ticker", "name", "sector", "price_fmt", "score_fmt", "verdict", "stars_display", "trend_display", "nb_signals"]].rename(columns={
-                "ticker": "Ticker", "name": "Nom", "sector": "Secteur", "price_fmt": "Prix",
-                "score_fmt": "Score", "verdict": "Verdict", "stars_display": "Rating",
-                "trend_display": "Tendance", "nb_signals": "Signaux",
-            }),
-            use_container_width=True, hide_index=True,
+    # Filtrage par verdict (choice = "Tous" ou un verdict spécifique)
+    def _match_verdict(entry, choice):
+        if choice == "Tous":
+            return True
+        v = (entry.get("consolidated", {}).get("verdict") or "").upper()
+        v_reco = (entry.get("result", {}).get("recommendation", {}).get("verdict") or "").upper()
+        target = choice.upper().replace("É", "E")
+        return target in v or target in v_reco
+
+    filtered = [e for e in per_ticker if _match_verdict(e, verdict_filter_choice)]
+
+    if not filtered:
+        st.info("Aucun titre ne correspond au filtre.")
+    else:
+        # Tri : ACHAT FORT, ACHAT, CONSERVER, PRUDENCE, VENTE, VENTE FORTE
+        order_map = {"ACHAT FORT": 0, "ACHAT": 1, "CONSERVER": 2, "NEUTRE": 2,
+                     "PRUDENCE": 3, "VENTE": 4, "VENTE FORTE": 5, "EVITER": 6}
+
+        def _rank(entry):
+            v = (entry.get("result", {}).get("recommendation", {}).get("verdict") or "").upper()
+            for k, r in order_map.items():
+                if k in v:
+                    return r
+            return 99
+
+        filtered_sorted = sorted(filtered,
+                                  key=lambda e: (_rank(e),
+                                                 -(e.get("result", {}).get("hybrid_score") or 0)))
+
+        header_style = (
+            "font-size:10.5px;text-transform:uppercase;letter-spacing:0.08em;"
+            "color:var(--ink-3);font-weight:500;padding:9px 10px;"
+            "border-bottom:1px solid var(--border);background:var(--bg-sunken);"
         )
+        cell_style = "padding:10px;font-size:13px;border-bottom:1px solid var(--border);"
+
+        def _verdict_tag(v):
+            if not v:
+                return "<span class='muted'>—</span>"
+            up = v.upper()
+            if "ACHAT FORT" in up:
+                return "<span class='tag up' style='text-transform:none;font-weight:600;'>ACHAT FORT</span>"
+            if "ACHAT" in up:
+                return "<span class='tag up' style='text-transform:none;font-weight:600;'>ACHAT</span>"
+            if "VENTE FORTE" in up:
+                return "<span class='tag down' style='text-transform:none;font-weight:600;'>VENTE FORTE</span>"
+            if "VENTE" in up or "EVITER" in up:
+                return "<span class='tag down' style='text-transform:none;font-weight:600;'>VENTE</span>"
+            if "CONSERVER" in up or "NEUTRE" in up:
+                return "<span class='tag ocre' style='text-transform:none;font-weight:600;'>CONSERVER</span>"
+            if "PRUDENCE" in up:
+                return "<span class='tag ocre' style='text-transform:none;font-weight:600;'>PRUDENCE</span>"
+            return f"<span class='tag neutral'>{v}</span>"
+
+        def _trend_cell(tr):
+            if not tr:
+                return "<span class='muted'>—</span>"
+            tone = {"haussiere": "up", "baissiere": "down"}.get(tr, "neutral")
+            return f"<span class='dot {tone}'></span>{tr}"
+
+        def _signals_summary(cons, kind):
+            """kind='buy' ou 'sell'."""
+            if not cons:
+                return "<span class='muted'>—</span>"
+            sigs = cons.get("consolidated_signals", {}).get(kind, [])
+            if not sigs:
+                return "<span class='muted'>—</span>"
+            parts = [f"{s['signal']}" for s in sigs[:2]]
+            extra = f" +{len(sigs) - 2}" if len(sigs) > 2 else ""
+            return ", ".join(parts) + extra
+
+        rows_html = (
+            f"<tr>"
+            f"<th style='{header_style};text-align:left;'>Verdict</th>"
+            f"<th style='{header_style};text-align:left;'>Ticker</th>"
+            f"<th style='{header_style};text-align:left;'>Nom</th>"
+            f"<th style='{header_style};text-align:right;'>Prix</th>"
+            f"<th style='{header_style};text-align:right;'>Score</th>"
+            f"<th style='{header_style};text-align:right;'>Conf.</th>"
+            f"<th style='{header_style};text-align:left;'>Tendance</th>"
+            f"<th style='{header_style};text-align:left;'>Signaux achat</th>"
+            f"<th style='{header_style};text-align:left;'>Signaux vente</th>"
+            f"</tr>"
+        )
+        for e in filtered_sorted:
+            res = e.get("result", {})
+            cons = e.get("consolidated", {})
+            verdict = res.get("recommendation", {}).get("verdict") or cons.get("verdict") or ""
+            score = res.get("hybrid_score") or 0
+            conf = cons.get("confidence") or 0
+            trend_name = res.get("trend", {}).get("trend") or "—"
+            price = e.get("price") or 0
+
+            rows_html += (
+                f"<tr>"
+                f"<td style='{cell_style}'>{_verdict_tag(verdict)}</td>"
+                f"<td style='{cell_style}'><span class='ticker'>{e.get('ticker','')}</span></td>"
+                f"<td style='{cell_style};font-weight:500;'>{e.get('name','')}</td>"
+                f"<td style='{cell_style};text-align:right;font-variant-numeric:tabular-nums;'>"
+                f"{price:,.0f}</td>"
+                f"<td style='{cell_style};text-align:right;font-weight:600;"
+                f"font-variant-numeric:tabular-nums;'>{score:.0f}/100</td>"
+                f"<td style='{cell_style};text-align:right;font-variant-numeric:tabular-nums;'>"
+                f"{int(conf)}%</td>"
+                f"<td style='{cell_style}'>{_trend_cell(trend_name)}</td>"
+                f"<td style='{cell_style};color:var(--ink-2);'>{_signals_summary(cons, 'buy')}</td>"
+                f"<td style='{cell_style};color:var(--ink-2);'>{_signals_summary(cons, 'sell')}</td>"
+                f"</tr>"
+            )
+
+        st.markdown(
+            f"<div style='border:1px solid var(--border);border-radius:10px;"
+            f"overflow:hidden;background:var(--bg-elev);margin-bottom:16px;'>"
+            f"<table style='width:100%;border-collapse:collapse;'>{rows_html}</table></div>",
+            unsafe_allow_html=True,
+        )
+
+        # Quick picker
+        picker_options = [
+            (e["ticker"], f"{e['ticker']} · {e.get('name','')}")
+            for e in filtered_sorted
+        ]
+        ticker_quick_picker(picker_options, key="sig_goto",
+                             label="Ouvrir l'analyse d'un titre")
 
     # Assistant chat
     section_heading("Assistant Signaux", spacing="loose")
