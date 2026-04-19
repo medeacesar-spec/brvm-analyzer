@@ -62,62 +62,34 @@ def _load_one_scoring_snapshot(ticker: str) -> dict:
 
 
 def render():
-    # Hiérarchie v3 : Title + caption → sélecteur → KPI row → Tabs
-    st.title("Analyse d'un titre")
-    st.caption("Fondamental · Technique · Recommandation · Profil")
-
+    # Hiérarchie v3 : selecteur → Header titre+stars → KPI cards → Tabs
     analyzable = get_analyzable_tickers()
     if not analyzable:
-        st.warning("Aucune donnée disponible. Lancez l'enrichissement des données de marché ou importez des fichiers Excel.")
+        st.warning("Aucune donnée disponible. Lancez l'enrichissement des données de marché.")
         return
 
-    # Marqueurs textuels pour distinguer "fondamentaux" vs "marché seul"
-    # Pastilles discrètes au lieu des emojis 📊 / 📈
-    col_select, col_import = st.columns([3, 1])
-    with col_select:
-        all_options = [
-            f"{t['ticker']} · {t['name']}"
-            + ("  [fondamentaux]" if t.get("has_fundamentals") else "  [marché]")
-            for t in analyzable
-        ]
+    # Sélecteur compact — pleine largeur, l'import Excel est dans un expander discret
+    all_options = [
+        f"{t['ticker']} · {t['name']}"
+        + ("  [fondamentaux]" if t.get("has_fundamentals") else "  [marché]")
+        for t in analyzable
+    ]
+    default_index = 0
+    target_ticker = st.session_state.pop("target_ticker", None)
+    if target_ticker:
+        for i, opt in enumerate(all_options):
+            if opt.split(" · ")[0] == target_ticker:
+                default_index = i
+                break
 
-        default_index = 0
-        target_ticker = st.session_state.pop("target_ticker", None)
-        if target_ticker:
-            for i, opt in enumerate(all_options):
-                if opt.split(" · ")[0] == target_ticker:
-                    default_index = i
-                    break
-
-        selection = st.selectbox(
-            "Choisir un titre",
-            all_options, index=default_index,
-            key="p2_ticker_select",
-            help="[fondamentaux] : données bilan/cashflow disponibles  |  [marché] : cotation uniquement",
-        )
-        selected_ticker = selection.split(" · ")[0]
-
-    with col_import:
-        if is_admin():
-            st.markdown(
-                "<div class='label-xs' style='margin-top:6px;'>Importer Excel</div>",
-                unsafe_allow_html=True,
-            )
-            uploaded = st.file_uploader("Fichier Analyse Hybride", type=["xlsx"], label_visibility="collapsed")
-            if uploaded:
-                import tempfile, os
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
-                    tmp.write(uploaded.read())
-                    tmp_path = tmp.name
-                try:
-                    data = import_from_excel(tmp_path)
-                    save_fundamentals(data)
-                    st.success(f"{data['company_name']} importé ({data['fiscal_year']})")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Erreur d'import: {e}")
-                finally:
-                    os.unlink(tmp_path)
+    selection = st.selectbox(
+        "Titre",
+        all_options, index=default_index,
+        key="p2_ticker_select",
+        label_visibility="collapsed",
+        help="[fondamentaux] : données bilan/cashflow  |  [marché] : cotation uniquement",
+    )
+    selected_ticker = selection.split(" · ")[0]
 
     # --- Load data (fusion fundamentals + market_data) ---
     # Always use the joined view to get price, beta, rsi, etc. from market_data
@@ -214,18 +186,115 @@ def render():
         except Exception:
             pass
 
-    # --- Header metrics ---
-    # KPI row — densité v3, pas de divider avant
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Entreprise", fundamentals.get("company_name", selected_ticker))
-    c2.metric("Prix", f"{fundamentals.get('price', 0):,.0f} {CURRENCY}")
-    c3.metric("Secteur", fundamentals.get("sector") or "—")
-    c4.metric("Exercice", str(fundamentals.get("fiscal_year", "") or "—"))
-    with c5:
+    # ═══════════════════════════════════════════════════════════════════
+    # Header éditorial : "TICKER · Secteur · Exercice YYYY"   + stars
+    # ═══════════════════════════════════════════════════════════════════
+    sector_name = fundamentals.get("sector") or "—"
+    fy = fundamentals.get("fiscal_year")
+    year_label = f"Exercice {int(fy)}" if fy else ""
+    header_parts = [selected_ticker, sector_name]
+    if year_label:
+        header_parts.append(year_label)
+    header_title = "  ·  ".join(header_parts)
+
+    col_title, col_stars = st.columns([5, 1])
+    with col_title:
         st.markdown(
-            '<div class="label-xs">Verdict</div>'
-            + _tag_html(reco['verdict'], _verdict_tone(reco['verdict']))
-            + f"<div style='margin-top:4px;'>{stars_display(reco['stars'])}</div>",
+            f"<h1 style='margin:0;padding:0;font-size:24px;font-weight:600;"
+            f"letter-spacing:-0.02em;'>{header_title}</h1>"
+            f"<div style='color:var(--ink-3);font-size:13px;margin-top:4px;'>"
+            f"{fundamentals.get('company_name', '')}</div>",
+            unsafe_allow_html=True,
+        )
+    with col_stars:
+        st.markdown(
+            f"<div style='text-align:right;padding-top:4px;'>"
+            f"{stars_display(reco['stars'])}</div>",
+            unsafe_allow_html=True,
+        )
+
+    # ═══════════════════════════════════════════════════════════════════
+    # KPI cards : Prix · Capitalisation · P/E · Dividend Yield
+    # avec benchmarks secteur (flèche ▲/▼ + médiane)
+    # ═══════════════════════════════════════════════════════════════════
+    from analysis.fundamental import get_sector_benchmarks, compare_to_sector
+    benchmarks = get_sector_benchmarks(sector_name) if sector_name != "—" else {}
+
+    def _sector_sub(key: str, value, prefer_low: bool, fmt: str = "pct") -> str:
+        """Construit le sous-texte 'Secteur X.X' avec flèche selon comparaison."""
+        cmp = compare_to_sector(key, value, benchmarks, prefer_low=prefer_low)
+        if not cmp:
+            return ""
+        med_str = (
+            f"{cmp['median']:.1f}" if fmt == "decimal"
+            else f"{cmp['median']*100:.1f}%" if fmt == "pct"
+            else f"{cmp['median']:,.0f}"
+        )
+        diff = cmp["diff"]
+        # Flèche : ▲ si au-dessus médiane, ▼ si en-dessous (indépendant du "bon/mauvais")
+        arrow = "▲" if diff > 0 else "▼" if diff < 0 else "="
+        # Couleur selon "bon/mauvais" (prefer_low inverse la logique)
+        is_good = (diff < 0 and prefer_low) or (diff > 0 and not prefer_low) or abs(diff) < 0.05
+        color = "var(--up)" if (is_good and abs(diff) >= 0.05) else \
+                "var(--down)" if not is_good else "var(--ink-3)"
+        return (
+            f"<span style='color:{color};font-weight:500;'>{arrow} Secteur {med_str}</span>"
+        )
+
+    def _stat_card(label: str, value: str, sub_html: str = "", tone: str = "neutral"):
+        return (
+            f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
+            f"border-radius:10px;padding:14px 16px;min-height:92px;'>"
+            f"<div style='font-size:10.5px;text-transform:uppercase;letter-spacing:0.08em;"
+            f"color:var(--ink-3);font-weight:500;margin-bottom:8px;'>{label}</div>"
+            f"<div style='font-size:24px;font-weight:600;letter-spacing:-0.02em;"
+            f"font-variant-numeric:tabular-nums;color:var(--ink);line-height:1.1;'>{value}</div>"
+            f"{('<div style=' + chr(34) + 'font-size:11.5px;color:var(--ink-3);margin-top:6px;' + chr(34) + '>' + sub_html + '</div>') if sub_html else ''}"
+            f"</div>"
+        )
+
+    price = fundamentals.get("price") or 0
+    shares = fundamentals.get("shares")
+    mcap = price * shares / 1e9 if (price and shares) else None
+    per = ratios.get("per")
+    yield_val = ratios.get("dividend_yield")
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.markdown(
+            _stat_card(
+                "Prix",
+                f"{price:,.0f}" if price else "—",
+                f"— {CURRENCY}",
+            ),
+            unsafe_allow_html=True,
+        )
+    with c2:
+        st.markdown(
+            _stat_card(
+                "Capitalisation",
+                f"{mcap:,.1f} Md" if mcap else "—",
+                f"— {CURRENCY}",
+            ),
+            unsafe_allow_html=True,
+        )
+    with c3:
+        st.markdown(
+            _stat_card(
+                "P/E",
+                f"{per:.1f}" if per and per > 0 else "—",
+                _sector_sub("per", per, prefer_low=True, fmt="decimal") if per else "",
+            ),
+            unsafe_allow_html=True,
+        )
+    with c4:
+        yield_str = f"{yield_val*100:.2f}%" if yield_val else "—"
+        st.markdown(
+            _stat_card(
+                "Dividend Yield",
+                yield_str,
+                _sector_sub("dividend_yield", yield_val, prefer_low=False, fmt="pct") if yield_val else "",
+            ),
             unsafe_allow_html=True,
         )
 
@@ -243,6 +312,29 @@ def render():
 
     with tab4:
         _render_profile(selected_ticker, fundamentals)
+
+    # ─── Admin : import Excel (en bas, replié par défaut) ───
+    if is_admin():
+        with st.expander("Import Excel (admin)", expanded=False):
+            uploaded = st.file_uploader(
+                "Fichier Analyse Hybride", type=["xlsx"],
+                label_visibility="collapsed",
+                key=f"p2_excel_{selected_ticker}",
+            )
+            if uploaded:
+                import tempfile, os
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+                    tmp.write(uploaded.read())
+                    tmp_path = tmp.name
+                try:
+                    data = import_from_excel(tmp_path)
+                    save_fundamentals(data)
+                    st.success(f"{data['company_name']} importé ({data['fiscal_year']})")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erreur d'import: {e}")
+                finally:
+                    os.unlink(tmp_path)
 
 
 def _render_fundamental(fundamentals, ratios):
@@ -361,14 +453,19 @@ def _render_fundamental(fundamentals, ratios):
                 import pandas as pd
                 st.dataframe(pd.DataFrame(peer_rows), use_container_width=True, hide_index=True)
 
-    # Checklist Value & Dividendes (dots colorés au lieu d'emojis ✅/❌)
+    # Checklist Value & Dividendes — 2 colonnes, dots colorés
+    checklist = ratios.get("checklist", [])
+    passed = sum(1 for i in checklist if i["passed"] is True)
+    total = len(checklist)
     st.markdown(
-        '<div class="label-xs" style="margin-top:18px;">Checklist Value & Dividendes</div>',
+        f'<div class="label-xs" style="margin-top:18px;">'
+        f'Checklist Value & Dividendes · <span style="color:var(--primary);'
+        f'font-weight:600;">{passed}/{total}</span> validés</div>',
         unsafe_allow_html=True,
     )
-    checklist = ratios.get("checklist", [])
     _check_fmt = {"PER": "decimal", "Couverture": "x", "Dette": "x"}
-    for item in checklist:
+
+    def _check_row(item):
         fmt = "pct"
         for key, f in _check_fmt.items():
             if key in item["label"]:
@@ -376,24 +473,27 @@ def _render_fundamental(fundamentals, ratios):
                 break
         val_str = format_ratio(item["value"], fmt)
         if item["passed"] is True:
-            tone, label = "up", "Validé"
+            tone = "up"
         elif item["passed"] is False:
-            tone, label = "down", "Échoué"
+            tone = "down"
         else:
-            tone, label = "neutral", "N/A"
-        st.markdown(
-            f"<div style='padding:4px 0;'>"
+            tone = "neutral"
+        return (
+            f"<div style='padding:5px 0;'>"
             f"<span class='dot {tone}'></span>"
             f"<b>{item['label']}</b> "
             f"<span class='muted'>·</span> "
             f"<span style='font-variant-numeric:tabular-nums'>{val_str}</span>"
-            f"</div>",
-            unsafe_allow_html=True,
+            f"</div>"
         )
 
-    passed = sum(1 for i in checklist if i["passed"] is True)
-    total = len(checklist)
-    st.progress(passed / total if total > 0 else 0, text=f"{passed}/{total} critères validés")
+    # Split en 2 colonnes
+    half = (len(checklist) + 1) // 2
+    col_a, col_b = st.columns(2)
+    with col_a:
+        st.markdown("".join(_check_row(i) for i in checklist[:half]), unsafe_allow_html=True)
+    with col_b:
+        st.markdown("".join(_check_row(i) for i in checklist[half:]), unsafe_allow_html=True)
 
     # Historique — pas de divider, hiérarchie via le h3 serré
     fiscal_year = fundamentals.get("fiscal_year")
@@ -416,8 +516,7 @@ def _render_fundamental(fundamentals, ratios):
     dps_series = [fundamentals.get(f"dps_{s}") for s in ("n3", "n2", "n1", "n0")]
 
     def _growth_series(values):
-        """Calcule le taux de croissance année-sur-année à partir d'une série."""
-        out = [None]  # pas de growth pour N-3 (première année)
+        out = [None]
         for i in range(1, len(values)):
             prev, cur = values[i-1], values[i]
             if prev and cur is not None and prev != 0:
@@ -429,34 +528,65 @@ def _render_fundamental(fundamentals, ratios):
     rev_growth = _growth_series(rev_series)
     ni_growth = _growth_series(ni_series)
 
-    hist_data = [
-        ("Chiffre d'affaires", rev_series, "number"),
-        ("— Croissance CA", rev_growth, "pct"),
-        ("Résultat net", ni_series, "number"),
-        ("— Croissance RN", ni_growth, "pct"),
-        ("DPS", dps_series, "number"),
-    ]
+    def _fmt_val_with_growth(val, growth):
+        """Valeur en Md avec la croissance entre parenthèses colorée en dessous.
+        Compact : 2 infos sur une ligne logique, 1 bloc visuel."""
+        if val is None:
+            return "<span class='muted'>—</span>"
+        # Affichage en milliards si >= 1e9, en millions sinon
+        if abs(val) >= 1e9:
+            val_str = f"{val/1e9:,.2f} Md"
+        elif abs(val) >= 1e6:
+            val_str = f"{val/1e6:,.0f} M"
+        else:
+            val_str = f"{val:,.0f}"
+        growth_html = ""
+        if growth is not None:
+            tone = "var(--up)" if growth >= 0 else "var(--down)"
+            sign = "+" if growth >= 0 else ""
+            growth_html = (
+                f"<div style='font-size:11px;color:{tone};"
+                f"font-variant-numeric:tabular-nums;font-weight:500;margin-top:1px;'>"
+                f"({sign}{growth*100:.1f}%)</div>"
+            )
+        return (
+            f"<div>"
+            f"<span style='font-variant-numeric:tabular-nums'>{val_str}</span>"
+            f"{growth_html}"
+            f"</div>"
+        )
 
-    # Header row with year labels
-    c1, c2, c3, c4, c5 = st.columns([2, 1, 1, 1, 1])
-    c1.write("")
-    for col, yr in zip([c2, c3, c4, c5], year_labels):
-        col.write(f"**{yr}**")
+    def _fmt_dps(val):
+        if val is None or not val:
+            return "<span class='muted'>—</span>"
+        return f"<span style='font-variant-numeric:tabular-nums'>{val:,.0f}</span>"
 
-    for label, values, fmt in hist_data:
-        if any(v is not None for v in values):
-            c1, c2, c3, c4, c5 = st.columns([2, 1, 1, 1, 1])
-            c1.write(f"**{label}**")
-            for col, val in zip([c2, c3, c4, c5], values):
-                if val is None:
-                    col.markdown("<span class='muted'>—</span>", unsafe_allow_html=True)
-                elif fmt == "pct":
-                    col.markdown(_delta_html(val * 100, with_arrow=False), unsafe_allow_html=True)
-                else:
-                    col.markdown(
-                        f"<span style='font-variant-numeric:tabular-nums'>{val:,.0f}</span>",
-                        unsafe_allow_html=True,
-                    )
+    # Header row
+    cols = st.columns([2, 1, 1, 1, 1])
+    cols[0].write("")
+    for col, yr in zip(cols[1:], year_labels):
+        col.markdown(
+            f"<b style='color:var(--ink-2);'>{yr}</b>",
+            unsafe_allow_html=True,
+        )
+
+    # CA + croissance CA fusionnés en une ligne
+    cols = st.columns([2, 1, 1, 1, 1])
+    cols[0].markdown("**Chiffre d'affaires**")
+    for col, val, gr in zip(cols[1:], rev_series, rev_growth):
+        col.markdown(_fmt_val_with_growth(val, gr), unsafe_allow_html=True)
+
+    # RN + croissance RN fusionnés en une ligne
+    cols = st.columns([2, 1, 1, 1, 1])
+    cols[0].markdown("**Résultat net**")
+    for col, val, gr in zip(cols[1:], ni_series, ni_growth):
+        col.markdown(_fmt_val_with_growth(val, gr), unsafe_allow_html=True)
+
+    # DPS (pas de croissance associée, juste la valeur)
+    cols = st.columns([2, 1, 1, 1, 1])
+    cols[0].markdown("**DPS**")
+    for col, val in zip(cols[1:], dps_series):
+        col.markdown(_fmt_dps(val), unsafe_allow_html=True)
 
 
 def _render_technical(ticker, price_df, result):
