@@ -151,15 +151,15 @@ def render():
         snap = _load_one_scoring_snapshot(selected_ticker)
 
         if snap and snap.get("hybrid_score") is not None:
-            # 3a. Reconstitue result à partir du snapshot
+            # 3a. Reconstitue result : on utilise les ratios_local comme source
+            # unique pour fundamental_score (nouveau breakdown), et le snapshot
+            # pour technical_score uniquement. Le hybrid_score + verdict sont
+            # RECALCULÉS avec le nouvel algo pour cohérence entre les 4 onglets.
             try:
                 signals = _json.loads(snap.get("signals_json") or "[]")
             except Exception:
                 signals = []
-            try:
-                consolidated = _json.loads(snap.get("consolidated_json") or "{}")
-            except Exception:
-                consolidated = {}
+
             # Supports/Résistances recalculés localement si pas dans le snapshot
             from analysis.technical import detect_support_resistance
             if not price_df.empty and len(price_df) >= 8:
@@ -167,13 +167,28 @@ def render():
             else:
                 sr_levels = {"supports": [], "resistances": []}
 
-            verdict = snap.get("verdict") or "N/A"
-            stars = int(snap.get("stars") or 0)
+            # Score fondamental = breakdown.total (nouveau algo, source unique)
+            fund_score_local = ratios_local.get("fundamental_score") or 0
+            tech_score_snap = snap.get("technical_score") or 0
+            hybrid_local = fund_score_local + tech_score_snap
+
+            # Verdict recalculé selon nouveau hybrid_score (seuils 75/60/45/30)
+            if hybrid_local >= 75:
+                verdict, stars = "ACHAT FORT", 5
+            elif hybrid_local >= 60:
+                verdict, stars = "ACHAT", 4
+            elif hybrid_local >= 45:
+                verdict, stars = "CONSERVER", 3
+            elif hybrid_local >= 30:
+                verdict, stars = "PRUDENCE", 2
+            else:
+                verdict, stars = "EVITER", 1
+
             result = {
                 "ratios": ratios_local,
-                "hybrid_score": snap.get("hybrid_score"),
-                "fundamental_score": snap.get("fundamental_score"),
-                "technical_score": snap.get("technical_score"),
+                "hybrid_score": hybrid_local,
+                "fundamental_score": fund_score_local,
+                "technical_score": tech_score_snap,
                 "signals": signals,
                 "trend": {
                     "trend": snap.get("trend") or "indetermine",
@@ -186,14 +201,14 @@ def render():
                     "verdict": verdict,
                     "stars": stars,
                     "verdict_color": "#1F5D3A" if "ACHAT" in verdict else
-                                     "#B42318" if "VENTE" in verdict else "#B5730E",
-                    "strengths": ratios_local.get("checklist_strengths", []) or [],
-                    "warnings": ratios_local.get("checklist_warnings", []) or [],
+                                     "#B42318" if "VENTE" in verdict or "EVITER" in verdict else "#B5730E",
+                    "strengths": [],
+                    "warnings": [],
                     "entry_zones": [],
                 },
             }
-            # Pour le texte de profil et les strengths/warnings, on appelle
-            # compute_hybrid_score sur le même fund+price pour enrichir.
+            # Enrichit strengths/warnings/entry_zones/trend via compute_hybrid_score
+            # (ces champs ne sont pas dans le snapshot)
             try:
                 _full = compute_hybrid_score(fundamentals, price_df)
                 result["recommendation"]["strengths"] = _full["recommendation"].get("strengths", [])
