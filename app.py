@@ -166,6 +166,14 @@ def _scrape_brvm_indices():
     if not indices:
         return
 
+    # Dédoublonnage par nom : brvm.org affiche parfois le même indice
+    # (ex. BRVM-30) dans plusieurs tables (principaux, total_return, etc.).
+    # On garde la première occurrence rencontrée pour éviter le
+    # UniqueViolation sur la PK `name` lors des INSERT suivants.
+    _seen_names = set()
+    indices = [idx for idx in indices
+               if not (idx[0] in _seen_names or _seen_names.add(idx[0]))]
+
     conn = get_connection()
     # Ensure columns exist (idempotent, tolerant des drivers abortant la txn).
     try:
