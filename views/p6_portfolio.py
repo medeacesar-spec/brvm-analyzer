@@ -67,14 +67,15 @@ def _load_all_stocks_dict() -> dict:
 
 
 def render():
-    st.markdown('<div class="main-header">💼 Suivi Portefeuille</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">Gérez vos positions et suivez la performance</div>', unsafe_allow_html=True)
+    from utils.ui_helpers import section_heading
+    st.title("Portefeuille")
+    st.caption("Gestion des positions, allocation et performance")
 
     portfolio = get_portfolio()
 
     # --- Import from screenshot (si OCR dispo sur l'instance) ---
     if _ocr_available():
-        with st.expander("📸 Importer depuis un screenshot SGI", expanded=False):
+        with st.expander("Importer depuis un screenshot SGI", expanded=False):
             st.markdown(
                 "Uploadez une capture d'écran de votre portefeuille SGI "
                 "(**max 1 Mo**, format PNG/JPG). L'application analyse l'image "
@@ -118,7 +119,7 @@ def render():
                     # l'OCR fait, le fichier original disparaît de la mémoire.
 
     # --- Add position ---
-    with st.expander("➕ Ajouter une position", expanded=portfolio.empty):
+    with st.expander("Ajouter une position", expanded=portfolio.empty):
         tickers_data = load_tickers()
         options = [f"{t['ticker']} - {t['name']}" for t in tickers_data]
 
@@ -130,13 +131,13 @@ def render():
             purchase_date = col4.date_input("Date d'achat")
 
             notes = st.text_input("Notes (optionnel)")
-            submitted = st.form_submit_button("💾 Ajouter")
+            submitted = st.form_submit_button("Ajouter", type="primary")
 
             if submitted:
                 ticker = selection.split(" - ")[0]
                 name = selection.split(" - ")[1] if " - " in selection else ""
                 save_position(ticker, name, quantity, avg_price, str(purchase_date), notes)
-                st.success("✅ Position ajoutée !")
+                st.success("Position ajoutée")
                 st.rerun()
 
     # --- Cash disponible (persistant en DB) ---
@@ -144,7 +145,7 @@ def render():
     if "portfolio_cash" not in st.session_state:
         st.session_state.portfolio_cash = get_portfolio_cash()
 
-    with st.expander("💵 Cash disponible", expanded=False):
+    with st.expander("Cash disponible", expanded=False):
         cash = st.number_input(
             f"Liquidités disponibles ({CURRENCY})",
             min_value=0.0, value=float(st.session_state.portfolio_cash),
@@ -153,14 +154,13 @@ def render():
         if cash != st.session_state.portfolio_cash:
             st.session_state.portfolio_cash = cash
             set_portfolio_cash(cash)
-            st.caption("💾 Cash enregistré")
+            st.caption("Cash enregistré")
 
     if portfolio.empty:
         st.info("Aucune position en portefeuille. Ajoutez votre première position ci-dessus.")
         return
 
-    # --- Portfolio summary ---
-    st.markdown("---")
+    # --- Portfolio summary (pas de divider — la hiérarchie suffit) ---
 
     # Try to get current prices : 1) from DB market_data (fast, always there),
     # 2) fallback to live fetch only if DB is empty or very stale.
@@ -219,21 +219,28 @@ def render():
 
     if total_div > 0:
         div_yield_pf = (total_div / total_value * 100) if total_value > 0 else 0
-        st.info(f"💰 Dividendes projetés: **{total_div:,.0f} {CURRENCY}** (rendement portefeuille: {div_yield_pf:.1f}%)")
+        st.markdown(
+            f"<div style='background:var(--primary-bg);border:1px solid var(--primary);"
+            f"border-radius:10px;padding:10px 14px;margin-top:10px;font-size:13px;"
+            f"color:var(--primary-2);'>"
+            f"Dividendes projetés : <b style='font-variant-numeric:tabular-nums;'>"
+            f"{total_div:,.0f} {CURRENCY}</b> "
+            f"<span style='color:var(--ink-3);'>· rendement portefeuille </span>"
+            f"<b>{div_yield_pf:.1f}%</b></div>",
+            unsafe_allow_html=True,
+        )
 
-    st.markdown("---")
-
-    # --- Positions table ---
-    st.subheader("Positions")
+    # Positions
+    section_heading("Positions", spacing="loose")
 
     for _, pos in portfolio.iterrows():
         col1, col2, col3, col4, col5, col6, col7, col8 = st.columns([2, 1, 1, 1, 1, 1, 0.5, 0.5])
-        col1.write(f"**{pos['company_name']}** ({pos['ticker']})")
+        col1.write(f"**{pos['company_name']}** · {pos['ticker']}")
         col2.write(f"{pos['quantity']:.0f} titres")
-        col3.write(f"PRU: {pos['avg_price']:,.0f}")
-        col4.write(f"Investi: {pos['invested']:,.0f}")
+        col3.write(f"PRU {pos['avg_price']:,.0f}")
+        col4.write(f"Investi {pos['invested']:,.0f}")
         if pd.notna(pos.get("current_price")):
-            col5.write(f"Actuel: {pos['current_price']:,.0f}")
+            col5.write(f"Actuel {pos['current_price']:,.0f}")
             from utils.ui_helpers import delta as _delta
             col6.markdown(
                 f"<span style='font-variant-numeric:tabular-nums'>"
@@ -246,29 +253,27 @@ def render():
             col6.write("—")
         with col7:
             ticker_analyze_button(
-                pos["ticker"], label="🔍",
+                pos["ticker"],
                 key=f"pf_goto_{pos['id']}", help_text=f"Analyser {pos['ticker']}",
             )
-        if col8.button("🗑️", key=f"del_{pos['id']}"):
+        if col8.button("Suppr.", key=f"del_{pos['id']}", help="Supprimer la position"):
             delete_position(pos["id"])
             st.rerun()
 
-    # --- Allocation chart ---
-    st.markdown("---")
+    # Allocation
     col_pie1, col_pie2 = st.columns(2)
 
     with col_pie1:
-        st.subheader("Allocation par titre")
+        section_heading("Allocation par titre")
         labels = portfolio["company_name"].tolist()
         values = portfolio["current_value"].tolist()
         if cash > 0:
-            labels.append("💵 Cash")
+            labels.append("Cash")
             values.append(cash)
         fig = pie_chart(labels, values, "Allocation par titre")
         st.plotly_chart(fig, use_container_width=True)
 
     with col_pie2:
-        st.subheader("Allocation par secteur")
         tickers_data = load_tickers()
         ticker_to_sector = {t["ticker"]: t["sector"] for t in tickers_data}
         portfolio["sector"] = portfolio["ticker"].map(ticker_to_sector).fillna("Autre")
@@ -276,32 +281,23 @@ def render():
         sec_labels = sector_alloc.index.tolist()
         sec_values = sector_alloc.values.tolist()
         if cash > 0:
-            sec_labels.append("💵 Cash")
+            sec_labels.append("Cash")
             sec_values.append(cash)
         fig = pie_chart(sec_labels, sec_values, "Allocation sectorielle")
         st.plotly_chart(fig, use_container_width=True)
 
-    # --- Analyse d'équilibre du portefeuille ---
-    st.markdown("---")
+    # Sections suivantes (pas de divider — hiérarchie portée par les titres)
     _render_portfolio_analysis(portfolio, cash, total_value, total_portfolio, ticker_to_sector)
-
-    # --- Recommandations par position (signaux + diagnostic) ---
-    st.markdown("---")
     _render_position_recommendations(portfolio, total_value, cash)
-
-    # --- Recommandations pour le cash ---
     if cash > 0:
-        st.markdown("---")
         _render_cash_recommendations(portfolio, cash, total_portfolio, ticker_to_sector)
-
-    # --- Boîte dialogue info générale ---
-    st.markdown("---")
     _render_info_box()
 
 
 def _render_portfolio_analysis(portfolio, cash, total_value, total_portfolio, ticker_to_sector):
     """Analyse l'équilibre du portefeuille et identifie les points d'attention."""
-    st.subheader("📊 Analyse d'équilibre du portefeuille")
+    from utils.ui_helpers import section_heading
+    section_heading("Analyse d'équilibre du portefeuille", spacing="loose")
 
     if total_portfolio <= 0:
         return
@@ -420,7 +416,7 @@ def _render_position_recommendations(portfolio, total_value, cash):
     d'achat/vente (basées sur les signaux consolidés), usage du cash, diversification."""
     from config import load_tickers
 
-    st.subheader("🧭 Recommandation globale")
+    section_heading("Recommandation globale")
     st.caption(
         "Synthèse combinant les signaux de la page Signaux (consolidés par famille) "
         "et l'état du portefeuille (P&L, concentration, cash)."
@@ -564,7 +560,7 @@ def _render_position_recommendations(portfolio, total_value, cash):
                         st.caption(f"↳ {s['signals_top']}")
                 with col_btn:
                     ticker_analyze_button(
-                        s["ticker"], label="🔍",
+                        s["ticker"], label=None,
                         key=f"reco_sell_{s['ticker']}",
                     )
                 st.markdown("")
@@ -590,7 +586,7 @@ def _render_position_recommendations(portfolio, total_value, cash):
                         st.caption(f"↳ {s['signals_top']}")
                 with col_btn:
                     ticker_analyze_button(
-                        s["ticker"], label="🔍",
+                        s["ticker"], label=None,
                         key=f"reco_reinforce_{s['ticker']}",
                     )
                 st.markdown("")
@@ -617,7 +613,7 @@ def _render_position_recommendations(portfolio, total_value, cash):
                         st.caption(f"↳ {s['signals_top']}")
                 with col_btn:
                     ticker_analyze_button(
-                        s["ticker"], label="🔍",
+                        s["ticker"], label=None,
                         key=f"reco_new_{s['ticker']}",
                     )
                 st.markdown("")
@@ -743,7 +739,7 @@ def _render_cash_suggestion(cash, cash_pct, new_buys, reinforce):
                 )
             with col_b:
                 ticker_analyze_button(
-                    a["ticker"], label="🔍",
+                    a["ticker"], label=None,
                     key=f"cash_alloc_{a['ticker']}",
                 )
     total_used = sum(a["budget"] for a in allocations)
@@ -805,7 +801,7 @@ def _render_diversification_suggestion(nb_sectors, top_sector, nb_titres,
                 )
             with col_btn:
                 ticker_analyze_button(
-                    best_candidate["ticker"], label="🔍",
+                    best_candidate["ticker"], label=None,
                     key=f"div_candidate_{best_candidate['ticker']}",
                 )
 
@@ -814,7 +810,7 @@ def _render_cash_recommendations(portfolio, cash, total_portfolio, ticker_to_sec
     """Zone de chat intelligent pour recommandations d'investissement."""
     from analysis.llm_chat import chat
 
-    st.subheader("💬 Conseiller d'investissement")
+    section_heading("Conseiller d'investissement", spacing="loose")
     st.caption(
         f"Cash disponible : **{cash:,.0f} {CURRENCY}**. "
         "Décrivez vos préférences et l'assistant analysera toutes les données disponibles."
@@ -874,7 +870,7 @@ def _render_cash_recommendations(portfolio, cash, total_portfolio, ticker_to_sec
 
 def _render_info_box():
     """Boîte de dialogue pour information générale sur le portefeuille."""
-    st.subheader("💬 Notes & Informations")
+    section_heading("Notes & informations", spacing="loose")
     st.markdown("Utilisez cet espace pour noter vos observations, stratégie ou informations de marché.")
 
     if "portfolio_notes" not in st.session_state:
