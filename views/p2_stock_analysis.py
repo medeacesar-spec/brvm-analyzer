@@ -338,299 +338,330 @@ def render():
 
 
 def _render_fundamental(fundamentals, ratios):
-    """Onglet analyse fondamentale : ratios + comparaison secteur + checklist."""
+    """Onglet analyse fondamentale v3 : score breakdown + ratios avec
+    position secteur + trajectoire financiere + structure bilan."""
     from utils.ui_helpers import section_heading
-    section_heading("Ratios calculés", spacing="tight")
 
     sector = fundamentals.get("sector", "")
     benchmarks = get_sector_benchmarks(sector) if sector else {}
 
-    def _seuil(short: str) -> str:
-        """Seuil court : ex '≥ 15% solide' / '≤ 1.5×' / '≥ 3×'. Pas de long détail."""
-        return short
+    # ═══════════════════════════════════════════════════════════════════
+    # Card "Score fondamental" avec breakdown sous-scores + mini barres
+    # ═══════════════════════════════════════════════════════════════════
+    bd = ratios.get("fundamental_breakdown") or {}
+    total = bd.get("total", ratios.get("fundamental_score", 0)) or 0
+    profile = bd.get("profile", "")
+
+    subs = [
+        ("Rentabilité",  bd.get("rentabilite", 0),  15),
+        ("Endettement",  bd.get("endettement", 0),  10),
+        ("Valorisation", bd.get("valorisation", 0), 15),
+        ("Dividendes",   bd.get("dividendes", 0),   10),
+    ]
+
+    def _tone_for(score, max_score):
+        pct = score / max_score if max_score else 0
+        if pct >= 0.66: return "var(--up)"
+        if pct >= 0.40: return "var(--ocre)"
+        return "var(--down)"
+
+    # Grille : 1 col score total + 4 cols sous-scores
+    c_total, c_sub = st.columns([1.6, 4])
+    with c_total:
+        st.markdown(
+            f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
+            f"border-radius:10px;padding:14px 16px;height:100%;'>"
+            f"<div class='label-xs' style='margin-bottom:4px;'>Score fondamental</div>"
+            f"<div style='font-size:28px;font-weight:600;letter-spacing:-0.02em;"
+            f"color:var(--ink);font-variant-numeric:tabular-nums;'>"
+            f"{total:.0f} <span style='color:var(--ink-3);font-size:16px;font-weight:400;'>/ 50</span>"
+            f"</div>"
+            f"<div style='height:4px;background:var(--bg-sunken);border-radius:999px;"
+            f"margin:8px 0 10px 0;overflow:hidden;'>"
+            f"<div style='width:{min(100, total/50*100):.0f}%;height:100%;"
+            f"background:{_tone_for(total, 50)};border-radius:999px;'></div></div>"
+            f"<div style='font-size:12px;color:var(--ink-3);line-height:1.4;'>Profil "
+            f"<b style='color:var(--ink);'>{profile or '—'}</b></div>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+    with c_sub:
+        cells = st.columns(4)
+        for (label, val, maxv), cell in zip(subs, cells):
+            tone = _tone_for(val, maxv)
+            pct = (val / maxv * 100) if maxv else 0
+            with cell:
+                st.markdown(
+                    f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
+                    f"border-radius:10px;padding:14px 16px;height:100%;'>"
+                    f"<div class='label-xs' style='margin-bottom:4px;'>{label}</div>"
+                    f"<div style='font-size:20px;font-weight:600;color:var(--ink);"
+                    f"font-variant-numeric:tabular-nums;'>"
+                    f"{val:.0f} <span style='color:var(--ink-3);font-size:13px;font-weight:400;'>/ {maxv}</span>"
+                    f"</div>"
+                    f"<div style='height:3px;background:var(--bg-sunken);border-radius:999px;"
+                    f"margin-top:10px;overflow:hidden;'>"
+                    f"<div style='width:{pct:.0f}%;height:100%;background:{tone};"
+                    f"border-radius:999px;'></div></div>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Tableau ratios calcules avec "Position vs secteur" visuelle
+    # ═══════════════════════════════════════════════════════════════════
+    section_heading("Ratios calculés", spacing="loose")
 
     def _status_cell(flag: str) -> str:
-        """Statut : dot coloré + mot court (Bon / À risque / Vigilance / N/A)."""
         tone = {"OK": "up", "Vigilance": "warn", "Risque": "down"}.get(flag, "neutral")
-        label = {
-            "OK": "Bon", "Vigilance": "Vigilance",
-            "Risque": "À risque", "—": "N/A",
-        }.get(flag, flag)
+        label = {"OK": "Bon", "Vigilance": "Vigilance",
+                 "Risque": "À risque", "—": "N/A"}.get(flag, flag)
         return f"<span class='dot {tone}'></span>{label}"
 
-    def _sector_cell(ratio_key, value, prefer_low=False) -> str:
-        """Comparaison secteur harmonisée : delta absolu dans la MÊME unité
-        que la valeur affichée. Plus de mix pts / % qui confuse.
+    def _position_bar(ratio_key: str, value, prefer_low: bool) -> str:
+        """Rend une petite barre horizontale avec la position du titre vs
+        min/médiane/max du secteur. Vide si pas de benchmark."""
+        if value is None or not benchmarks:
+            return ""
+        bench = benchmarks.get("sector", {}).get(ratio_key) or benchmarks.get("global", {}).get(ratio_key)
+        if not bench:
+            return ""
+        lo, hi, med = bench["min"], bench["max"], bench["median"]
+        if hi == lo:
+            return ""
+        # clamp position 0-100% dans [min, max]
+        v_clamped = max(lo, min(hi, value))
+        pos = (v_clamped - lo) / (hi - lo) * 100
+        med_pos = (med - lo) / (hi - lo) * 100
+        # Couleur favorable : vert si dans la bonne moitié
+        is_good = (value < med and prefer_low) or (value > med and not prefer_low)
+        fill_color = "var(--up)" if is_good else "var(--down)"
+        return (
+            f"<div style='position:relative;width:100%;height:8px;"
+            f"background:var(--bg-sunken);border-radius:999px;overflow:hidden;'>"
+            # track fill up to value
+            f"<div style='position:absolute;left:0;top:0;width:{pos:.0f}%;height:100%;"
+            f"background:{fill_color};border-radius:999px;opacity:0.85;'></div>"
+            # median marker
+            f"<div style='position:absolute;left:{med_pos:.0f}%;top:-2px;width:2px;"
+            f"height:12px;background:var(--ink-3);'></div>"
+            f"</div>"
+        )
 
-        Exemples :
-          ROE 15.2% vs méd 12.4%  → '+2.8 pts'
-          PER 23.7  vs méd 18.2   → '+5.5'
-          P/B 1.5×  vs méd 1.2×   → '+0.3×'
-          D/E 0.5×  vs méd 0.4×   → '+0.1×'
-        """
+    def _ecart_cell(ratio_key, value, prefer_low) -> str:
+        """Ecart vs sectueur en valeur courte (même unité que la valeur)."""
         cmp = compare_to_sector(ratio_key, value, benchmarks, prefer_low=prefer_low)
         if not cmp or value is None:
             return "<span class='muted'>—</span>"
         med = cmp["median"]
-        diff = cmp["diff"]  # relatif, sert juste pour coloration
-
-        # Unité selon le type de ratio
+        diff = cmp["diff"]
         if ratio_key in ("roe", "net_margin", "dividend_yield", "fcf_margin", "payout_ratio"):
-            # Valeurs en fractions → diff en "points de pourcentage"
             delta = (value - med) * 100
             sign = "+" if delta >= 0 else ""
-            summary = f"{sign}{delta:.1f} pts"
+            summary = f"{sign}{delta:.1f} pts vs méd."
         elif ratio_key in ("per",):
-            # Ratio sans unité → delta absolu (une décimale)
             delta = value - med
             sign = "+" if delta >= 0 else ""
-            summary = f"{sign}{delta:.1f}"
-        elif ratio_key in ("pb", "debt_equity", "interest_coverage", "dividend_cash_coverage"):
-            # Ratios exprimés en "×" → delta absolu avec suffixe ×
-            delta = value - med
-            sign = "+" if delta >= 0 else ""
-            summary = f"{sign}{delta:.2f}×"
+            summary = f"{sign}{delta:.1f} vs méd."
         else:
-            return "<span class='muted'>—</span>"
-
-        # Couleur : vert si favorable, rouge si défavorable, neutre si proche
+            delta = value - med
+            sign = "+" if delta >= 0 else ""
+            summary = f"{sign}{delta:.2f}× vs méd."
         is_good = (diff < -0.05 and prefer_low) or (diff > 0.05 and not prefer_low)
         is_bad = (diff > 0.05 and prefer_low) or (diff < -0.05 and not prefer_low)
         color = "var(--up)" if is_good else "var(--down)" if is_bad else "var(--ink-3)"
-        return f"<span style='color:{color};font-weight:500;'>{summary}</span>"
+        return f"<span style='color:{color};font-weight:500;font-variant-numeric:tabular-nums;'>{summary}</span>"
 
-    # Rangs : (name, value, seuil_court, flag_tuple, sector_cell)
-    # Comparaison secteur appliquée à TOUS les ratios comparables (pas
-    # seulement PER/P/B/ROE/Marge/Yield). EPS/DPS non comparables directement
-    # car dépendent du nombre d'actions émises.
     flags = ratios.get("flags", {})
+    # (name, key, value_fmt, seuil, prefer_low)
     ratio_rows = [
-        ("ROE",              format_ratio(ratios.get("roe")),                 "≥ 15% solide",  flags.get("roe", ("—", "")),                 _sector_cell("roe", ratios.get("roe"), False)),
-        ("Marge nette",      format_ratio(ratios.get("net_margin")),          "≥ 10% bon",     flags.get("net_margin", ("—", "")),          _sector_cell("net_margin", ratios.get("net_margin"), False)),
-        ("Dette/Equity",     format_ratio(ratios.get("debt_equity"), "x"),    "≤ 1.5×",        flags.get("debt_equity", ("—", "")),         _sector_cell("debt_equity", ratios.get("debt_equity"), True)),
-        ("Couverture int.",  format_ratio(ratios.get("interest_coverage"), "x"), "≥ 3×",       flags.get("interest_coverage", ("—", "")),   _sector_cell("interest_coverage", ratios.get("interest_coverage"), False)),
-        ("FCF Margin",       format_ratio(ratios.get("fcf_margin")),          "≥ 5%",          flags.get("fcf_margin", ("—", "")),          _sector_cell("fcf_margin", ratios.get("fcf_margin"), False)),
-        ("EPS",              format_ratio(ratios.get("eps"), "number"),       "—",             ("OK", ""),                                  "<span class='muted'>—</span>"),
-        ("DPS",              format_ratio(ratios.get("dps"), "number"),       "—",             ("OK", ""),                                  "<span class='muted'>—</span>"),
-        ("Dividend Yield",   format_ratio(ratios.get("dividend_yield")),      "≥ 6%",          flags.get("dividend_yield", ("—", "")),      _sector_cell("dividend_yield", ratios.get("dividend_yield"), False)),
-        ("Payout ratio",     format_ratio(ratios.get("payout_ratio")),        "≤ 70%",         flags.get("payout_ratio", ("—", "")),        _sector_cell("payout_ratio", ratios.get("payout_ratio"), True)),
-        ("PER",              format_ratio(ratios.get("per"), "decimal"),      "≤ 15",          flags.get("per", ("—", "")),                 _sector_cell("per", ratios.get("per"), True)),
-        ("P/B",              format_ratio(ratios.get("pb"), "x"),             "< 2×",          flags.get("pb", ("—", "")),                  _sector_cell("pb", ratios.get("pb"), True)),
-        ("Couv. div cash",   format_ratio(ratios.get("dividend_cash_coverage"), "x"), "≥ 1.2×", flags.get("dividend_cash_coverage", ("—", "")), _sector_cell("dividend_cash_coverage", ratios.get("dividend_cash_coverage"), False)),
+        ("Marge nette",    "net_margin",      ratios.get("net_margin"),      "pct",     "≥ 10%",       False),
+        ("Dette/Equity",   "debt_equity",     ratios.get("debt_equity"),     "x",       "≤ 1.5×",      True),
+        ("Dividend Yield", "dividend_yield",  ratios.get("dividend_yield"),  "pct",     "≥ 6%",        False),
+        ("PER",            "per",             ratios.get("per"),             "decimal", "≤ 15",        True),
+        ("Payout ratio",   "payout_ratio",    ratios.get("payout_ratio"),    "pct",     "≤ 70%",       True),
+        ("EPS",            None,              ratios.get("eps"),             "number",  "—",           False),
+        ("DPS",            None,              ratios.get("dps"),             "number",  "—",           False),
+        ("ROE",            "roe",             ratios.get("roe"),             "pct",     "≥ 15%",       False),
+        ("FCF Margin",     "fcf_margin",      ratios.get("fcf_margin"),      "pct",     "≥ 5%",        False),
     ]
 
-    # Rendu en tableau HTML compact (style éditorial v3)
-    # Headers en label-xs (small uppercase), rows avec tabular-nums et ligne
-    # horizontale subtile entre chaque row.
     header_style = (
         "font-size:10.5px;text-transform:uppercase;letter-spacing:0.08em;"
         "color:var(--ink-3);font-weight:500;padding:8px 10px;"
         "border-bottom:1px solid var(--border);background:var(--bg-sunken);"
+        "text-align:left;"
     )
-    cell_style = (
-        "padding:10px;border-bottom:1px solid var(--border);"
-        "font-size:13px;"
-    )
+    cell_style = "padding:9px 10px;border-bottom:1px solid var(--border);font-size:13px;"
+
     rows_html = (
         f"<tr>"
-        f"<th style='{header_style};text-align:left;'>Indicateur</th>"
+        f"<th style='{header_style}'>Indicateur</th>"
         f"<th style='{header_style};text-align:right;'>Valeur</th>"
-        f"<th style='{header_style};text-align:left;'>Seuil</th>"
-        f"<th style='{header_style};text-align:left;'>Statut</th>"
-        f"<th style='{header_style};text-align:left;'>Vs secteur</th>"
+        f"<th style='{header_style}'>Seuil</th>"
+        f"<th style='{header_style}'>Position vs secteur</th>"
+        f"<th style='{header_style}'>Statut</th>"
+        f"<th style='{header_style}'>Écart</th>"
         f"</tr>"
     )
-    for name, value, rule, (flag, _), sector_cell in ratio_rows:
+    for name, key, value, fmt, seuil, prefer_low in ratio_rows:
+        flag = flags.get(key, ("OK", "")) if key else ("OK", "")
+        val_str = format_ratio(value, fmt)
+        bar = _position_bar(key, value, prefer_low) if key else ""
+        bar_html = bar if bar else "<span class='muted'>—</span>"
+        ecart = _ecart_cell(key, value, prefer_low) if key else "<span class='muted'>—</span>"
         rows_html += (
             f"<tr>"
             f"<td style='{cell_style};font-weight:500;'>{name}</td>"
-            f"<td style='{cell_style};text-align:right;font-variant-numeric:tabular-nums;'>{value}</td>"
-            f"<td style='{cell_style};color:var(--ink-3);'>{rule}</td>"
-            f"<td style='{cell_style};'>{_status_cell(flag)}</td>"
-            f"<td style='{cell_style};'>{sector_cell}</td>"
+            f"<td style='{cell_style};text-align:right;font-variant-numeric:tabular-nums;'>{val_str}</td>"
+            f"<td style='{cell_style};color:var(--ink-3);'>{seuil}</td>"
+            f"<td style='{cell_style};min-width:120px;'>{bar_html}</td>"
+            f"<td style='{cell_style};'>{_status_cell(flag[0])}</td>"
+            f"<td style='{cell_style};'>{ecart}</td>"
             f"</tr>"
         )
 
     st.markdown(
         f"<div style='border:1px solid var(--border);border-radius:10px;"
         f"overflow:hidden;background:var(--bg-elev);'>"
-        f"<table style='width:100%;border-collapse:collapse;'>"
-        f"{rows_html}"
-        f"</table></div>",
+        f"<table style='width:100%;border-collapse:collapse;'>{rows_html}</table></div>",
         unsafe_allow_html=True,
     )
 
-    # Sector peer box
-    if benchmarks.get("sector"):
-        peers = benchmarks.get("sector_peers", [])
-        sector_name = benchmarks.get("sector_name", sector)
-        with st.expander(
-            f"Positionnement vs secteur · {sector_name} · {len(peers)} pairs",
-            expanded=False,
-        ):
-            st.caption(
-                "Comparaison aux autres titres du secteur. "
-                "Médiane = valeur centrale, pas la moyenne. "
-                "Pour PER et P/B, une valeur **sous** la médiane signale souvent une opportunité. "
-                "Pour ROE/Yield/Marge, une valeur **au-dessus** est préférée."
-            )
-            peer_rows = []
-            for key, label, fmt, prefer_low in [
-                ("per", "PER", "decimal", True),
-                ("pb", "P/B", "x", True),
-                ("roe", "ROE", "pct", False),
-                ("net_margin", "Marge nette", "pct", False),
-                ("dividend_yield", "Yield", "pct", False),
-            ]:
-                b = benchmarks["sector"].get(key)
-                my_val = ratios.get(key)
-                if not b:
-                    continue
-                peer_rows.append({
-                    "Indicateur": label,
-                    "Ma valeur": format_ratio(my_val, fmt) if my_val is not None else "—",
-                    "Médiane secteur": format_ratio(b["median"], fmt),
-                    "Min secteur": format_ratio(b["min"], fmt),
-                    "Max secteur": format_ratio(b["max"], fmt),
-                    "N": b["count"],
-                })
-            if peer_rows:
-                import pandas as pd
-                st.dataframe(pd.DataFrame(peer_rows), use_container_width=True, hide_index=True)
-
-    # Checklist Value & Dividendes — 2 colonnes, dots colorés
-    checklist = ratios.get("checklist", [])
-    passed = sum(1 for i in checklist if i["passed"] is True)
-    total = len(checklist)
-    st.markdown(
-        f'<div style="font-size:15px;font-weight:600;color:var(--ink);'
-        f'letter-spacing:-0.01em;margin:22px 0 10px 0;">'
-        f'Checklist Value & Dividendes '
-        f'<span style="color:var(--primary);">·</span> '
-        f'<span style="color:var(--primary);font-weight:600;">{passed}/{total}</span> '
-        f'<span style="color:var(--ink-3);font-weight:400;font-size:13px;">validés</span>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
-    _check_fmt = {"PER": "decimal", "Couverture": "x", "Dette": "x"}
-
-    def _check_row(item):
-        fmt = "pct"
-        for key, f in _check_fmt.items():
-            if key in item["label"]:
-                fmt = f
-                break
-        val_str = format_ratio(item["value"], fmt)
-        if item["passed"] is True:
-            tone = "up"
-        elif item["passed"] is False:
-            tone = "down"
-        else:
-            tone = "neutral"
-        # Même pattern que Recommandation : 13px + dot + bold label + muted separator
-        return (
-            f"<div style='padding:3px 0;font-size:13px;'>"
-            f"<span class='dot {tone}'></span>"
-            f"<b>{item['label']}</b> "
-            f"<span class='muted'>·</span> "
-            f"<span style='font-variant-numeric:tabular-nums'>{val_str}</span>"
-            f"</div>"
-        )
-
-    # Split en 2 colonnes
-    half = (len(checklist) + 1) // 2
-    col_a, col_b = st.columns(2)
-    with col_a:
-        st.markdown("".join(_check_row(i) for i in checklist[:half]), unsafe_allow_html=True)
-    with col_b:
-        st.markdown("".join(_check_row(i) for i in checklist[half:]), unsafe_allow_html=True)
-
-    # Historique — même style de titre que les autres sections (section_heading bold 15px)
+    # ═══════════════════════════════════════════════════════════════════
+    # Trajectoire financiere (4 ans) + Structure du bilan (side panel)
+    # ═══════════════════════════════════════════════════════════════════
     fiscal_year = fundamentals.get("fiscal_year")
     if fiscal_year:
         fy = int(fiscal_year)
-        year_labels = [str(fy - 3), str(fy - 2), str(fy - 1), str(fy)]
-        section_heading(f"Historique · {fy-3} → {fy}", spacing="loose")
+        year_labels = [fy - 3, fy - 2, fy - 1, fy]
     else:
-        year_labels = ["N-3", "N-2", "N-1", "N"]
-        section_heading("Historique · N-3 → N", spacing="loose")
+        year_labels = []
 
-    rev_series = [fundamentals.get(f"revenue_{s}") for s in ("n3", "n2", "n1", "n0")]
-    ni_series = [fundamentals.get(f"net_income_{s}") for s in ("n3", "n2", "n1", "n0")]
-    dps_series = [fundamentals.get(f"dps_{s}") for s in ("n3", "n2", "n1", "n0")]
+    col_traj, col_bilan = st.columns([3, 2])
 
-    def _growth_series(values):
-        out = [None]
-        for i in range(1, len(values)):
-            prev, cur = values[i-1], values[i]
-            if prev and cur is not None and prev != 0:
-                out.append((cur - prev) / abs(prev))
-            else:
-                out.append(None)
-        return out
-
-    rev_growth = _growth_series(rev_series)
-    ni_growth = _growth_series(ni_series)
-
-    def _fmt_val_with_growth(val, growth):
-        """Valeur en Md avec la croissance entre parenthèses colorée en dessous.
-        Compact : 2 infos sur une ligne logique, 1 bloc visuel."""
-        if val is None:
-            return "<span class='muted'>—</span>"
-        # Affichage en milliards si >= 1e9, en millions sinon
-        if abs(val) >= 1e9:
-            val_str = f"{val/1e9:,.2f} Md"
-        elif abs(val) >= 1e6:
-            val_str = f"{val/1e6:,.0f} M"
+    with col_traj:
+        if year_labels:
+            section_heading(f"Trajectoire financière · 4 ans", spacing="loose")
         else:
-            val_str = f"{val:,.0f}"
-        growth_html = ""
-        if growth is not None:
-            tone = "var(--up)" if growth >= 0 else "var(--down)"
-            sign = "+" if growth >= 0 else ""
-            growth_html = (
-                f"<div style='font-size:11px;color:{tone};"
-                f"font-variant-numeric:tabular-nums;font-weight:500;margin-top:1px;'>"
-                f"({sign}{growth*100:.1f}%)</div>"
+            section_heading("Trajectoire financière", spacing="loose")
+
+        rev = [fundamentals.get(f"revenue_{s}") for s in ("n3", "n2", "n1", "n0")]
+        ni  = [fundamentals.get(f"net_income_{s}") for s in ("n3", "n2", "n1", "n0")]
+        dps = [fundamentals.get(f"dps_{s}") for s in ("n3", "n2", "n1", "n0")]
+        # BNPA = net_income / shares (uniquement N0 connu)
+        shares = fundamentals.get("shares") or 0
+        bnpa = [(v / shares) if (v and shares) else None for v in ni]
+        # Yield historique : dps / price (approx — on utilise price actuel comme proxy)
+        price_now = fundamentals.get("price") or 0
+        yld = [(d / price_now) if (d and price_now) else None for d in dps]
+
+        def _md(v, unit=""):
+            if v is None or not v:
+                return "—"
+            if unit == "md":
+                return f"{v/1e9:.1f}"
+            if unit == "pct":
+                return f"{v*100:.1f}%"
+            if unit == "int":
+                return f"{v:.0f}"
+            return f"{v:,.0f}"
+
+        header = "font-size:10.5px;text-transform:uppercase;letter-spacing:0.08em;color:var(--ink-3);font-weight:500;padding:7px 10px;text-align:left;"
+        cell = "padding:8px 10px;font-size:13px;border-bottom:1px solid var(--border);"
+        years_hdr = "".join(f"<th style='{header};text-align:right;'>{y}</th>" for y in year_labels) if year_labels else ""
+        rows = [
+            ("CA (Md)", [_md(v, "md") for v in rev]),
+            ("Rés. net (Md)", [_md(v, "md") for v in ni]),
+            ("BNPA", [_md(v, "int") for v in bnpa]),
+            ("DPS", [_md(v, "int") for v in dps]),
+            ("Yield", [_md(v, "pct") for v in yld]),
+        ]
+        inner = ""
+        for label, vals in rows:
+            cells_html = "".join(
+                f"<td style='{cell};text-align:right;font-variant-numeric:tabular-nums;'>{v}</td>"
+                for v in vals
             )
-        return (
-            f"<div>"
-            f"<span style='font-variant-numeric:tabular-nums'>{val_str}</span>"
-            f"{growth_html}"
-            f"</div>"
-        )
+            inner += f"<tr><td style='{cell};font-weight:500;'>{label}</td>{cells_html}</tr>"
 
-    def _fmt_dps(val):
-        if val is None or not val:
-            return "<span class='muted'>—</span>"
-        return f"<span style='font-variant-numeric:tabular-nums'>{val:,.0f}</span>"
-
-    # Header row
-    cols = st.columns([2, 1, 1, 1, 1])
-    cols[0].write("")
-    for col, yr in zip(cols[1:], year_labels):
-        col.markdown(
-            f"<b style='color:var(--ink-2);'>{yr}</b>",
+        st.markdown(
+            f"<div style='border:1px solid var(--border);border-radius:10px;overflow:hidden;"
+            f"background:var(--bg-elev);'><table style='width:100%;border-collapse:collapse;'>"
+            f"<tr><th style='{header};background:var(--bg-sunken);'>Exercice</th>{years_hdr}</tr>"
+            f"{inner}</table></div>",
             unsafe_allow_html=True,
         )
 
-    # CA + croissance CA fusionnés en une ligne
-    cols = st.columns([2, 1, 1, 1, 1])
-    cols[0].markdown("**Chiffre d'affaires**")
-    for col, val, gr in zip(cols[1:], rev_series, rev_growth):
-        col.markdown(_fmt_val_with_growth(val, gr), unsafe_allow_html=True)
+    with col_bilan:
+        section_heading("Structure du bilan", spacing="loose")
+        eq = fundamentals.get("equity") or 0
+        debt = fundamentals.get("total_debt")
+        cap = fundamentals.get("market_cap") or 0
+        float_pct = fundamentals.get("float_pct")
 
-    # RN + croissance RN fusionnés en une ligne
-    cols = st.columns([2, 1, 1, 1, 1])
-    cols[0].markdown("**Résultat net**")
-    for col, val, gr in zip(cols[1:], ni_series, ni_growth):
-        col.markdown(_fmt_val_with_growth(val, gr), unsafe_allow_html=True)
+        def _big(v, unit="md", currency=True):
+            if v is None or not v:
+                return "—"
+            if unit == "md":
+                return f"{v/1e9:,.1f} Md"
+            if unit == "pct":
+                return f"{v:.1f}%"
+            return f"{v:,.0f}"
 
-    # DPS (pas de croissance associée, juste la valeur)
-    cols = st.columns([2, 1, 1, 1, 1])
-    cols[0].markdown("**DPS**")
-    for col, val in zip(cols[1:], dps_series):
-        col.markdown(_fmt_dps(val), unsafe_allow_html=True)
+        items = [
+            ("Capitaux propres", _big(eq, "md")),
+            ("Dette financière", _big(debt, "md") if debt else "0 FCFA"),
+            ("Nb titres", f"{shares/1e6:,.1f} M" if shares else "—"),
+            ("Flottant", _big(float_pct, "pct") if float_pct else "—"),
+        ]
+        rows_html = ""
+        for key, val in items:
+            rows_html += (
+                f"<div style='display:flex;justify-content:space-between;padding:10px 14px;"
+                f"border-bottom:1px solid var(--border);font-size:13px;'>"
+                f"<span style='color:var(--ink-2);'>{key}</span>"
+                f"<span style='font-weight:500;font-variant-numeric:tabular-nums;color:var(--ink);'>{val}</span>"
+                f"</div>"
+            )
+        st.markdown(
+            f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
+            f"border-radius:10px;overflow:hidden;'>{rows_html}</div>",
+            unsafe_allow_html=True,
+        )
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Lecture synthetique (narratif)
+    # ═══════════════════════════════════════════════════════════════════
+    yield_val = ratios.get("dividend_yield") or 0
+    per = ratios.get("per") or 0
+    payout = ratios.get("payout_ratio") or 0
+    margin = ratios.get("net_margin") or 0
+
+    phrases = []
+    if margin >= 0.10 and yield_val >= 0.05:
+        phrases.append("Société **génératrice de cash** et rémunératrice")
+    elif margin >= 0.10:
+        phrases.append("Société **rentable**")
+    if debt is None or not debt:
+        phrases.append("**sans dette**")
+    elif ratios.get("debt_equity") and ratios["debt_equity"] <= 0.5:
+        phrases.append("**peu endettée**")
+    if per and per > 20:
+        phrases.append(f"valorisation tendue (**PER {per:.1f}**)")
+    if payout and payout > 1.0:
+        phrases.append(f"**payout > 100%** fragilisent la soutenabilité du dividende à rythme actuel")
+
+    if phrases:
+        narrative = ". ".join(phrases[:3]) + "."
+        st.markdown(
+            f"<div style='background:var(--bg-sunken);border:1px solid var(--border);"
+            f"border-radius:10px;padding:14px 16px;margin-top:18px;'>"
+            f"<div class='label-xs' style='margin-bottom:6px;'>Lecture synthétique</div>"
+            f"<div style='font-size:13px;line-height:1.5;color:var(--ink-2);'>{narrative}</div>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
 
 
 def _render_technical(ticker, price_df, result):

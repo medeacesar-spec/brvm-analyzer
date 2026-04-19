@@ -282,7 +282,9 @@ def compute_ratios(data: dict) -> dict:
     ratios["checklist"] = _compute_checklist(ratios, is_bank)
 
     # --- Score fondamental ---
-    ratios["fundamental_score"] = _compute_fundamental_score(ratios, is_bank)
+    _breakdown = _compute_fundamental_breakdown(ratios, is_bank)
+    ratios["fundamental_score"] = _breakdown["total"]
+    ratios["fundamental_breakdown"] = _breakdown
 
     return ratios
 
@@ -470,112 +472,121 @@ def _compute_checklist(ratios: dict, is_bank: bool) -> list:
 
 
 def _compute_fundamental_score(ratios: dict, is_bank: bool) -> float:
-    """
-    Calcule un score fondamental sur 50 points (la moitié du score hybride).
-    Pondération :
-    - ROE: 10 pts
-    - Dividend Yield: 10 pts
-    - PER: 8 pts
-    - Payout ratio: 7 pts
-    - Marge nette: 5 pts
-    - Dette/Equity: 5 pts (hors banques)
-    - Couverture dividende: 5 pts
-    """
-    score = 0
+    """Calcule score fondamental total /50. Wrapper autour de _compute_fundamental_breakdown."""
+    bd = _compute_fundamental_breakdown(ratios, is_bank)
+    return bd["total"]
 
-    # ROE (10 pts)
+
+def _compute_fundamental_breakdown(ratios: dict, is_bank: bool) -> dict:
+    """Décompose le score fondamental en 4 sous-scores thématiques
+    (pour l'affichage type "card breakdown" du design v3) :
+
+    - Rentabilité (/15) : ROE (10) + Marge nette (5)
+    - Endettement (/10) : Dette/Equity (5) + Couverture intérêts (5)
+    - Valorisation (/15) : PER (8) + P/B (7)
+    - Dividendes (/10) : Yield (10)  (payout + couverture dans "Rentabilité dividende"
+                                      absorbé dans les points forts / vigilance)
+
+    Retourne {rentabilite, endettement, valorisation, dividendes, total, profile}.
+    """
+    # --- Rentabilité (15 pts) ---
+    rent = 0
     roe = ratios.get("roe")
     if roe is not None:
-        if roe >= 0.25:
-            score += 10
-        elif roe >= 0.20:
-            score += 8
-        elif roe >= 0.15:
-            score += 6
-        elif roe >= 0.10:
-            score += 3
-        else:
-            score += 1
-
-    # Dividend Yield (10 pts)
-    dy = ratios.get("dividend_yield")
-    if dy is not None:
-        if dy >= 0.08:
-            score += 10
-        elif dy >= 0.06:
-            score += 8
-        elif dy >= 0.04:
-            score += 5
-        elif dy >= 0.02:
-            score += 2
-
-    # PER (8 pts)
-    per = ratios.get("per")
-    if per is not None and per > 0:
-        if per < 8:
-            score += 8
-        elif per < 10:
-            score += 7
-        elif per <= 12:
-            score += 5
-        elif per <= 15:
-            score += 3
-        else:
-            score += 1
-
-    # Payout ratio (7 pts)
-    pr = ratios.get("payout_ratio")
-    if pr is not None:
-        if 0.40 <= pr <= 0.60:
-            score += 7
-        elif 0.30 <= pr <= 0.70:
-            score += 5
-        elif pr <= 1.0:
-            score += 2
-
-    # Marge nette (5 pts)
+        if roe >= 0.25: rent += 10
+        elif roe >= 0.20: rent += 8
+        elif roe >= 0.15: rent += 6
+        elif roe >= 0.10: rent += 3
+        else: rent += 1
     nm = ratios.get("net_margin")
     if nm is not None:
-        if nm >= 0.20:
-            score += 5
-        elif nm >= 0.15:
-            score += 4
-        elif nm >= 0.10:
-            score += 3
-        elif nm >= 0.05:
-            score += 1
+        if nm >= 0.20: rent += 5
+        elif nm >= 0.15: rent += 4
+        elif nm >= 0.10: rent += 3
+        elif nm >= 0.05: rent += 1
 
-    # Dette/Equity (5 pts) - hors banques. None = donnée absente → score neutre
-    if not is_bank:
+    # --- Endettement (10 pts) ---
+    endet = 0
+    if is_bank:
+        endet = 6  # N/A → neutre haut
+    else:
         de = ratios.get("debt_equity")
-        if de is None:
-            score += 2  # neutre si donnée manquante
-        elif de <= 0.3:
-            score += 5
-        elif de <= 0.5:
-            score += 4
-        elif de <= 1.0:
-            score += 3
-        elif de <= 1.5:
-            score += 1
-    else:
-        score += 3  # Score neutre pour les banques
+        if de is None: endet += 2
+        elif de <= 0.3: endet += 5
+        elif de <= 0.5: endet += 4
+        elif de <= 1.0: endet += 3
+        elif de <= 1.5: endet += 1
+        ic = ratios.get("interest_coverage")
+        if ic is None: endet += 2
+        elif ic >= 5: endet += 5
+        elif ic >= 3: endet += 4
+        elif ic >= 2: endet += 2
+        elif ic >= 1: endet += 1
 
-    # Couverture dividende (5 pts)
-    dcc = ratios.get("dividend_cash_coverage")
-    if dcc is not None:
-        if dcc >= 2.0:
-            score += 5
-        elif dcc >= 1.5:
-            score += 4
-        elif dcc >= 1.2:
-            score += 3
-        elif dcc >= 1.0:
-            score += 1
-    else:
-        score += 2  # Score neutre si pas de données
+    # --- Valorisation (15 pts) ---
+    valo = 0
+    per = ratios.get("per")
+    if per is not None and per > 0:
+        if per < 8: valo += 8
+        elif per < 10: valo += 7
+        elif per <= 12: valo += 5
+        elif per <= 15: valo += 3
+        else: valo += 1
+    pb = ratios.get("pb")
+    if pb is not None and pb > 0:
+        if pb < 1: valo += 7
+        elif pb < 1.5: valo += 5
+        elif pb < 2: valo += 3
+        else: valo += 1
+    elif pb is None:
+        valo += 3  # neutre si pas de donnée
 
-    return score
+    # --- Dividendes (10 pts) ---
+    div = 0
+    dy = ratios.get("dividend_yield")
+    if dy is not None:
+        if dy >= 0.08: div += 10
+        elif dy >= 0.06: div += 8
+        elif dy >= 0.04: div += 5
+        elif dy >= 0.02: div += 2
+    # Bonus -2 si payout > 100% (non soutenable), +0 sinon
+    pr = ratios.get("payout_ratio")
+    if pr is not None and pr > 1.0:
+        div = max(0, div - 2)
+
+    total = rent + endet + valo + div
+
+    # --- Profil narratif (court : "Moyen - valorisation tendue, distribution attractive") ---
+    fragments = []
+    if rent >= 11: fragments.append("rentabilité solide")
+    elif rent <= 5: fragments.append("rentabilité faible")
+    if endet >= 7: fragments.append("endettement maîtrisé")
+    elif endet <= 3: fragments.append("endettement élevé")
+    if valo >= 11: fragments.append("valorisation attractive")
+    elif valo <= 4: fragments.append("valorisation tendue")
+    if div >= 7: fragments.append("distribution attractive")
+    elif div <= 3: fragments.append("distribution faible")
+
+    if total >= 38:
+        quality = "Excellent"
+    elif total >= 28:
+        quality = "Bon"
+    elif total >= 18:
+        quality = "Moyen"
+    else:
+        quality = "Faible"
+
+    profile = quality + (" — " + ", ".join(fragments[:2]) if fragments else "")
+
+    return {
+        "rentabilite": rent,
+        "endettement": endet,
+        "valorisation": valo,
+        "dividendes": div,
+        "total": total,
+        "profile": profile,
+        "quality": quality,
+    }
 
 
 def format_ratio(value, fmt: str = "pct") -> str:
