@@ -299,7 +299,7 @@ def render():
         )
 
     # Tabs — labels épurés sans emoji
-    tab1, tab2, tab3, tab4 = st.tabs(["Fondamental", "Technique", "Recommandation", "Profil"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Fondamentale", "Technique", "Recommandation", "Profil"])
 
     with tab1:
         _render_fundamental(fundamentals, ratios)
@@ -359,31 +359,39 @@ def _render_fundamental(fundamentals, ratios):
         return f"<span class='dot {tone}'></span>{label}"
 
     def _sector_cell(ratio_key, value, prefer_low=False) -> str:
-        """Comparaison secteur courte : '+10.6 pts vs méd.' / 'au-dessus' / '—'."""
+        """Comparaison secteur harmonisée : delta absolu dans la MÊME unité
+        que la valeur affichée. Plus de mix pts / % qui confuse.
+
+        Exemples :
+          ROE 15.2% vs méd 12.4%  → '+2.8 pts'
+          PER 23.7  vs méd 18.2   → '+5.5'
+          P/B 1.5×  vs méd 1.2×   → '+0.3×'
+          D/E 0.5×  vs méd 0.4×   → '+0.1×'
+        """
         cmp = compare_to_sector(ratio_key, value, benchmarks, prefer_low=prefer_low)
-        if not cmp:
+        if not cmp or value is None:
             return "<span class='muted'>—</span>"
-        diff = cmp["diff"]
-        # Résumé court : pts pour les %, x pour les ratios, sinon "au-dessus/en-dessous"
+        med = cmp["median"]
+        diff = cmp["diff"]  # relatif, sert juste pour coloration
+
+        # Unité selon le type de ratio
         if ratio_key in ("roe", "net_margin", "dividend_yield", "fcf_margin", "payout_ratio"):
-            # diff est en relatif à la médiane, on convertit en pts absolus
-            med = cmp["median"]
-            if med is not None:
-                pts = (value - med) * 100 if (value is not None and med is not None) else 0
-                sign = "+" if pts >= 0 else ""
-                summary = f"{sign}{pts:.1f} pts vs méd."
-            else:
-                summary = "—"
-        elif ratio_key in ("per", "pb"):
-            med = cmp["median"]
-            if med is not None and value is not None:
-                rel = (value - med) / abs(med) * 100
-                sign = "+" if rel >= 0 else ""
-                summary = f"{sign}{rel:.0f}% vs méd."
-            else:
-                summary = "—"
+            # Valeurs en fractions → diff en "points de pourcentage"
+            delta = (value - med) * 100
+            sign = "+" if delta >= 0 else ""
+            summary = f"{sign}{delta:.1f} pts"
+        elif ratio_key in ("per",):
+            # Ratio sans unité → delta absolu (une décimale)
+            delta = value - med
+            sign = "+" if delta >= 0 else ""
+            summary = f"{sign}{delta:.1f}"
+        elif ratio_key in ("pb", "debt_equity", "interest_coverage", "dividend_cash_coverage"):
+            # Ratios exprimés en "×" → delta absolu avec suffixe ×
+            delta = value - med
+            sign = "+" if delta >= 0 else ""
+            summary = f"{sign}{delta:.2f}×"
         else:
-            summary = "au-dessus" if diff > 0.05 else "au-dessous" if diff < -0.05 else "proche méd."
+            return "<span class='muted'>—</span>"
 
         # Couleur : vert si favorable, rouge si défavorable, neutre si proche
         is_good = (diff < -0.05 and prefer_low) or (diff > 0.05 and not prefer_low)
@@ -391,21 +399,24 @@ def _render_fundamental(fundamentals, ratios):
         color = "var(--up)" if is_good else "var(--down)" if is_bad else "var(--ink-3)"
         return f"<span style='color:{color};font-weight:500;'>{summary}</span>"
 
-    # Rangs : (name, value, seuil_court, flag_tuple, sector_cell_fn_args)
+    # Rangs : (name, value, seuil_court, flag_tuple, sector_cell)
+    # Comparaison secteur appliquée à TOUS les ratios comparables (pas
+    # seulement PER/P/B/ROE/Marge/Yield). EPS/DPS non comparables directement
+    # car dépendent du nombre d'actions émises.
     flags = ratios.get("flags", {})
     ratio_rows = [
-        ("ROE",              format_ratio(ratios.get("roe")),            "≥ 15% solide",   flags.get("roe", ("—", "")),                 _sector_cell("roe", ratios.get("roe"), False)),
-        ("Marge nette",      format_ratio(ratios.get("net_margin")),     "≥ 10% bon",      flags.get("net_margin", ("—", "")),          _sector_cell("net_margin", ratios.get("net_margin"), False)),
-        ("Dette/Equity",     format_ratio(ratios.get("debt_equity"), "x"), "≤ 1.5×",       flags.get("debt_equity", ("—", "")),         "<span class='muted'>—</span>"),
-        ("Couverture int.",  format_ratio(ratios.get("interest_coverage"), "x"), "≥ 3×",   flags.get("interest_coverage", ("—", "")),   "<span class='muted'>—</span>"),
-        ("FCF Margin",       format_ratio(ratios.get("fcf_margin")),     "≥ 5%",           flags.get("fcf_margin", ("—", "")),          "<span class='muted'>—</span>"),
-        ("EPS",              format_ratio(ratios.get("eps"), "number"),  "—",              ("OK", ""),                                  "<span class='muted'>—</span>"),
-        ("DPS",              format_ratio(ratios.get("dps"), "number"),  "—",              ("OK", ""),                                  "<span class='muted'>—</span>"),
-        ("Dividend Yield",   format_ratio(ratios.get("dividend_yield")), "≥ 6%",           flags.get("dividend_yield", ("—", "")),      _sector_cell("dividend_yield", ratios.get("dividend_yield"), False)),
-        ("Payout ratio",     format_ratio(ratios.get("payout_ratio")),   "≤ 70%",          flags.get("payout_ratio", ("—", "")),        "<span class='muted'>—</span>"),
-        ("PER",              format_ratio(ratios.get("per"), "decimal"), "≤ 15",           flags.get("per", ("—", "")),                 _sector_cell("per", ratios.get("per"), True)),
-        ("P/B",              format_ratio(ratios.get("pb"), "x"),        "< 2×",           flags.get("pb", ("—", "")),                  _sector_cell("pb", ratios.get("pb"), True)),
-        ("Couv. div cash",   format_ratio(ratios.get("dividend_cash_coverage"), "x"), "≥ 1.2×", flags.get("dividend_cash_coverage", ("—", "")), "<span class='muted'>—</span>"),
+        ("ROE",              format_ratio(ratios.get("roe")),                 "≥ 15% solide",  flags.get("roe", ("—", "")),                 _sector_cell("roe", ratios.get("roe"), False)),
+        ("Marge nette",      format_ratio(ratios.get("net_margin")),          "≥ 10% bon",     flags.get("net_margin", ("—", "")),          _sector_cell("net_margin", ratios.get("net_margin"), False)),
+        ("Dette/Equity",     format_ratio(ratios.get("debt_equity"), "x"),    "≤ 1.5×",        flags.get("debt_equity", ("—", "")),         _sector_cell("debt_equity", ratios.get("debt_equity"), True)),
+        ("Couverture int.",  format_ratio(ratios.get("interest_coverage"), "x"), "≥ 3×",       flags.get("interest_coverage", ("—", "")),   _sector_cell("interest_coverage", ratios.get("interest_coverage"), False)),
+        ("FCF Margin",       format_ratio(ratios.get("fcf_margin")),          "≥ 5%",          flags.get("fcf_margin", ("—", "")),          _sector_cell("fcf_margin", ratios.get("fcf_margin"), False)),
+        ("EPS",              format_ratio(ratios.get("eps"), "number"),       "—",             ("OK", ""),                                  "<span class='muted'>—</span>"),
+        ("DPS",              format_ratio(ratios.get("dps"), "number"),       "—",             ("OK", ""),                                  "<span class='muted'>—</span>"),
+        ("Dividend Yield",   format_ratio(ratios.get("dividend_yield")),      "≥ 6%",          flags.get("dividend_yield", ("—", "")),      _sector_cell("dividend_yield", ratios.get("dividend_yield"), False)),
+        ("Payout ratio",     format_ratio(ratios.get("payout_ratio")),        "≤ 70%",         flags.get("payout_ratio", ("—", "")),        _sector_cell("payout_ratio", ratios.get("payout_ratio"), True)),
+        ("PER",              format_ratio(ratios.get("per"), "decimal"),      "≤ 15",          flags.get("per", ("—", "")),                 _sector_cell("per", ratios.get("per"), True)),
+        ("P/B",              format_ratio(ratios.get("pb"), "x"),             "< 2×",          flags.get("pb", ("—", "")),                  _sector_cell("pb", ratios.get("pb"), True)),
+        ("Couv. div cash",   format_ratio(ratios.get("dividend_cash_coverage"), "x"), "≥ 1.2×", flags.get("dividend_cash_coverage", ("—", "")), _sector_cell("dividend_cash_coverage", ratios.get("dividend_cash_coverage"), False)),
     ]
 
     # Rendu en tableau HTML compact (style éditorial v3)

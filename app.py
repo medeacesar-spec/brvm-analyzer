@@ -580,10 +580,10 @@ except Exception:
 # Widget authentification (connexion Google OAuth ou mode dev)
 render_auth_widget()
 
-# Espace avant la liste de navigation (pas de titre "Navigation" — la liste
-# se comprend d'elle-même).
+# Titre de section Navigation — bold regular (même style que les titres de section)
 st.sidebar.markdown(
-    "<div style='margin-top:14px;'></div>",
+    "<div style='font-size:14px;font-weight:600;color:var(--ink);"
+    "letter-spacing:-0.01em;margin:18px 0 6px 2px;'>Navigation</div>",
     unsafe_allow_html=True,
 )
 

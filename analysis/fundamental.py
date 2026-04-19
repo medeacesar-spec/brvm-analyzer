@@ -57,7 +57,15 @@ def get_sector_benchmarks(sector: str = None) -> dict:
 
     def _stats(subdf):
         out = {}
-        for col in ["per", "pb", "roe", "net_margin", "dividend_yield"]:
+        # Élargi : tous les ratios comparables (PER/PB, ROE, Marge, Yield,
+        # Payout, FCF Margin, D/E, Couverture int., Couv. div cash)
+        for col in [
+            "per", "pb", "roe", "net_margin", "dividend_yield",
+            "payout_ratio", "fcf_margin", "debt_equity",
+            "interest_coverage", "dividend_cash_coverage",
+        ]:
+            if col not in subdf.columns:
+                continue
             vals = subdf[col].dropna()
             if len(vals) >= 2:
                 out[col] = {
