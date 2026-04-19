@@ -348,7 +348,15 @@ def _render_fundamental(fundamentals, ratios):
     # ═══════════════════════════════════════════════════════════════════
     # Card "Score fondamental" avec breakdown sous-scores + mini barres
     # ═══════════════════════════════════════════════════════════════════
-    bd = ratios.get("fundamental_breakdown") or {}
+    # Si le breakdown n'est pas dans ratios (vieux result en cache session
+    # ou code ancien), on le recalcule à la volée pour ne pas afficher des 0.
+    bd = ratios.get("fundamental_breakdown")
+    if not bd:
+        from analysis.fundamental import _compute_fundamental_breakdown
+        _sector = (fundamentals.get("sector") or "").lower()
+        _is_bank = "banque" in _sector or "bank" in _sector
+        bd = _compute_fundamental_breakdown(ratios, _is_bank)
+        ratios["fundamental_breakdown"] = bd  # cache dans le dict pour réutilisation
     total = bd.get("total", ratios.get("fundamental_score", 0)) or 0
     profile = bd.get("profile", "")
 
