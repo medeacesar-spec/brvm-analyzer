@@ -973,10 +973,25 @@ def get_market_data(ticker: str = None) -> pd.DataFrame:
     return df
 
 
+def _maybe_cache_data(ttl: int = 300):
+    """Décorateur qui utilise st.cache_data si Streamlit est dispo, sinon no-op."""
+    try:
+        import streamlit as _st
+        return _st.cache_data(ttl=ttl, show_spinner=False)
+    except Exception:
+        def _no_op(fn):
+            return fn
+        return _no_op
+
+
+@_maybe_cache_data(ttl=300)
 def get_all_stocks_for_analysis() -> pd.DataFrame:
     """
     Fusionne market_data (auto-scrape) + fundamentals (Excel/manuel).
     Priorite aux donnees fondamentales quand disponibles.
+
+    Résultat mis en cache 5 min (st.cache_data) pour éviter de re-requêter
+    Supabase à chaque navigation de page.
     """
     conn = get_connection()
     best_year = _best_year_subquery()
@@ -1037,46 +1052,57 @@ def get_all_stocks_for_analysis() -> pd.DataFrame:
     # sur Postgres si une colonne a été ajoutée après la migration).
     _existing_cols = set(_table_columns(conn, "fundamentals"))
     _bs_available = tuple(f for f in BS_FIELDS if f in _existing_cols)
+
     if not df.empty:
+        # ── Optim : éviter N+1 sur Postgres/Supabase. On charge TOUT l'historique
+        # fundamentals en une seule requête, puis on fait le fallback en mémoire.
+        _select_cols = ", ".join(["ticker", "fiscal_year", "revenue", "net_income", "dps"]
+                                  + list(_bs_available))
+        try:
+            full_fund = read_sql_df(
+                f"SELECT {_select_cols} FROM fundamentals ORDER BY ticker, fiscal_year DESC"
+            )
+        except Exception:
+            full_fund = pd.DataFrame()
+
+        # Index par ticker → liste de rows triées DESC par année
+        fund_by_ticker = {}
+        if not full_fund.empty:
+            for tkr, grp in full_fund.groupby("ticker"):
+                fund_by_ticker[tkr] = grp.sort_values("fiscal_year", ascending=False)
+
         for i, row in df.iterrows():
             ticker = row["ticker"]
             ref_year = row.get("fiscal_year")
             if not ticker or not ref_year:
                 continue
-            # Fallback bilan/cashflow
+            sub = fund_by_ticker.get(ticker)
+            if sub is None or sub.empty:
+                continue
+
+            # Fallback bilan/cashflow : 1ère année ≤ ref_year avec valeur non-nulle
+            sub_ref = sub[sub["fiscal_year"] <= ref_year]
             missing = [f for f in _bs_available if pd.isna(row.get(f)) or row.get(f) is None]
             for fld in missing:
-                try:
-                    proxy = conn.execute(
-                        f"""SELECT {fld}, fiscal_year FROM fundamentals
-                           WHERE ticker = ? AND {fld} IS NOT NULL AND {fld} != 0
-                           AND fiscal_year <= ?
-                           ORDER BY fiscal_year DESC LIMIT 1""",
-                        (ticker, ref_year),
-                    ).fetchone()
-                except Exception:
-                    proxy = None
-                if proxy:
-                    df.at[i, fld] = proxy[0]
+                if fld not in sub_ref.columns:
+                    continue
+                non_null = sub_ref[sub_ref[fld].notna() & (sub_ref[fld] != 0)]
+                if not non_null.empty:
+                    df.at[i, fld] = non_null.iloc[0][fld]
 
-            # Recalcule historique N-3..N0 à partir des 4 années les plus récentes
-            hist_rows = conn.execute(
-                """SELECT fiscal_year, revenue, net_income, dps FROM fundamentals
-                   WHERE ticker = ?
-                   AND (revenue IS NOT NULL AND revenue != 0
-                        OR net_income IS NOT NULL AND net_income != 0)
-                   AND fiscal_year <= ?
-                   ORDER BY fiscal_year DESC LIMIT 4""",
-                (ticker, ref_year),
-            ).fetchall()
-            for idx, hr in enumerate(hist_rows):
+            # Historique N-3..N0 : 4 années les plus récentes avec revenue/net_income
+            hist = sub_ref[
+                (sub_ref["revenue"].notna() & (sub_ref["revenue"] != 0))
+                | (sub_ref["net_income"].notna() & (sub_ref["net_income"] != 0))
+            ].head(4)
+            for idx, (_, hr) in enumerate(hist.iterrows()):
                 suf = HIST_SUFFIXES[idx]
-                if hr[1]:  # revenue
-                    df.at[i, f"revenue_{suf}"] = hr[1]
-                if hr[2]:  # net_income
-                    df.at[i, f"net_income_{suf}"] = hr[2]
-                if hr[3]:  # dps
-                    df.at[i, f"dps_{suf}"] = hr[3]
+                if pd.notna(hr.get("revenue")) and hr.get("revenue"):
+                    df.at[i, f"revenue_{suf}"] = hr["revenue"]
+                if pd.notna(hr.get("net_income")) and hr.get("net_income"):
+                    df.at[i, f"net_income_{suf}"] = hr["net_income"]
+                if pd.notna(hr.get("dps")) and hr.get("dps"):
+                    df.at[i, f"dps_{suf}"] = hr["dps"]
 
     conn.close()
     return df
