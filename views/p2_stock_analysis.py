@@ -139,7 +139,8 @@ def render():
     _fund_sig = _h.md5(
         str(sorted((k, str(v)[:30]) for k, v in fundamentals.items())).encode()
     ).hexdigest()[:8]
-    _score_key = f"score_{selected_ticker}_{_pdf_sig}_{_fund_sig}"
+    # v3 dans la clé = invalide les caches sessions des anciens algos
+    _score_key = f"score_v3_{selected_ticker}_{_pdf_sig}_{_fund_sig}"
 
     if _score_key in st.session_state:
         result = st.session_state[_score_key]
