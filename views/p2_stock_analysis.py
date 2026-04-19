@@ -521,8 +521,9 @@ def _render_fundamental(fundamentals, ratios):
             tone = "down"
         else:
             tone = "neutral"
+        # Même pattern que Recommandation : 13px + dot + bold label + muted separator
         return (
-            f"<div style='padding:5px 0;'>"
+            f"<div style='padding:3px 0;font-size:13px;'>"
             f"<span class='dot {tone}'></span>"
             f"<b>{item['label']}</b> "
             f"<span class='muted'>·</span> "
@@ -538,15 +539,12 @@ def _render_fundamental(fundamentals, ratios):
     with col_b:
         st.markdown("".join(_check_row(i) for i in checklist[half:]), unsafe_allow_html=True)
 
-    # Historique — pas de divider, hiérarchie via le h3 serré
+    # Historique — même style de titre que les autres sections (section_heading bold 15px)
     fiscal_year = fundamentals.get("fiscal_year")
     if fiscal_year:
         fy = int(fiscal_year)
         year_labels = [str(fy - 3), str(fy - 2), str(fy - 1), str(fy)]
-        st.markdown(
-            f'<div class="label-xs" style="margin-top:20px;">Historique · {fy-3} → {fy}</div>',
-            unsafe_allow_html=True,
-        )
+        section_heading(f"Historique · {fy-3} → {fy}", spacing="loose")
     else:
         year_labels = ["N-3", "N-2", "N-1", "N"]
         section_heading("Historique · N-3 → N", spacing="loose")
