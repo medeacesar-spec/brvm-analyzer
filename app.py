@@ -31,9 +31,19 @@ st.set_page_config(
 # Le fichier style.css vit à la racine du projet (voir README
 # design/streamlit_theme/). Les couleurs de base sont aussi dans
 # .streamlit/config.toml pour que Streamlit les utilise nativement.
+#
+# ATTENTION : ne PAS utiliser f"<style>{css}</style>" — Streamlit peut
+# rendre le contenu comme markdown si la CSS contient des séquences
+# ambigües ("====", "# heading", etc. dans les commentaires). On
+# concatène en string brute pour garantir que le <style> reste une
+# balise HTML à la racine du bloc.
 _css_path = Path(__file__).parent / "style.css"
 if _css_path.exists():
-    st.markdown(f"<style>{_css_path.read_text()}</style>", unsafe_allow_html=True)
+    _css_content = _css_path.read_text()
+    st.markdown(
+        "<style>\n" + _css_content + "\n</style>",
+        unsafe_allow_html=True,
+    )
 
 
 # ─── AUTO-SYNC AU DEMARRAGE ───

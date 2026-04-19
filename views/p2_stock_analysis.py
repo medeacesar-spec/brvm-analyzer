@@ -677,8 +677,12 @@ def _render_recommendation(result, fundamentals):
     with col_g3:
         st.plotly_chart(gauge_chart(result["hybrid_score"], 100, "Score Hybride"), use_container_width=True)
 
-    # Verdict
-    st.markdown(f"### {stars_display(reco['stars'])} <span style='color:{reco['verdict_color']}'>{reco['verdict']}</span>", unsafe_allow_html=True)
+    # Verdict — tag kit design (couleurs selon up/ocre/down)
+    st.markdown(
+        f"### {stars_display(reco['stars'])} "
+        + _tag_html(reco['verdict'], _verdict_tone(reco['verdict'])),
+        unsafe_allow_html=True,
+    )
 
     # Points forts / vigilance
     col_s, col_w = st.columns(2)

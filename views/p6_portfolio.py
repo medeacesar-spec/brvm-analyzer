@@ -489,14 +489,15 @@ def _render_position_recommendations(portfolio, total_value, cash):
     with col_reinforce:
         st.markdown("#### 🟢 À renforcer (détenus)")
         if reinforce:
+            from utils.ui_helpers import tag as _tag, ticker as _tkr, delta as _delta
             for s in reinforce[:5]:
-                tag = "ACHAT FORT" if s["verdict"] == "ACHAT FORT CONFIRMÉ" else "ACHAT"
+                label = "ACHAT FORT" if s["verdict"] == "ACHAT FORT CONFIRMÉ" else "ACHAT"
                 col_info, col_btn = st.columns([5, 1])
                 with col_info:
                     st.markdown(
-                        f"<b style='color:#28a745'>{tag}</b> — "
-                        f"{s['name']} ({s['ticker']})<br>"
-                        f"<small>Poids actuel {s['weight']:.1f}% · P&L {s['pnl_pct']:+.1f}% · "
+                        f"{_tag(label, 'up')} {s['name']} {_tkr(s['ticker'])}<br>"
+                        f"<small class='muted'>Poids actuel {s['weight']:.1f}% · "
+                        f"P&L {_delta(s['pnl_pct'], with_arrow=False)} · "
                         f"Confiance {s['confidence']}%</small>",
                         unsafe_allow_html=True,
                     )
@@ -514,15 +515,17 @@ def _render_position_recommendations(portfolio, total_value, cash):
     with col_new:
         st.markdown("#### ✨ Nouvelles opportunités")
         if new_buys:
+            from utils.ui_helpers import tag as _tag, ticker as _tkr
             for s in new_buys[:5]:
-                tag = "ACHAT FORT" if s["verdict"] == "ACHAT FORT CONFIRMÉ" else "ACHAT"
+                label = "ACHAT FORT" if s["verdict"] == "ACHAT FORT CONFIRMÉ" else "ACHAT"
+                yield_pct = (s['dps']/s['price']*100) if s['price'] else 0
                 col_info, col_btn = st.columns([5, 1])
                 with col_info:
                     st.markdown(
-                        f"<b style='color:#28a745'>{tag}</b> — "
-                        f"{s['name']} ({s['ticker']})<br>"
-                        f"<small>Prix {s['price']:,.0f} · Yield {(s['dps']/s['price']*100) if s['price'] else 0:.1f}% · "
-                        f"Confiance {s['confidence']}%</small>",
+                        f"{_tag(label, 'up')} {s['name']} {_tkr(s['ticker'])}<br>"
+                        f"<small class='muted'>Prix "
+                        f"<span style='font-variant-numeric:tabular-nums'>{s['price']:,.0f}</span> · "
+                        f"Yield {yield_pct:.1f}% · Confiance {s['confidence']}%</small>",
                         unsafe_allow_html=True,
                     )
                     if s["signals_top"]:

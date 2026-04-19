@@ -1,8 +1,4 @@
-/* ============================================================
-   BRVM Analyzer — Streamlit theme
-   À injecter via st.markdown(f"<style>{open('style.css').read()}</style>", unsafe_allow_html=True)
-   ou via .streamlit/config.toml pour les couleurs de base.
-   ============================================================ */
+/* BRVM Analyzer — Streamlit theme v2 (Africain moderne) */
 
 :root {
   /* Neutres chauds */

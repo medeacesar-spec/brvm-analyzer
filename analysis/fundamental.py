@@ -99,28 +99,32 @@ def compare_to_sector(ratio_name: str, value: float, benchmarks: dict,
         return None
     diff = (value - median) / abs(median)
 
+    # Couleurs : design tokens v2 (terracotta/ocre/deep-green)
+    # - var(--up) = vert profond (meilleur que médiane)
+    # - var(--ocre) = ocre (proche médiane / attention)
+    # - var(--down) = rouge terre (moins bon que médiane)
     if prefer_low:
         if diff <= -0.20:
-            badge, color = "⬇️ Bien sous médiane", "#28a745"
+            badge, color = "⬇️ Bien sous médiane", "var(--up)"
         elif diff <= -0.05:
-            badge, color = "⬇️ Sous médiane", "#7ED957"
+            badge, color = "⬇️ Sous médiane", "var(--up)"
         elif diff <= 0.05:
-            badge, color = "= Médiane", "#ffc107"
+            badge, color = "= Médiane", "var(--ocre)"
         elif diff <= 0.20:
-            badge, color = "⬆️ Au-dessus médiane", "#fd7e14"
+            badge, color = "⬆️ Au-dessus médiane", "var(--down)"
         else:
-            badge, color = "⬆️ Bien au-dessus", "#dc3545"
+            badge, color = "⬆️ Bien au-dessus", "var(--down)"
     else:
         if diff >= 0.20:
-            badge, color = "⬆️ Bien au-dessus", "#28a745"
+            badge, color = "⬆️ Bien au-dessus", "var(--up)"
         elif diff >= 0.05:
-            badge, color = "⬆️ Au-dessus médiane", "#7ED957"
+            badge, color = "⬆️ Au-dessus médiane", "var(--up)"
         elif diff >= -0.05:
-            badge, color = "= Médiane", "#ffc107"
+            badge, color = "= Médiane", "var(--ocre)"
         elif diff >= -0.20:
-            badge, color = "⬇️ Sous médiane", "#fd7e14"
+            badge, color = "⬇️ Sous médiane", "var(--down)"
         else:
-            badge, color = "⬇️ Bien sous médiane", "#dc3545"
+            badge, color = "⬇️ Bien sous médiane", "var(--down)"
 
     return {
         "badge": badge,
