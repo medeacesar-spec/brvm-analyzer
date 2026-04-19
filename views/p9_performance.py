@@ -13,8 +13,10 @@ import plotly.express as px
 
 from config import load_tickers
 from data.storage import get_cached_prices
+from data.db import read_sql_df
 from utils.charts import COLORS
 from utils.nav import ticker_quick_picker
+from utils.auth import is_admin
 
 
 # ── Period definitions ──
@@ -47,8 +49,31 @@ def _compute_performance(df: pd.DataFrame, cutoff_date):
     return (end_price - start_price) / start_price
 
 
-def _load_all_performances() -> pd.DataFrame:
-    """Load price data for all tickers and compute performances for each period."""
+@st.cache_data(ttl=300, show_spinner=False)
+def _load_all_performances_from_snapshot() -> pd.DataFrame:
+    """Lit les performances précalculées depuis ticker_performance_snapshot.
+    Retourne un DataFrame avec les mêmes colonnes que l'ancien _load_all_performances
+    (3M, 6M, 1A, 2A, 3A, Max) pour compatibilité avec le reste de la page."""
+    try:
+        df = read_sql_df(
+            "SELECT ticker, company_name AS name, sector, last_price AS price, "
+            "perf_1m, perf_3m, perf_6m, perf_1a, perf_2a, perf_3a, perf_max "
+            "FROM ticker_performance_snapshot"
+        )
+    except Exception:
+        return pd.DataFrame()
+
+    # Map vers les noms de colonnes attendus par la page (3M/6M/1A/2A/3A/Max)
+    rename = {
+        "perf_3m": "3M", "perf_6m": "6M", "perf_1a": "1A",
+        "perf_2a": "2A", "perf_3a": "3A", "perf_max": "Max",
+    }
+    df = df.rename(columns=rename)
+    return df
+
+
+def _load_all_performances_live() -> pd.DataFrame:
+    """Fallback : calcul live (lent) utilisé si le snapshot est vide."""
     tickers_data = load_tickers()
     today = datetime.now().date()
     rows = []
@@ -78,6 +103,14 @@ def _load_all_performances() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _load_all_performances() -> tuple:
+    """Retourne (df, from_snapshot: bool)."""
+    df = _load_all_performances_from_snapshot()
+    if df.empty:
+        return _load_all_performances_live(), False
+    return df, True
+
+
 def _format_pct(val):
     if val is None or pd.isna(val):
         return "—"
@@ -101,13 +134,18 @@ def render():
         unsafe_allow_html=True,
     )
 
-    # Load data
-    with st.spinner("Calcul des performances..."):
-        perf_df = _load_all_performances()
+    # Load data — depuis snapshot si dispo, sinon fallback live (lent).
+    perf_df, from_snapshot = _load_all_performances()
 
     if perf_df.empty:
         st.warning("Aucune donnée de prix disponible.")
         return
+
+    if not from_snapshot and is_admin():
+        st.warning(
+            "⚠️ Snapshot de performance vide (calcul live en cours). Cliquez sur "
+            "**📸 Regénérer snapshots** dans la sidebar pour accélérer cette page."
+        )
 
     # ── Period selector ──
     period = st.radio(

@@ -16,9 +16,23 @@ from data.storage import (
     get_signal_history, compute_signal_performance,
     delete_signal_event, delete_signal_events_bulk,
 )
+from data.db import read_sql_df
 from utils.charts import COLORS
 from utils.nav import ticker_quick_picker
 from utils.auth import is_admin
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _load_signal_perf_snapshot() -> pd.DataFrame:
+    """Charge signal_performance_snapshot en une seule requête.
+    Cache 5 min pour éviter les re-queries lors des changements de filtres."""
+    try:
+        return read_sql_df(
+            "SELECT event_id, current_price, perf_1m, perf_3m, perf_6m, "
+            "perf_1a, perf_since_start, duration_days FROM signal_performance_snapshot"
+        )
+    except Exception:
+        return pd.DataFrame()
 
 
 VERDICT_ORDER = ["ACHAT FORT", "ACHAT", "CONSERVER", "NEUTRE", "VENTE", "VENTE FORTE"]
@@ -134,15 +148,32 @@ def render():
         st.warning("Aucun événement pour ces filtres.")
         return
 
-    # Compute performance
-    with st.spinner("Calcul des performances depuis le début de chaque événement..."):
-        df = compute_signal_performance(df)
+    # Performance : lecture depuis le snapshot précalculé (plus de N+1).
+    # Fallback sur compute_signal_performance live si le snapshot est vide
+    # (1er lancement avant que le cron/bouton admin ne soit exécuté).
+    snap = _load_signal_perf_snapshot()
+    if not snap.empty and "id" in df.columns:
+        df = df.merge(snap, how="left", left_on="id", right_on="event_id")
+        if "event_id" in df.columns:
+            df = df.drop(columns=["event_id"])
+        snapshot_used = True
+    else:
+        with st.spinner("Snapshot vide — calcul live (lent)…"):
+            df = compute_signal_performance(df)
+        snapshot_used = False
 
-    # --- Add computed duration column ---
-    df["duration_days"] = df.apply(
-        lambda r: _duration_days(r.get("first_seen_date"), r.get("last_seen_date")),
-        axis=1,
-    )
+    # --- Add computed duration column (si pas déjà dans le snapshot) ---
+    if "duration_days" not in df.columns or df["duration_days"].isna().all():
+        df["duration_days"] = df.apply(
+            lambda r: _duration_days(r.get("first_seen_date"), r.get("last_seen_date")),
+            axis=1,
+        )
+
+    if not snapshot_used and is_admin():
+        st.warning(
+            "⚠️ Snapshot de performance vide. Cliquez sur **📸 Regénérer snapshots** "
+            "dans la sidebar pour accélérer cette page."
+        )
 
     # Quick jump to analysis of any ticker present in this history
     present_tickers = sorted(df["ticker"].unique().tolist())

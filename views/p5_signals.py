@@ -13,10 +13,26 @@ from data.storage import (
     get_all_cached_prices,
     save_signal_snapshots, save_recommendation_snapshot,
 )
+from data.db import read_sql_df
 from analysis.scoring import compute_hybrid_score, compute_consolidated_verdict
 from utils.charts import stars_display
 from utils.nav import ticker_quick_picker
 from utils.auth import is_admin
+
+import json as _json
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _load_scoring_snapshot() -> pd.DataFrame:
+    """Lit scoring_snapshot en une requête. Retourne un DataFrame indexé par ticker."""
+    try:
+        return read_sql_df(
+            "SELECT ticker, company_name, sector, price, hybrid_score, "
+            "fundamental_score, technical_score, verdict, stars, trend, "
+            "nb_signals, signals_json, consolidated_json FROM scoring_snapshot"
+        )
+    except Exception:
+        return pd.DataFrame()
 
 
 def render():
@@ -56,130 +72,146 @@ def render():
     # Par-titre : (ticker → dict avec consolidated verdict, buy, sell, etc.)
     per_ticker = []
 
-    all_stocks = get_all_stocks_for_analysis()
-    # Batch-load des prix : 1 requête Supabase pour tous les tickers
-    # (évite 48 × 150ms = 7s de round-trips).
-    all_prices = get_all_cached_prices()
-    # Index fundamentals par ticker pour accès O(1)
-    fund_by_ticker = {}
-    if not all_stocks.empty:
-        for _, r in all_stocks.iterrows():
-            fund_by_ticker[r["ticker"]] = r.to_dict()
+    # ─── Lecture depuis scoring_snapshot (pré-calculé par le cron quotidien) ──
+    # Remplace la boucle compute_hybrid_score × 48 qui prenait ~1 min sur Cloud.
+    snap = _load_scoring_snapshot()
+    snap_by_ticker = {}
+    if not snap.empty:
+        snap_by_ticker = {r["ticker"]: r.to_dict() for _, r in snap.iterrows()}
 
-    # Build name lookup from target_tickers (always has correct names from config)
+    target_set = {t["ticker"] for t in target_tickers}
     ticker_name_map = {t["ticker"]: t.get("name", "") for t in target_tickers}
 
-    # Snapshots : gate admin + 1 fois par session (évite ~700 round-trips/render)
-    _snap_session_key = "p5_snap_done"
-    _capture_snaps = is_admin() and not st.session_state.get(_snap_session_key)
+    snapshot_used = bool(snap_by_ticker) and any(tk in snap_by_ticker for tk in target_set)
 
-    total_snapshots_saved = 0
-    total_recos_saved = 0
-    with st.spinner(f"Analyse de {len(target_tickers)} titres..."):
+    if snapshot_used:
         for t in target_tickers:
             ticker = t["ticker"]
-            display_name = t.get("name", ticker)
-            fund = fund_by_ticker.get(ticker)
-            # Clean NaN (pandas row dict)
-            if fund:
-                import math as _m
-                fund = {k: (None if isinstance(v, float) and _m.isnan(v) else v)
-                        for k, v in fund.items()}
-            if not fund:
+            row = snap_by_ticker.get(ticker)
+            if not row:
                 continue
+            name = row.get("company_name") or t.get("name", ticker)
+            sector = row.get("sector", "")
+            price = row.get("price") or 0
 
-            price_df = all_prices.get(ticker, pd.DataFrame())
-            result = compute_hybrid_score(fund, price_df)
+            # Parse signals_json
+            try:
+                signals = _json.loads(row.get("signals_json") or "[]")
+            except Exception:
+                signals = []
+            try:
+                consolidated = _json.loads(row.get("consolidated_json") or "{}")
+            except Exception:
+                consolidated = {}
 
-            # Use display_name from config as fallback for missing/None company_name
-            name = fund.get("company_name") or display_name
-            sector = fund.get("sector", "")
-            current_price = fund.get("price") or 0
-            # Try to use most recent close from price_df as the reference
-            if not price_df.empty and "close" in price_df.columns:
-                try:
-                    current_price = float(price_df.sort_values("date").iloc[-1]["close"]) or current_price
-                except Exception:
-                    pass
-
-            ticker_signals = []
-            for sig in result.get("signals", []):
-                enriched = {"ticker": ticker, "name": name, **sig}
-                all_signals.append(enriched)
-                ticker_signals.append(sig)
-
-            ratios = result["ratios"]
-            checklist = ratios.get("checklist", [])
-            passed = sum(1 for c in checklist if c["passed"] is True)
-            total = len(checklist)
-
-            if passed == total and total > 0:
-                extra = {
-                    "type": "achat", "signal": "Checklist complete", "strength": 5,
-                    "details": f"Tous les {total} critères Value & Dividendes valides",
-                }
-                all_signals.append({"ticker": ticker, "name": name, **extra})
-                ticker_signals.append(extra)
-            elif passed >= total - 1 and total > 0:
-                extra = {
-                    "type": "achat", "signal": "Checklist quasi-complete", "strength": 3,
-                    "details": f"{passed}/{total} critères valides",
-                }
-                all_signals.append({"ticker": ticker, "name": name, **extra})
-                ticker_signals.append(extra)
+            for sig in signals:
+                all_signals.append({"ticker": ticker, "name": name, **sig})
 
             stock_summaries.append({
-                "ticker": ticker, "name": name,
-                "sector": sector,
-                "price": fund.get("price", 0),
-                "hybrid_score": result["hybrid_score"],
-                "verdict": result["recommendation"]["verdict"],
-                "stars": result["recommendation"]["stars"],
-                "trend": result["trend"]["trend"],
-                "nb_signals": len([s for s in result.get("signals", []) if s["type"] in ("achat", "vente")]),
+                "ticker": ticker, "name": name, "sector": sector, "price": price,
+                "hybrid_score": row.get("hybrid_score"),
+                "verdict": row.get("verdict"),
+                "stars": row.get("stars"),
+                "trend": row.get("trend"),
+                "nb_signals": row.get("nb_signals") or 0,
             })
 
-            # Consolidated verdict per ticker
-            # Inject the checklist-based signals into result so consolidation sees them
-            enriched_result = dict(result)
-            enriched_result["signals"] = list(result.get("signals", [])) + [
-                s for s in ticker_signals if s not in result.get("signals", [])
-            ]
-            consolidated = compute_consolidated_verdict(enriched_result)
+            # Reconstitue un result minimal à partir du snapshot pour le rendu
+            result = {
+                "hybrid_score": row.get("hybrid_score"),
+                "fundamental_score": row.get("fundamental_score"),
+                "technical_score": row.get("technical_score"),
+                "recommendation": {
+                    "verdict": row.get("verdict"),
+                    "stars": row.get("stars"),
+                },
+                "trend": {"trend": row.get("trend")},
+                "signals": signals,
+            }
             per_ticker.append({
-                "ticker": ticker,
-                "name": name,
-                "sector": sector,
-                "price": fund.get("price", 0),
+                "ticker": ticker, "name": name, "sector": sector, "price": price,
                 "result": result,
                 "consolidated": consolidated,
             })
 
-            # --- Auto-capture for long-term calibration ---
-            # Seulement pour les admins ET seulement 1 fois par session.
-            if _capture_snaps:
-                try:
-                    total_snapshots_saved += save_signal_snapshots(
-                        ticker=ticker, signals=ticker_signals, price=current_price,
-                        company_name=name, sector=sector,
-                    )
-                    if save_recommendation_snapshot(
-                        ticker=ticker,
-                        recommendation=result["recommendation"],
-                        hybrid_score=result["hybrid_score"],
-                        fundamental_score=result["fundamental_score"],
-                        technical_score=result["technical_score"],
-                        price=current_price,
-                        trend=result["trend"]["trend"],
-                        company_name=name, sector=sector,
-                    ):
-                        total_recos_saved += 1
-                except Exception:
-                    pass
+        if is_admin():
+            st.caption("⚡ Lecture depuis les snapshots précalculés — temps de réponse < 1 s")
+    else:
+        # ─── Fallback : calcul live (lent, utilisé si snapshot vide) ────────
+        if is_admin():
+            st.warning(
+                "⚠️ Snapshots vides. Cliquez sur **📸 Regénérer snapshots** dans la sidebar "
+                "pour accélérer cette page (passage de ~1 min à <1 s)."
+            )
+        all_stocks = get_all_stocks_for_analysis()
+        all_prices = get_all_cached_prices()
+        fund_by_ticker = {}
+        if not all_stocks.empty:
+            for _, r in all_stocks.iterrows():
+                fund_by_ticker[r["ticker"]] = r.to_dict()
 
-    if _capture_snaps:
-        st.session_state[_snap_session_key] = True
+        with st.spinner(f"Calcul live pour {len(target_tickers)} titres…"):
+            for t in target_tickers:
+                ticker = t["ticker"]
+                display_name = t.get("name", ticker)
+                fund = fund_by_ticker.get(ticker)
+                if fund:
+                    import math as _m
+                    fund = {k: (None if isinstance(v, float) and _m.isnan(v) else v)
+                            for k, v in fund.items()}
+                if not fund:
+                    continue
 
+                price_df = all_prices.get(ticker, pd.DataFrame())
+                result = compute_hybrid_score(fund, price_df)
+
+                name = fund.get("company_name") or display_name
+                sector = fund.get("sector", "")
+                ticker_signals = []
+                for sig in result.get("signals", []):
+                    enriched = {"ticker": ticker, "name": name, **sig}
+                    all_signals.append(enriched)
+                    ticker_signals.append(sig)
+
+                ratios = result["ratios"]
+                checklist = ratios.get("checklist", [])
+                passed = sum(1 for c in checklist if c["passed"] is True)
+                total = len(checklist)
+                if passed == total and total > 0:
+                    extra = {"type": "achat", "signal": "Checklist complete",
+                             "strength": 5, "details": f"Tous les {total} critères valides"}
+                    all_signals.append({"ticker": ticker, "name": name, **extra})
+                    ticker_signals.append(extra)
+                elif passed >= total - 1 and total > 0:
+                    extra = {"type": "achat", "signal": "Checklist quasi-complete",
+                             "strength": 3, "details": f"{passed}/{total} critères valides"}
+                    all_signals.append({"ticker": ticker, "name": name, **extra})
+                    ticker_signals.append(extra)
+
+                stock_summaries.append({
+                    "ticker": ticker, "name": name, "sector": sector,
+                    "price": fund.get("price", 0),
+                    "hybrid_score": result["hybrid_score"],
+                    "verdict": result["recommendation"]["verdict"],
+                    "stars": result["recommendation"]["stars"],
+                    "trend": result["trend"]["trend"],
+                    "nb_signals": len([s for s in result.get("signals", [])
+                                       if s["type"] in ("achat", "vente")]),
+                })
+
+                enriched_result = dict(result)
+                enriched_result["signals"] = list(result.get("signals", [])) + [
+                    s for s in ticker_signals if s not in result.get("signals", [])
+                ]
+                consolidated = compute_consolidated_verdict(enriched_result)
+                per_ticker.append({
+                    "ticker": ticker, "name": name, "sector": sector,
+                    "price": fund.get("price", 0),
+                    "result": result, "consolidated": consolidated,
+                })
+
+    total_snapshots_saved = 0
+    total_recos_saved = 0
     if total_snapshots_saved or total_recos_saved:
         st.caption(
             f"💾 Snapshot enregistré pour calibrage : {total_snapshots_saved} nouveau(x) signal(aux), "
