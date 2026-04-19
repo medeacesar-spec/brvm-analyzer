@@ -62,39 +62,47 @@ def _load_one_scoring_snapshot(ticker: str) -> dict:
 
 
 def render():
-    st.markdown('<div class="main-header">🔍 Analyse d\'un Titre</div>', unsafe_allow_html=True)
+    # Hiérarchie v3 : Title + caption → sélecteur → KPI row → Tabs
+    st.title("Analyse d'un titre")
+    st.caption("Fondamental · Technique · Recommandation · Profil")
 
-    # --- Sélection du titre (seulement ceux avec données) ---
     analyzable = get_analyzable_tickers()
-
     if not analyzable:
-        st.warning("Aucune donnée disponible. Lancez l'enrichissement depuis le Dashboard ou importez des fichiers Excel.")
+        st.warning("Aucune donnée disponible. Lancez l'enrichissement des données de marché ou importez des fichiers Excel.")
         return
 
+    # Marqueurs textuels pour distinguer "fondamentaux" vs "marché seul"
+    # Pastilles discrètes au lieu des emojis 📊 / 📈
     col_select, col_import = st.columns([3, 1])
-
     with col_select:
-        all_options = [f"{t['ticker']} - {t['name']}" + (" 📊" if t.get("has_fundamentals") else " 📈") for t in analyzable]
+        all_options = [
+            f"{t['ticker']} · {t['name']}"
+            + ("  [fondamentaux]" if t.get("has_fundamentals") else "  [marché]")
+            for t in analyzable
+        ]
 
-        # If another page requested a specific ticker, preselect it
         default_index = 0
         target_ticker = st.session_state.pop("target_ticker", None)
         if target_ticker:
             for i, opt in enumerate(all_options):
-                if opt.split(" - ")[0] == target_ticker:
+                if opt.split(" · ")[0] == target_ticker:
                     default_index = i
                     break
 
         selection = st.selectbox(
-            "Choisir un titre (📊=fondamentaux 📈=marche)",
+            "Choisir un titre",
             all_options, index=default_index,
             key="p2_ticker_select",
+            help="[fondamentaux] : données bilan/cashflow disponibles  |  [marché] : cotation uniquement",
         )
-        selected_ticker = selection.split(" - ")[0]
+        selected_ticker = selection.split(" · ")[0]
 
     with col_import:
         if is_admin():
-            st.markdown("##### Importer Excel")
+            st.markdown(
+                "<div class='label-xs' style='margin-top:6px;'>Importer Excel</div>",
+                unsafe_allow_html=True,
+            )
             uploaded = st.file_uploader("Fichier Analyse Hybride", type=["xlsx"], label_visibility="collapsed")
             if uploaded:
                 import tempfile, os
@@ -104,7 +112,7 @@ def render():
                 try:
                     data = import_from_excel(tmp_path)
                     save_fundamentals(data)
-                    st.success(f"✅ {data['company_name']} importé ({data['fiscal_year']})")
+                    st.success(f"{data['company_name']} importé ({data['fiscal_year']})")
                     st.rerun()
                 except Exception as e:
                     st.error(f"Erreur d'import: {e}")
@@ -207,17 +215,22 @@ def render():
             pass
 
     # --- Header metrics ---
-    st.markdown("---")
+    # KPI row — densité v3, pas de divider avant
     c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Entreprise", fundamentals.get("company_name", ""))
+    c1.metric("Entreprise", fundamentals.get("company_name", selected_ticker))
     c2.metric("Prix", f"{fundamentals.get('price', 0):,.0f} {CURRENCY}")
-    c3.metric("Secteur", fundamentals.get("sector", ""))
-    c4.metric("Exercice", str(fundamentals.get("fiscal_year", "")))
-    c5.markdown(f"### {stars_display(reco['stars'])}")
-    c5.markdown(_tag_html(reco['verdict'], _verdict_tone(reco['verdict'])), unsafe_allow_html=True)
+    c3.metric("Secteur", fundamentals.get("sector") or "—")
+    c4.metric("Exercice", str(fundamentals.get("fiscal_year", "") or "—"))
+    with c5:
+        st.markdown(
+            '<div class="label-xs">Verdict</div>'
+            + _tag_html(reco['verdict'], _verdict_tone(reco['verdict']))
+            + f"<div style='margin-top:4px;'>{stars_display(reco['stars'])}</div>",
+            unsafe_allow_html=True,
+        )
 
-    # --- Tabs ---
-    tab1, tab2, tab3, tab4 = st.tabs(["📊 Fondamental", "📈 Technique", "🎯 Recommandation", "🏢 Profil"])
+    # Tabs — labels épurés sans emoji
+    tab1, tab2, tab3, tab4 = st.tabs(["Fondamental", "Technique", "Recommandation", "Profil"])
 
     with tab1:
         _render_fundamental(fundamentals, ratios)
@@ -233,8 +246,11 @@ def render():
 
 
 def _render_fundamental(fundamentals, ratios):
-    """Onglet analyse fondamentale."""
-    st.subheader("Ratios calculés")
+    """Onglet analyse fondamentale : ratios + comparaison secteur + checklist."""
+    st.markdown(
+        '<div class="label-xs" style="margin-top:8px;">Ratios calculés</div>',
+        unsafe_allow_html=True,
+    )
 
     sector = fundamentals.get("sector", "")
     # Load sector benchmarks for relative comparison
@@ -293,10 +309,18 @@ def _render_fundamental(fundamentals, ratios):
     for name, value, rule, (flag, detail), sector_cell in ratio_rows:
         c1, c2, c3, c4, c5 = st.columns([2, 1.3, 2.7, 1.7, 2.3])
         c1.write(f"**{name}**")
-        c2.write(value)
+        c2.markdown(
+            f"<span style='font-variant-numeric:tabular-nums'>{value}</span>",
+            unsafe_allow_html=True,
+        )
         c3.write(rule)
-        flag_color = {"OK": "🟢", "Vigilance": "🟡", "Risque": "🔴"}.get(flag, "⚪")
-        c4.write(f"{flag_color} {flag} - {detail}")
+        # Drapeau via Dot (design v3 : plus d'emojis)
+        flag_tone = {"OK": "up", "Vigilance": "warn", "Risque": "down"}.get(flag, "neutral")
+        c4.markdown(
+            f"<span class='dot {flag_tone}'></span>{flag}"
+            + (f" · {detail}" if detail else ""),
+            unsafe_allow_html=True,
+        )
         c5.markdown(sector_cell, unsafe_allow_html=True)
 
     # Sector peer box
@@ -304,7 +328,7 @@ def _render_fundamental(fundamentals, ratios):
         peers = benchmarks.get("sector_peers", [])
         sector_name = benchmarks.get("sector_name", sector)
         with st.expander(
-            f"📊 Positionnement vs secteur **{sector_name}** ({len(peers)} pairs)",
+            f"Positionnement vs secteur · {sector_name} · {len(peers)} pairs",
             expanded=False,
         ):
             st.caption(
@@ -337,14 +361,14 @@ def _render_fundamental(fundamentals, ratios):
                 import pandas as pd
                 st.dataframe(pd.DataFrame(peer_rows), use_container_width=True, hide_index=True)
 
-    # Checklist
-    st.markdown("---")
-    st.subheader("Checklist Value & Dividendes")
+    # Checklist Value & Dividendes (dots colorés au lieu d'emojis ✅/❌)
+    st.markdown(
+        '<div class="label-xs" style="margin-top:18px;">Checklist Value & Dividendes</div>',
+        unsafe_allow_html=True,
+    )
     checklist = ratios.get("checklist", [])
-    # Map checklist labels to display format
     _check_fmt = {"PER": "decimal", "Couverture": "x", "Dette": "x"}
     for item in checklist:
-        # Determine format: PER/coverage/debt → decimal/x, yield/payout/roe → pct
         fmt = "pct"
         for key, f in _check_fmt.items():
             if key in item["label"]:
@@ -352,26 +376,40 @@ def _render_fundamental(fundamentals, ratios):
                 break
         val_str = format_ratio(item["value"], fmt)
         if item["passed"] is True:
-            st.write(f"✅ {item['label']} — Valeur: {val_str}")
+            tone, label = "up", "Validé"
         elif item["passed"] is False:
-            st.write(f"❌ {item['label']} — Valeur: {val_str}")
+            tone, label = "down", "Échoué"
         else:
-            st.write(f"⚪ {item['label']} — N/A")
+            tone, label = "neutral", "N/A"
+        st.markdown(
+            f"<div style='padding:4px 0;'>"
+            f"<span class='dot {tone}'></span>"
+            f"<b>{item['label']}</b> "
+            f"<span class='muted'>·</span> "
+            f"<span style='font-variant-numeric:tabular-nums'>{val_str}</span>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
 
     passed = sum(1 for i in checklist if i["passed"] is True)
     total = len(checklist)
     st.progress(passed / total if total > 0 else 0, text=f"{passed}/{total} critères validés")
 
-    # Historical growth
-    st.markdown("---")
+    # Historique — pas de divider, hiérarchie via le h3 serré
     fiscal_year = fundamentals.get("fiscal_year")
     if fiscal_year:
         fy = int(fiscal_year)
         year_labels = [str(fy - 3), str(fy - 2), str(fy - 1), str(fy)]
-        st.subheader(f"Historique ({fy-3} à {fy})")
+        st.markdown(
+            f'<div class="label-xs" style="margin-top:20px;">Historique · {fy-3} → {fy}</div>',
+            unsafe_allow_html=True,
+        )
     else:
         year_labels = ["N-3", "N-2", "N-1", "N"]
-        st.subheader("Historique (N-3 à N)")
+        st.markdown(
+            '<div class="label-xs" style="margin-top:20px;">Historique · N-3 → N</div>',
+            unsafe_allow_html=True,
+        )
 
     rev_series = [fundamentals.get(f"revenue_{s}") for s in ("n3", "n2", "n1", "n0")]
     ni_series = [fundamentals.get(f"net_income_{s}") for s in ("n3", "n2", "n1", "n0")]
@@ -493,47 +531,92 @@ def _render_technical(ticker, price_df, result):
     )
     st.plotly_chart(fig, use_container_width=True)
 
-    # Trend
+    # Tendance (densité v3, pas de divider)
     trend = result.get("trend", {})
-    st.markdown("---")
+    trend_name = trend.get("trend", "N/A")
+    trend_tone = {"haussiere": "up", "baissiere": "down"}.get(trend_name, "neutral")
+    st.markdown(
+        '<div class="label-xs" style="margin-top:14px;">Tendance actuelle</div>',
+        unsafe_allow_html=True,
+    )
     col_t1, col_t2, col_t3 = st.columns(3)
-    trend_emoji = {"haussiere": "📈", "baissiere": "📉", "neutre": "➡️"}.get(trend.get("trend", ""), "❓")
-    col_t1.metric("Tendance", f"{trend_emoji} {trend.get('trend', 'N/A').capitalize()}")
-    col_t2.metric("Force", trend.get("strength", "N/A").capitalize())
-    col_t3.metric("Detail", trend.get("details", ""))
+    with col_t1:
+        st.markdown(
+            _tag_html(trend_name.capitalize(), trend_tone),
+            unsafe_allow_html=True,
+        )
+    col_t2.markdown(
+        f"<div style='font-size:13px;'><span class='muted'>Force</span> "
+        f"<b>{trend.get('strength', 'N/A').capitalize()}</b></div>",
+        unsafe_allow_html=True,
+    )
+    col_t3.markdown(
+        f"<div style='font-size:13px;'><span class='muted'>Détail</span> "
+        f"{trend.get('details', '—')}</div>",
+        unsafe_allow_html=True,
+    )
 
-    # Supports / Résistances
+    # Supports / Résistances — dots colorés, pas d'emojis
     supports = result.get("supports", [])
     resistances = result.get("resistances", [])
     col_sr1, col_sr2 = st.columns(2)
     with col_sr1:
-        st.subheader("🟢 Supports")
+        st.markdown(
+            '<div class="label-xs" style="margin-top:14px;">'
+            '<span class="dot up"></span>Supports</div>',
+            unsafe_allow_html=True,
+        )
         for i, s in enumerate(supports[:3]):
-            st.write(f"Zone {i+1}: **{s:,.0f} FCFA**")
+            st.markdown(
+                f"<div>Zone {i+1} <span class='muted'>·</span> "
+                f"<b style='font-variant-numeric:tabular-nums'>{s:,.0f} FCFA</b></div>",
+                unsafe_allow_html=True,
+            )
         if not supports:
-            st.info("Aucun support détecté")
+            st.caption("Aucun support détecté")
     with col_sr2:
-        st.subheader("🔴 Résistances")
+        st.markdown(
+            '<div class="label-xs" style="margin-top:14px;">'
+            '<span class="dot down"></span>Résistances</div>',
+            unsafe_allow_html=True,
+        )
         for i, r in enumerate(resistances[:3]):
-            st.write(f"Zone {i+1}: **{r:,.0f} FCFA**")
+            st.markdown(
+                f"<div>Zone {i+1} <span class='muted'>·</span> "
+                f"<b style='font-variant-numeric:tabular-nums'>{r:,.0f} FCFA</b></div>",
+                unsafe_allow_html=True,
+            )
         if not resistances:
-            st.info("Aucune résistance détectée")
+            st.caption("Aucune résistance détectée")
 
-    # Signals
-    st.markdown("---")
-    st.subheader("Signaux techniques")
+    # Signaux techniques — dots + stars au lieu d'emojis
+    st.markdown(
+        '<div class="label-xs" style="margin-top:18px;">Signaux techniques</div>',
+        unsafe_allow_html=True,
+    )
     signals = result.get("signals", [])
     if signals:
         for sig in signals:
-            emoji = {"achat": "🟢", "vente": "🔴", "info": "🔵"}.get(sig["type"], "⚪")
-            strength = "★" * sig["strength"] + "☆" * (5 - sig["strength"])
-            st.write(f"{emoji} **{sig['signal']}** ({strength}) — {sig['details']}")
+            tone = {"achat": "up", "vente": "down", "info": "neutral"}.get(sig["type"], "neutral")
+            strength = "★" * sig["strength"] + "★" * (5 - sig["strength"])  # placeholder
+            stars_html = (
+                f"<span class='stars'>{'★' * sig['strength']}"
+                f"<span class='off'>{'★' * (5 - sig['strength'])}</span></span>"
+            )
+            st.markdown(
+                f"<div style='padding:4px 0;'>"
+                f"<span class='dot {tone}'></span>"
+                f"<b>{sig['signal']}</b> {stars_html} "
+                f"<span class='muted'>· {sig['details']}</span>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
     else:
-        st.info("Aucun signal technique actif")
+        st.caption("Aucun signal technique actif")
 
-    # --- Explanations RSI & MACD ---
-    st.markdown("---")
-    _render_indicator_explanations(df_display, sma_labels, freq)
+    # Explications RSI & MACD (repliable pour désencombrer)
+    with st.expander("En savoir plus · RSI, MACD, Moyennes mobiles", expanded=False):
+        _render_indicator_explanations(df_display, sma_labels, freq)
 
 
 def _render_indicator_explanations(df: pd.DataFrame, sma_labels: dict, freq: str):
@@ -665,43 +748,62 @@ def _render_indicator_explanations(df: pd.DataFrame, sma_labels: dict, freq: str
 
 
 def _render_recommendation(result, fundamentals):
-    """Onglet recommandation."""
+    """Onglet recommandation — 3 scores en metrics + verdict + synthèse."""
     reco = result["recommendation"]
 
-    # Score gauges
-    col_g1, col_g2, col_g3 = st.columns(3)
-    with col_g1:
-        st.plotly_chart(gauge_chart(result["fundamental_score"], 50, "Fondamental"), use_container_width=True)
-    with col_g2:
-        st.plotly_chart(gauge_chart(result["technical_score"], 50, "Technique"), use_container_width=True)
-    with col_g3:
-        st.plotly_chart(gauge_chart(result["hybrid_score"], 100, "Score Hybride"), use_container_width=True)
+    # 3 scores en metrics (remplace les gauges Plotly — checklist v3 #8)
+    fund_s = result.get("fundamental_score") or 0
+    tech_s = result.get("technical_score") or 0
+    hybrid = result.get("hybrid_score") or 0
+    col_g1, col_g2, col_g3, col_g4 = st.columns(4)
+    col_g1.metric("Score fondamental", f"{fund_s:.0f} / 50")
+    col_g2.metric("Score technique", f"{tech_s:.0f} / 50")
+    col_g3.metric("Score global", f"{hybrid:.0f} / 100")
+    with col_g4:
+        st.markdown(
+            '<div class="label-xs">Verdict</div>'
+            + _tag_html(reco['verdict'], _verdict_tone(reco['verdict']))
+            + f"<div style='margin-top:4px;'>{stars_display(reco['stars'])}</div>",
+            unsafe_allow_html=True,
+        )
 
-    # Verdict — tag kit design (couleurs selon up/ocre/down)
-    st.markdown(
-        f"### {stars_display(reco['stars'])} "
-        + _tag_html(reco['verdict'], _verdict_tone(reco['verdict'])),
-        unsafe_allow_html=True,
-    )
+    # Barre de progression sous le score global (remplace visuellement le gauge)
+    st.progress(min(max(hybrid / 100, 0), 1), text=f"Score global : {hybrid:.0f} / 100")
 
-    # Points forts / vigilance
+    # Points forts / vigilance — dots colorés, pas d'emojis ✅ ⚠️
     col_s, col_w = st.columns(2)
     with col_s:
-        st.subheader("💪 Points forts")
+        st.markdown(
+            '<div class="label-xs" style="margin-top:14px;">'
+            '<span class="dot up"></span>Points forts</div>',
+            unsafe_allow_html=True,
+        )
         for s in reco.get("strengths", []):
-            st.write(f"✅ {s}")
+            st.markdown(
+                f"<div style='padding:3px 0;'><span class='dot up'></span>{s}</div>",
+                unsafe_allow_html=True,
+            )
         if not reco.get("strengths"):
-            st.info("Aucun point fort identifié")
+            st.caption("Aucun point fort identifié")
     with col_w:
-        st.subheader("⚠️ Points de vigilance")
+        st.markdown(
+            '<div class="label-xs" style="margin-top:14px;">'
+            '<span class="dot warn"></span>Points de vigilance</div>',
+            unsafe_allow_html=True,
+        )
         for w in reco.get("warnings", []):
-            st.write(f"⚠️ {w}")
+            st.markdown(
+                f"<div style='padding:3px 0;'><span class='dot warn'></span>{w}</div>",
+                unsafe_allow_html=True,
+            )
         if not reco.get("warnings"):
-            st.info("Aucun point de vigilance")
+            st.caption("Aucun point de vigilance")
 
-    # Entry zones
-    st.markdown("---")
-    st.subheader("🎯 Zones d'entrée suggérées")
+    # Zones d'entrée
+    st.markdown(
+        '<div class="label-xs" style="margin-top:18px;">Zones d\'entrée suggérées</div>',
+        unsafe_allow_html=True,
+    )
     entry_zones = reco.get("entry_zones", [])
     if entry_zones:
         for zone in entry_zones:
@@ -749,7 +851,7 @@ def _render_input_form(ticker, tickers_data):
         dividends_total = col14.number_input("Dividendes versés (total)", value=0)
         dps = col15.number_input("DPS (dividende par action)", value=0)
 
-        submitted = st.form_submit_button("💾 Enregistrer")
+        submitted = st.form_submit_button("Enregistrer", type="primary")
         if submitted:
             data = {
                 "ticker": ticker,
@@ -783,43 +885,50 @@ def _render_profile(ticker: str, fundamentals: dict):
         st.info("Profil non disponible. Lancez `scripts/scrape_profiles.py` pour charger les données.")
         return
 
-    # --- Company description ---
+    # --- Présentation ---
     if profile.get("description"):
-        st.markdown("#### Présentation de l'entreprise")
-        # Clean description: remove "La société :" prefix if present
         desc = profile["description"]
-        for prefix in ["La société :", "La société :", "La société:", "La société:"]:
-            if desc.startswith(prefix):
-                desc = desc[len(prefix):].strip()
-        st.markdown(desc)
-        st.markdown("---")
+        if isinstance(desc, str):
+            for prefix in ["La société :", "La société :", "La société:", "La société:"]:
+                if desc.startswith(prefix):
+                    desc = desc[len(prefix):].strip()
+            st.markdown(
+                '<div class="label-xs" style="margin-top:8px;">Présentation</div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown(desc)
 
-    # --- Key info in columns ---
+    # --- Dirigeants & Actionnariat (2 colonnes, pas de divider) ---
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown("#### 👥 Dirigeants")
+        st.markdown(
+            '<div class="label-xs" style="margin-top:14px;">Dirigeants</div>',
+            unsafe_allow_html=True,
+        )
         has_officers = False
         if profile.get("president"):
-            st.markdown(f"**Président du Conseil :** {profile['president']}")
+            st.markdown(f"**Président du Conseil** · {profile['president']}")
             has_officers = True
         if profile.get("dg"):
-            st.markdown(f"**Directeur Général :** {profile['dg']}")
+            st.markdown(f"**Directeur Général** · {profile['dg']}")
             has_officers = True
         if profile.get("dga"):
-            st.markdown(f"**DG Adjoint :** {profile['dga']}")
+            st.markdown(f"**DG Adjoint** · {profile['dga']}")
             has_officers = True
         if not has_officers:
             st.caption("Non disponible")
 
     with col2:
-        st.markdown("#### 📊 Actionnariat & Marché")
+        st.markdown(
+            '<div class="label-xs" style="margin-top:14px;">Actionnariat & Marché</div>',
+            unsafe_allow_html=True,
+        )
         if profile.get("major_shareholder"):
             pct = profile.get("major_shareholder_pct")
-            pct_str = f" ({pct:.1f}%)" if pct else ""
-            st.markdown(f"**Actionnaire principal :** {profile['major_shareholder']}{pct_str}")
+            pct_str = f" · {pct:.1f}%" if pct else ""
+            st.markdown(f"**Actionnaire principal** · {profile['major_shareholder']}{pct_str}")
 
-        # Get shares and float from market_data
         conn = get_connection()
         md = conn.execute(
             "SELECT shares, float_pct, market_cap FROM market_data WHERE ticker = ?",
@@ -829,27 +938,27 @@ def _render_profile(ticker: str, fundamentals: dict):
 
         if md:
             if md["shares"] and md["shares"] > 0:
-                st.markdown(f"**Nombre de titres :** {md['shares']:,.0f}")
+                st.markdown(f"**Nombre de titres** · {md['shares']:,.0f}")
             if md["float_pct"] and md["float_pct"] > 0:
-                st.markdown(f"**Flottant :** {md['float_pct']:.1f}%")
+                st.markdown(f"**Flottant** · {md['float_pct']:.1f}%")
             if md["market_cap"] and md["market_cap"] > 0:
-                st.markdown(f"**Capitalisation :** {md['market_cap']/1e3:,.1f} Mds FCFA")
+                st.markdown(f"**Capitalisation** · {md['market_cap']/1e3:,.1f} Mds FCFA")
 
-    st.markdown("---")
-
-    # --- Contact ---
+    # --- Contact (sans emojis 📍📞📠) ---
     contact_parts = []
     if profile.get("address"):
-        contact_parts.append(f"📍 {profile['address']}")
+        contact_parts.append(f"**Adresse** · {profile['address']}")
     if profile.get("phone"):
-        contact_parts.append(f"📞 {profile['phone']}")
+        contact_parts.append(f"**Téléphone** · {profile['phone']}")
     if profile.get("fax"):
-        contact_parts.append(f"📠 {profile['fax']}")
+        contact_parts.append(f"**Fax** · {profile['fax']}")
 
     if contact_parts:
-        st.markdown("#### Contact")
-        st.markdown(" | ".join(contact_parts))
-        st.markdown("---")
+        st.markdown(
+            '<div class="label-xs" style="margin-top:14px;">Contact</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(" &nbsp;·&nbsp; ".join(contact_parts))
 
     # --- Financial history ---
     conn = get_connection()
@@ -860,7 +969,10 @@ def _render_profile(ticker: str, fundamentals: dict):
     conn.close()
 
     if not fund.empty:
-        st.markdown("#### Historique financier")
+        st.markdown(
+            '<div class="label-xs" style="margin-top:18px;">Historique financier</div>',
+            unsafe_allow_html=True,
+        )
         display = fund.copy()
         display["fiscal_year"] = display["fiscal_year"].astype(int)
         display["revenue"] = display["revenue"].apply(
@@ -886,37 +998,46 @@ def _render_profile(ticker: str, fundamentals: dict):
             }),
             use_container_width=True, hide_index=True,
         )
-        st.markdown("---")
 
-    # --- Recent news ---
+    # --- Actualités récentes (densité v3, pas de divider) ---
     news = get_company_news(ticker, limit=8)
     if not news.empty:
-        st.markdown("#### Actualités récentes")
+        st.markdown(
+            '<div class="label-xs" style="margin-top:18px;">Actualités récentes</div>',
+            unsafe_allow_html=True,
+        )
         for _, art in news.iterrows():
-            date_str = f" ({art['article_date']})" if art.get("article_date") else ""
+            date_str = f" <span class='muted'>({art['article_date']})</span>" if art.get("article_date") else ""
             url = art.get("url", "")
             if url and url.startswith("http"):
-                st.markdown(f"- [{art['title']}]({url}){date_str}")
+                st.markdown(f"- [{art['title']}]({url}){date_str}", unsafe_allow_html=True)
             else:
-                st.markdown(f"- {art['title']}{date_str}")
-        st.markdown("---")
+                st.markdown(f"- {art['title']}{date_str}", unsafe_allow_html=True)
 
-    # --- Qualitative notes (user-added) ---
-    st.markdown("#### Notes d'analyse")
+    # --- Notes d'analyse (tag catégorie via design kit au lieu d'emojis) ---
+    st.markdown(
+        '<div class="label-xs" style="margin-top:18px;">Notes d\'analyse</div>',
+        unsafe_allow_html=True,
+    )
     notes = get_qualitative_notes(ticker)
     if not notes.empty:
         for _, note in notes.iterrows():
-            cat_emoji = {
-                "strategie": "🎯", "concurrence": "⚔️", "risques": "⚠️",
-                "gouvernance": "🏛️", "perspectives": "🔮", "dividendes": "💰",
-                "general": "📝",
-            }.get(note.get("category", ""), "📝")
+            cat = note.get("category", "general")
+            cat_label = cat.capitalize()
+            # Mapping catégorie → tone design : strategie/perspectives/dividendes=up,
+            # concurrence/risques=warn, gouvernance=terra, general=neutral
+            tone_map = {
+                "strategie": "up", "perspectives": "up", "dividendes": "up",
+                "concurrence": "ocre", "risques": "down",
+                "gouvernance": "terra", "general": "neutral",
+            }
+            tone = tone_map.get(cat, "neutral")
             col_cat, col_content, col_del = st.columns([1, 5, 0.5])
-            col_cat.write(f"{cat_emoji} **{note.get('category', 'general').capitalize()}**")
+            col_cat.markdown(_tag_html(cat_label, tone), unsafe_allow_html=True)
             col_content.write(note["content"])
             if note.get("source"):
-                col_content.caption(f"Source: {note['source']} | {note.get('note_date', '')}")
-            if col_del.button("🗑️", key=f"del_note_p2_{note['id']}"):
+                col_content.caption(f"Source · {note['source']} · {note.get('note_date', '')}")
+            if col_del.button("Supprimer", key=f"del_note_p2_{note['id']}"):
                 delete_qualitative_note(note["id"])
                 st.rerun()
 
@@ -935,8 +1056,8 @@ def _render_profile(ticker: str, fundamentals: dict):
             col_s, col_d = st.columns(2)
             source = col_s.text_input("Source", placeholder="Rapport annuel 2024...")
             note_date = col_d.date_input("Date")
-            if st.form_submit_button("💾 Enregistrer"):
+            if st.form_submit_button("Enregistrer", type="primary"):
                 if content.strip():
                     save_qualitative_note(ticker, category, content.strip(), source, str(note_date))
-                    st.success("✅ Note enregistrée")
+                    st.success("Note enregistrée")
                     st.rerun()

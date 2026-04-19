@@ -7,19 +7,21 @@ from plotly.subplots import make_subplots
 import pandas as pd
 import numpy as np
 
-# Palette BRVM — Light theme
+# Palette BRVM — Design v3 (Africain moderne, monochrome dataviz)
 COLORS = {
-    "primary": "#4318FF",
-    "secondary": "#6C5DD3",
-    "accent": "#FFB547",
-    "green": "#05CD99",
-    "red": "#EE5D50",
-    "yellow": "#FFB547",
+    "primary": "#1F5D3A",      # deep green (hausses + accent principal)
+    "secondary": "#7A756C",    # neutre sombre (lignes secondaires)
+    "accent": "#B8532A",       # terracotta (1 seul accent non-primary autorisé)
+    "green": "#1F5D3A",        # alias : up = primary
+    "red": "#B42318",          # rouge terre (baisses uniquement)
+    "yellow": "#B5730E",       # ocre sombre (warnings)
     "bg": "#FFFFFF",
-    "card_bg": "#F5F6FA",
-    "text": "#1B2559",
-    "text_secondary": "#8F9BBA",
-    "border": "#E9EDF7",
+    "card_bg": "#F7F5F0",
+    "text": "#1A1A1A",
+    "text_secondary": "#7A756C",
+    "border": "#E1DAC9",
+    # Palette monochrome pour bar charts / catégorielle (principe v3-07)
+    "monochrome_seq": ["#1F5D3A", "#7A756C", "#B8532A"],
 }
 
 
@@ -78,17 +80,18 @@ def candlestick_chart(
         row=1, col=1,
     )
 
-    # SMA
+    # SMA — palette monochrome v3 (deep green + neutres), pas d'arc-en-ciel
     if show_sma:
         _labels = sma_labels or {"short": "MM20", "medium": "MM50", "long": "MM200"}
-        for col, name, color in [
-            ("sma20", _labels["short"], "#e74c3c"),
-            ("sma50", _labels["medium"], "#f39c12"),
-            ("sma200", _labels["long"], "#3498db"),
+        for col, name, color, width in [
+            ("sma20", _labels["short"], COLORS["primary"], 1.2),   # MM courte = primary
+            ("sma50", _labels["medium"], COLORS["secondary"], 1),   # MM médiane = neutre
+            ("sma200", _labels["long"], COLORS["accent"], 1.2),     # MM longue = accent
         ]:
             if col in df.columns:
                 fig.add_trace(
-                    go.Scatter(x=df["date"], y=df[col], name=name, line=dict(width=1, color=color)),
+                    go.Scatter(x=df["date"], y=df[col], name=name,
+                               line=dict(width=width, color=color)),
                     row=1, col=1,
                 )
 
@@ -112,41 +115,48 @@ def candlestick_chart(
 
     current_row = 2
 
-    # Volume
+    # Volume — barres monochromes v3 avec opacity 0.4 (principe #11 de la checklist)
     if show_volume and "volume" in df.columns:
-        colors = [COLORS["green"] if c >= o else COLORS["red"]
-                  for c, o in zip(df["close"], df["open"])]
         fig.add_trace(
-            go.Bar(x=df["date"], y=df["volume"], name="Volume", marker_color=colors, opacity=0.7),
+            go.Bar(
+                x=df["date"], y=df["volume"], name="Volume",
+                marker_color=COLORS["secondary"], opacity=0.4,
+            ),
             row=current_row, col=1,
         )
         current_row += 1
 
-    # RSI
+    # RSI — ligne primary, bornes 70/30 rouge/vert
     if show_rsi and "rsi" in df.columns:
         fig.add_trace(
-            go.Scatter(x=df["date"], y=df["rsi"], name="RSI", line=dict(color=COLORS["secondary"], width=1.5)),
+            go.Scatter(x=df["date"], y=df["rsi"], name="RSI",
+                       line=dict(color=COLORS["primary"], width=1.4)),
             row=current_row, col=1,
         )
         fig.add_hline(y=70, line_dash="dash", line_color=COLORS["red"], opacity=0.5, row=current_row, col=1)
-        fig.add_hline(y=30, line_dash="dash", line_color=COLORS["green"], opacity=0.5, row=current_row, col=1)
-        fig.add_hrect(y0=30, y1=70, fillcolor="rgba(46,134,193,0.05)", line_width=0, row=current_row, col=1)
+        fig.add_hline(y=30, line_dash="dash", line_color=COLORS["primary"], opacity=0.5, row=current_row, col=1)
+        fig.add_hrect(y0=30, y1=70, fillcolor="rgba(31,93,58,0.04)", line_width=0, row=current_row, col=1)
         current_row += 1
 
-    # MACD
+    # MACD — ligne primary, signal ocre, histogramme bi-tonal (up/down)
     if show_macd and "macd" in df.columns:
         fig.add_trace(
-            go.Scatter(x=df["date"], y=df["macd"], name="MACD", line=dict(color=COLORS["secondary"], width=1.5)),
+            go.Scatter(x=df["date"], y=df["macd"], name="MACD",
+                       line=dict(color=COLORS["primary"], width=1.4)),
             row=current_row, col=1,
         )
         fig.add_trace(
-            go.Scatter(x=df["date"], y=df["macd_signal"], name="Signal", line=dict(color=COLORS["accent"], width=1)),
+            go.Scatter(x=df["date"], y=df["macd_signal"], name="Signal",
+                       line=dict(color=COLORS["accent"], width=1)),
             row=current_row, col=1,
         )
         if "macd_histogram" in df.columns:
-            colors_hist = [COLORS["green"] if v >= 0 else COLORS["red"] for v in df["macd_histogram"]]
+            colors_hist = [COLORS["primary"] if v >= 0 else COLORS["red"] for v in df["macd_histogram"]]
             fig.add_trace(
-                go.Bar(x=df["date"], y=df["macd_histogram"], name="Histogramme", marker_color=colors_hist, opacity=0.6),
+                go.Bar(
+                    x=df["date"], y=df["macd_histogram"], name="Histogramme",
+                    marker_color=colors_hist, opacity=0.5,
+                ),
                 row=current_row, col=1,
             )
 
@@ -155,7 +165,11 @@ def candlestick_chart(
         template="plotly_white",
         paper_bgcolor=COLORS["bg"],
         plot_bgcolor=COLORS["bg"],
-        font=dict(color=COLORS["text"], family="Inter, system-ui, sans-serif"),
+        font=dict(
+            color=COLORS["text"],
+            family='ui-sans-serif, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif',
+            size=12,
+        ),
         xaxis_rangeslider_visible=False,
         showlegend=True,
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
