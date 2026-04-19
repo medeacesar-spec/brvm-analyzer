@@ -124,41 +124,48 @@ def _compute_period_performance(quotes: pd.DataFrame) -> dict:
 
 
 def _render_top5(df: pd.DataFrame, label: str):
+    """Liste éditoriale des plus fortes hausses / baisses avec les helpers
+    officiels du kit design (delta, ticker chip, tabular nums)."""
+    from utils.ui_helpers import delta, ticker as ticker_chip
     if df.empty or "variation" not in df.columns:
         return
-    col_top, col_bottom = st.columns(2)
-    positive = df[df["variation"] > 0.01]
-    negative = df[df["variation"] < -0.01]
-    with col_top:
-        st.markdown(f"**📈 Hausses {label}**")
-        if not positive.empty:
-            for _, row in positive.nlargest(5, "variation").iterrows():
-                c1, c2, c3, c4 = st.columns([3, 1, 1, 0.5])
-                c1.write(f"**{row['name']}**")
-                c2.write(f"{row['price']:,.0f}")
-                c3.markdown(f"<span style='color:#05CD99;font-weight:600'>+{row['variation']:.2f}%</span>", unsafe_allow_html=True)
-                with c4:
-                    ticker_analyze_button(
-                        row["ticker"], label="🔍",
-                        key=f"dash_up_{label}_{row['ticker']}",
-                    )
-        else:
-            st.caption("Aucune hausse")
-    with col_bottom:
-        st.markdown(f"**📉 Baisses {label}**")
-        if not negative.empty:
-            for _, row in negative.nsmallest(5, "variation").iterrows():
-                c1, c2, c3, c4 = st.columns([3, 1, 1, 0.5])
-                c1.write(f"**{row['name']}**")
-                c2.write(f"{row['price']:,.0f}")
-                c3.markdown(f"<span style='color:#EE5D50;font-weight:600'>{row['variation']:.2f}%</span>", unsafe_allow_html=True)
-                with c4:
-                    ticker_analyze_button(
-                        row["ticker"], label="🔍",
-                        key=f"dash_dn_{label}_{row['ticker']}",
-                    )
-        else:
-            st.caption("Aucune baisse")
+
+    positive = df[df["variation"] > 0.01].nlargest(5, "variation")
+    negative = df[df["variation"] < -0.01].nsmallest(5, "variation")
+
+    col_up, col_dn = st.columns(2)
+
+    def _render_list(rows: pd.DataFrame, heading: str, empty_msg: str):
+        st.markdown(f'<div class="label-xs">{heading}</div>', unsafe_allow_html=True)
+        if rows.empty:
+            st.caption(empty_msg)
+            return
+        for _, r in rows.iterrows():
+            a, b, c, d = st.columns([3, 1, 1, 0.5])
+            a.markdown(
+                f"<div style='padding:6px 0;'><b>{r['name']}</b> "
+                f"{ticker_chip(r['ticker'])}</div>",
+                unsafe_allow_html=True,
+            )
+            b.markdown(
+                f"<div style='text-align:right;font-variant-numeric:tabular-nums;padding:6px 0;'>"
+                f"{r['price']:,.0f}</div>",
+                unsafe_allow_html=True,
+            )
+            c.markdown(
+                f"<div style='text-align:right;padding:6px 0;'>{delta(r['variation'])}</div>",
+                unsafe_allow_html=True,
+            )
+            with d:
+                ticker_analyze_button(
+                    r["ticker"], label="🔍",
+                    key=f"dash_{heading[:2]}_{label}_{r['ticker']}",
+                )
+
+    with col_up:
+        _render_list(positive, f"↗ HAUSSES {label.upper()}", "Aucune hausse")
+    with col_dn:
+        _render_list(negative, f"↘ BAISSES {label.upper()}", "Aucune baisse")
 
 
 @st.cache_data(ttl=300, show_spinner=False)

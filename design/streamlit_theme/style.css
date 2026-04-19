@@ -1,0 +1,260 @@
+/* ============================================================
+   BRVM Analyzer — Streamlit theme
+   À injecter via st.markdown(f"<style>{open('style.css').read()}</style>", unsafe_allow_html=True)
+   ou via .streamlit/config.toml pour les couleurs de base.
+   ============================================================ */
+
+:root {
+  /* Neutres chauds */
+  --bg:            #FAF8F4;
+  --bg-elev:       #FFFFFF;
+  --bg-sunken:     #F3EFE8;
+  --bg-hover:      #EFEAE1;
+  --border:        #E6DFD3;
+  --border-strong: #C9BFAE;
+  --ink:           #1C1A17;
+  --ink-2:         #4A453E;
+  --ink-3:         #8A8275;
+  --ink-4:         #B8AF9E;
+
+  /* Accents "Africain moderne" */
+  --terracotta:    #B8532A;
+  --terracotta-2:  #8F3F1F;
+  --terracotta-bg: #FBE9DE;
+  --ocre:          #C99A3B;
+  --ocre-bg:       #F8EED2;
+  --deep-green:    #1F5D3A;
+  --deep-green-bg: #DBEBDF;
+
+  /* Signaux marché */
+  --up:            #1F5D3A;
+  --up-soft:       #DBEBDF;
+  --down:          #A8321A;
+  --down-soft:     #F5DAD1;
+  --neutral:       #8A8275;
+}
+
+/* ---------- Streamlit overrides ---------- */
+
+/* App background */
+.stApp { background: var(--bg); }
+
+/* Sidebar */
+section[data-testid="stSidebar"] {
+  background: var(--bg-elev);
+  border-right: 1px solid var(--border);
+}
+section[data-testid="stSidebar"] * { color: var(--ink-2); }
+section[data-testid="stSidebar"] h1,
+section[data-testid="stSidebar"] h2,
+section[data-testid="stSidebar"] h3 { color: var(--ink); }
+
+/* Main container */
+.main .block-container {
+  padding-top: 1.5rem;
+  max-width: 1400px;
+}
+
+/* Typography system */
+html, body, [class*="css"] {
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
+               "Helvetica Neue", Helvetica, Arial, sans-serif;
+  color: var(--ink);
+  font-feature-settings: "tnum";
+}
+h1 { font-size: 28px !important; font-weight: 600 !important; letter-spacing: -0.01em; }
+h2 { font-size: 20px !important; font-weight: 600 !important; }
+h3 { font-size: 16px !important; font-weight: 600 !important; }
+
+/* Buttons — st.button, st.download_button, st.form_submit_button */
+.stButton > button, .stDownloadButton > button, .stFormSubmitButton > button {
+  background: var(--bg-elev);
+  color: var(--ink);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-weight: 500;
+  font-size: 13px;
+  transition: all 120ms;
+}
+.stButton > button:hover, .stDownloadButton > button:hover {
+  background: var(--bg-hover);
+  border-color: var(--ink-3);
+}
+/* Primary button */
+.stButton > button[kind="primary"], .stFormSubmitButton > button[kind="primary"] {
+  background: var(--terracotta);
+  color: #fff;
+  border-color: var(--terracotta);
+}
+.stButton > button[kind="primary"]:hover {
+  background: var(--terracotta-2);
+  border-color: var(--terracotta-2);
+}
+
+/* Metric cards — st.metric */
+[data-testid="stMetric"] {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  position: relative;
+  overflow: hidden;
+}
+[data-testid="stMetricLabel"] {
+  font-size: 11px !important;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-3) !important;
+  font-weight: 500 !important;
+}
+[data-testid="stMetricValue"] {
+  font-size: 28px !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.02em;
+  color: var(--ink) !important;
+  font-variant-numeric: tabular-nums;
+}
+[data-testid="stMetricDelta"] { font-weight: 600 !important; font-size: 12.5px !important; }
+/* Positive delta = deep green, negative = down red */
+[data-testid="stMetricDelta"] svg[data-testid="stMetricDeltaIcon-Up"] ~ div { color: var(--up) !important; }
+[data-testid="stMetricDelta"] svg[data-testid="stMetricDeltaIcon-Down"] ~ div { color: var(--down) !important; }
+
+/* Tabs — st.tabs */
+.stTabs [data-baseweb="tab-list"] {
+  gap: 24px;
+  border-bottom: 1px solid var(--border);
+}
+.stTabs [data-baseweb="tab"] {
+  padding: 10px 0;
+  font-size: 13.5px;
+  color: var(--ink-3);
+  background: transparent;
+}
+.stTabs [aria-selected="true"] {
+  color: var(--ink) !important;
+  font-weight: 600;
+  border-bottom: 2px solid var(--terracotta);
+}
+
+/* Inputs — st.text_input, st.number_input, st.selectbox */
+.stTextInput input, .stNumberInput input, .stSelectbox > div > div {
+  background: var(--bg-sunken) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px !important;
+  font-size: 13px;
+}
+.stTextInput input:focus, .stNumberInput input:focus {
+  border-color: var(--terracotta) !important;
+  background: var(--bg-elev) !important;
+}
+
+/* DataFrame — st.dataframe, st.table */
+[data-testid="stDataFrame"] {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+[data-testid="stDataFrame"] thead tr th {
+  background: var(--bg-sunken) !important;
+  color: var(--ink-3) !important;
+  text-transform: uppercase;
+  font-size: 10.5px !important;
+  letter-spacing: 0.08em;
+  font-weight: 500 !important;
+}
+[data-testid="stDataFrame"] td {
+  font-size: 13px !important;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Expander */
+[data-testid="stExpander"] {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+[data-testid="stExpander"] summary {
+  font-weight: 500;
+  font-size: 13.5px;
+}
+
+/* Radio & checkbox — more compact */
+.stRadio > label { font-size: 12px !important; color: var(--ink-3); }
+
+/* Alerts */
+.stAlert { border-radius: 12px; border: 1px solid var(--border); }
+[data-testid="stAlert"][kind="info"] { background: var(--deep-green-bg); border-color: var(--deep-green); }
+
+/* Progress */
+.stProgress > div > div { background: var(--terracotta) !important; }
+
+/* Divider */
+hr { border-color: var(--border); margin: 24px 0; }
+
+/* --- Custom helper classes for HTML in st.markdown(unsafe_allow_html=True) --- */
+
+.kpi-card {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  position: relative;
+}
+.kpi-card.up::before, .kpi-card.down::before, .kpi-card.neutral::before {
+  content: "";
+  position: absolute; left: 0; top: 12px; bottom: 12px;
+  width: 3px; border-radius: 2px;
+}
+.kpi-card.up::before    { background: var(--up); }
+.kpi-card.down::before  { background: var(--down); }
+.kpi-card.neutral::before { background: var(--ink-3); opacity: 0.3; }
+.kpi-card .label {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--ink-3); font-weight: 500; margin-bottom: 8px; padding-left: 8px;
+}
+.kpi-card .value {
+  font-size: 28px; font-weight: 600; letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums; padding-left: 8px;
+}
+.kpi-card .unit { font-size: 12px; color: var(--ink-3); margin-left: 6px; font-weight: 400; }
+.kpi-card .sub  { font-size: 11.5px; color: var(--ink-3); margin-top: 4px; padding-left: 8px; }
+
+.tag {
+  display: inline-flex; align-items: center;
+  padding: 2px 8px; border-radius: 4px;
+  font-size: 11.5px; font-weight: 600;
+  letter-spacing: 0.02em; text-transform: uppercase;
+}
+.tag.up    { background: var(--up-soft); color: var(--up); }
+.tag.down  { background: var(--down-soft); color: var(--down); }
+.tag.ocre  { background: var(--ocre-bg); color: #7A5A13; }
+.tag.terra { background: var(--terracotta-bg); color: var(--terracotta-2); }
+.tag.neutral { background: var(--bg-sunken); color: var(--ink-2); }
+
+.delta-up   { color: var(--up); font-weight: 600; font-variant-numeric: tabular-nums; }
+.delta-down { color: var(--down); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.ticker {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px; font-weight: 600;
+  padding: 2px 6px; background: var(--bg-sunken);
+  border-radius: 4px; letter-spacing: 0.02em;
+  color: var(--ink-2);
+}
+
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+.dot.up { background: var(--up); }
+.dot.down { background: var(--down); }
+.dot.ocre { background: var(--ocre); }
+
+.label-xs {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--ink-3); font-weight: 500;
+}
+
+/* Section header underline */
+.section-title {
+  font-size: 18px; font-weight: 600; margin: 0 0 12px 0;
+  padding-bottom: 8px; border-bottom: 1px solid var(--border);
+}
