@@ -36,33 +36,31 @@ def _load_scoring_snapshot() -> pd.DataFrame:
 
 
 def render():
-    st.markdown('<div class="main-header">📡 Signaux d\'Achat / Vente</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">Choisissez un secteur ou des titres spécifiques à analyser</div>', unsafe_allow_html=True)
+    from utils.ui_helpers import section_heading
+    st.title("Signaux d'achat / vente")
+    st.caption("Synthèse des signaux techniques et fondamentaux par titre")
 
     analyzable = get_analyzable_tickers()
     if not analyzable:
         st.warning("Aucune donnée disponible.")
         return
 
-    # --- Mode de selection ---
-    mode = st.radio("Analyser par", ["Secteur", "Titres spécifiques", "Tous les titres avec données"], horizontal=True)
+    mode = st.radio("Analyser par", ["Secteur", "Titres spécifiques", "Tous les titres"], horizontal=True)
 
     if mode == "Secteur":
         sectors = sorted(set(t["sector"] for t in analyzable if t.get("sector")))
-        selected_sector = st.selectbox("Choisir un secteur", sectors)
+        selected_sector = st.selectbox("Secteur", sectors)
         target_tickers = [t for t in analyzable if t["sector"] == selected_sector]
         if not target_tickers:
             st.warning(f"Aucun titre avec des données dans le secteur {selected_sector}.")
             return
-
     elif mode == "Titres spécifiques":
-        options = [f"{t['ticker']} - {t['name']}" for t in analyzable]
-        selected = st.multiselect("Choisir des titres", options, default=options[:5])
+        options = [f"{t['ticker']} · {t['name']}" for t in analyzable]
+        selected = st.multiselect("Titres", options, default=options[:5])
         target_tickers = [
-            {"ticker": s.split(" - ")[0], "name": s.split(" - ")[1] if " - " in s else ""}
+            {"ticker": s.split(" · ")[0], "name": s.split(" · ")[1] if " · " in s else ""}
             for s in selected
         ]
-
     else:
         target_tickers = analyzable
 
@@ -218,20 +216,18 @@ def render():
             f"{total_recos_saved} recommandation(s)."
         )
 
-    # --- Vue consolidée par titre ---
-    st.markdown("---")
+    # Vue consolidée par titre
     _render_consolidated_view(per_ticker)
 
-    # --- Summary Table ---
-    st.markdown("---")
-    st.subheader("📋 Résumé")
+    # Résumé
+    from utils.ui_helpers import section_heading
+    section_heading("Résumé", spacing="loose")
     if stock_summaries:
         sum_df = pd.DataFrame(stock_summaries).sort_values("hybrid_score", ascending=False)
         sum_df["stars_display"] = sum_df["stars"].apply(stars_display)
-        sum_df["price_fmt"] = sum_df["price"].apply(lambda x: f"{x:,.0f}" if x else "N/A")
+        sum_df["price_fmt"] = sum_df["price"].apply(lambda x: f"{x:,.0f}" if x else "—")
         sum_df["score_fmt"] = sum_df["hybrid_score"].apply(lambda x: f"{x:.0f}/100")
-        trend_emoji = {"haussiere": "📈", "baissiere": "📉", "neutre": "➡️", "indetermine": "❓"}
-        sum_df["trend_display"] = sum_df["trend"].apply(lambda x: f"{trend_emoji.get(x, '❓')} {x}")
+        sum_df["trend_display"] = sum_df["trend"].apply(lambda x: (x or "—").capitalize())
 
         st.dataframe(
             sum_df[["ticker", "name", "sector", "price_fmt", "score_fmt", "verdict", "stars_display", "trend_display", "nb_signals"]].rename(columns={
@@ -242,8 +238,8 @@ def render():
             use_container_width=True, hide_index=True,
         )
 
-    # --- Chat zone ---
-    st.markdown("---")
+    # Assistant chat
+    section_heading("Assistant Signaux", spacing="loose")
     _render_signals_chat(all_signals, stock_summaries)
 
 
@@ -254,11 +250,12 @@ def _render_consolidated_view(per_ticker):
         st.info("Aucun titre à analyser.")
         return
 
-    st.subheader("🧭 Synthèse par titre")
+    from utils.ui_helpers import section_heading
+    section_heading("Synthèse par titre")
     st.caption(
-        "Verdict consolidé par titre : recommandation fondamentale + signaux techniques dédupliqués par famille. "
-        "Colonnes **🟢 Achats** / **🔴 Ventes** listent la famille et le signal retenu (le plus fort par famille). "
-        "⚠️ en colonne **Contradictions** = au moins une famille a des signaux achat ET vente."
+        "Verdict consolidé : recommandation fondamentale + signaux techniques dédupliqués par famille. "
+        "Colonnes **Achats** / **Ventes** listent la famille et le signal retenu (le plus fort par famille). "
+        "Colonne **Contradictions** : familles avec signaux achat ET vente."
     )
 
     # Filter controls

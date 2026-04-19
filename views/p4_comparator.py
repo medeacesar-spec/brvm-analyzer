@@ -86,20 +86,21 @@ def render():
         return
 
     # --- Tableau comparatif ---
-    st.subheader("Tableau comparatif")
+    section_heading("Tableau comparatif", spacing="loose")
 
     metrics = [
-        ("Prix (FCFA)", "price", "number"),
-        ("ROE", "roe", "pct"),
-        ("Marge nette", "net_margin", "pct"),
-        ("PER", "per", "decimal"),
-        ("Dividend Yield", "dividend_yield", "pct"),
-        ("Payout ratio", "payout_ratio", "pct"),
-        ("Dette/Equity", "debt_equity", "x"),
-        ("P/B", "pb", "x"),
-        ("EPS (FCFA)", "eps", "number"),
-        ("DPS (FCFA)", "dps", "number"),
-        ("Score fondamental", "fundamental_score", "decimal"),
+        ("Prix (FCFA)",       "price",              "number"),
+        ("ROE",               "roe",                "pct"),
+        ("Marge nette",       "net_margin",         "pct"),
+        ("PER",               "per",                "decimal"),
+        ("Dividend Yield",    "dividend_yield",     "pct"),
+        ("Payout ratio",      "payout_ratio",       "pct"),
+        ("Dette/Equity",      "debt_equity",        "x"),
+        ("P/B",               "pb",                 "x"),
+        ("EPS (FCFA)",        "eps",                "number"),
+        ("DPS (FCFA)",        "dps",                "number"),
+        ("Checklist V&D",     "_checklist",         "text"),
+        ("Score fondamental", "fundamental_score",  "decimal"),
     ]
 
     comp_data = {"Indicateur": [m[0] for m in metrics]}
@@ -109,66 +110,73 @@ def render():
         for _, key, fmt in metrics:
             if key == "price":
                 val = data["fundamentals"].get("price")
+                values.append(format_ratio(val, fmt))
+            elif key == "_checklist":
+                cl = data["ratios"].get("checklist", [])
+                passed = sum(1 for c in cl if c["passed"] is True)
+                total = len(cl)
+                values.append(f"{passed} / {total}" if total else "—")
             elif key == "fundamental_score":
                 val = data["ratios"].get("fundamental_score")
+                values.append(format_ratio(val, fmt))
             else:
                 val = data["ratios"].get(key)
-            values.append(format_ratio(val, fmt))
-        comp_data[f"{name}\n({ticker})"] = values
+                values.append(format_ratio(val, fmt))
+        comp_data[f"{name} · {ticker}"] = values
 
     comp_df = pd.DataFrame(comp_data)
     st.dataframe(comp_df, use_container_width=True, hide_index=True)
 
-    # --- Radar Chart ---
-    st.markdown("---")
-    st.subheader("Radar de comparaison")
+    # --- Bar chart horizontal monochrome (remplace le radar arc-en-ciel) ---
+    # Principe design v3 #07 : dataviz monochrome. Bar horizontal groupé
+    # est plus lisible que le radar pour des valeurs chiffrées.
+    section_heading("Profil comparatif", spacing="loose")
 
-    radar_data = {}
-    for ticker, data in stocks.items():
+    import plotly.graph_objects as go
+    bar_metrics = [
+        ("ROE", lambda r: min((r.get("roe") or 0) / 0.30 * 100, 100)),
+        ("Marge", lambda r: min((r.get("net_margin") or 0) / 0.25 * 100, 100)),
+        ("Yield", lambda r: min((r.get("dividend_yield") or 0) / 0.10 * 100, 100)),
+        ("Valorisation", lambda r: max(0, min(100, (20 - (r.get("per") or 0)) / 20 * 100))
+                          if (r.get("per") or 0) > 0 else 0),
+        ("Croissance", lambda r: min(max(((r.get("revenue_growth") or 0)) / 0.15 * 100, 0), 100)),
+        ("Score global", lambda r: (r.get("fundamental_score") or 0) / 50 * 100),
+    ]
+    # Palette monochrome (design v3) — deep green + accent ocre + neutre
+    mono_palette = [
+        COLORS["primary"], COLORS["accent"], COLORS["secondary"],
+        "#4A8A5F", "#D97E4F", "#A69D8D",  # variantes
+    ]
+
+    fig = go.Figure()
+    for i, (ticker, data) in enumerate(stocks.items()):
         r = data["ratios"]
         name = data["fundamentals"].get("company_name") or ticker
-
-        roe = min((r.get("roe") or 0) / 0.30 * 100, 100)
-        margin = min((r.get("net_margin") or 0) / 0.25 * 100, 100)
-        dy = min((r.get("dividend_yield") or 0) / 0.10 * 100, 100)
-
-        per = r.get("per")
-        per_score = max(0, min(100, (20 - per) / 20 * 100)) if per and per > 0 else 0
-
-        growth = r.get("revenue_growth")
-        growth_score = min(max((growth or 0) / 0.15 * 100, 0), 100)
-
-        fund_score = (r.get("fundamental_score") or 0) / 50 * 100
-
-        radar_data[name] = {
-            "ROE": roe,
-            "Marge": margin,
-            "Yield": dy,
-            "Valorisation": per_score,
-            "Croissance": growth_score,
-            "Score Global": fund_score,
-        }
-
-    fig = radar_chart(radar_data, "Profil comparatif")
+        values = [fn(r) for _, fn in bar_metrics]
+        fig.add_trace(go.Bar(
+            y=[m[0] for m in bar_metrics],
+            x=values,
+            name=name,
+            orientation="h",
+            marker_color=mono_palette[i % len(mono_palette)],
+            text=[f"{v:.0f}" for v in values],
+            textposition="auto",
+        ))
+    fig.update_layout(
+        barmode="group", height=380,
+        template="plotly_white",
+        paper_bgcolor=COLORS["bg"], plot_bgcolor=COLORS["bg"],
+        font=dict(color=COLORS["text"], family="ui-sans-serif, -apple-system, sans-serif", size=12),
+        xaxis=dict(title="Score (0-100)", range=[0, 100], gridcolor=COLORS["border"]),
+        yaxis=dict(autorange="reversed"),
+        margin=dict(l=10, r=10, t=10, b=40),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
+                    font=dict(size=11, color=COLORS["text_secondary"])),
+    )
     st.plotly_chart(fig, use_container_width=True)
 
-    # --- Checklist comparison ---
-    st.markdown("---")
-    st.subheader("Checklist Value & Dividendes")
-
-    for ticker, data in stocks.items():
-        name = data["fundamentals"].get("company_name") or ticker
-        checklist = data["ratios"].get("checklist", [])
-        passed = sum(1 for c in checklist if c["passed"] is True)
-        total = len(checklist)
-
-        col1, col2 = st.columns([1, 4])
-        col1.write(f"**{name}**")
-        col2.progress(passed / total if total > 0 else 0, text=f"{passed}/{total} critères")
-
     # --- Performance Chart ---
-    st.markdown("---")
-    st.subheader("Performance comparée des prix")
+    section_heading("Performance comparée des prix", spacing="loose")
 
     price_data = {}
     for ticker in tickers:
