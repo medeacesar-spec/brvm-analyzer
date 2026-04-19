@@ -9,13 +9,61 @@ import pandas as pd
 from config import load_tickers, CURRENCY
 from data.storage import (
     save_position, get_portfolio, delete_position,
-    get_fundamentals, get_cached_prices,
+    get_fundamentals, get_cached_prices, get_all_stocks_for_analysis,
     get_portfolio_cash, set_portfolio_cash,
 )
+from data.db import read_sql_df
 from data.scraper import fetch_daily_quotes
 from analysis.scoring import compute_hybrid_score, compute_consolidated_verdict
 from utils.charts import pie_chart
 from utils.nav import ticker_analyze_button
+
+import json as _json
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _load_scoring_dict() -> dict:
+    """Retourne {ticker: row dict} depuis scoring_snapshot. Les signals/consolidated
+    sont parses en JSON. 1 seule requete Supabase cachee 5 min."""
+    try:
+        df = read_sql_df(
+            "SELECT ticker, company_name, sector, price, hybrid_score, "
+            "fundamental_score, technical_score, verdict, stars, trend, "
+            "nb_signals, signals_json, consolidated_json FROM scoring_snapshot"
+        )
+    except Exception:
+        return {}
+    if df.empty:
+        return {}
+    out = {}
+    for _, r in df.iterrows():
+        d = r.to_dict()
+        try:
+            d["_signals"] = _json.loads(d.get("signals_json") or "[]")
+        except Exception:
+            d["_signals"] = []
+        try:
+            d["_consolidated"] = _json.loads(d.get("consolidated_json") or "{}")
+        except Exception:
+            d["_consolidated"] = {}
+        out[r["ticker"]] = d
+    return out
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _load_all_stocks_dict() -> dict:
+    """Retourne {ticker: row dict} depuis get_all_stocks_for_analysis.
+    Permet d'eviter N appels get_fundamentals(ticker) dans les boucles."""
+    all_stocks = get_all_stocks_for_analysis()
+    if all_stocks.empty:
+        return {}
+    import math as _m
+    out = {}
+    for _, r in all_stocks.iterrows():
+        d = {k: (None if isinstance(v, float) and _m.isnan(v) else v)
+             for k, v in r.to_dict().items()}
+        out[r["ticker"]] = d
+    return out
 
 
 def render():
@@ -161,10 +209,11 @@ def render():
     col4.metric("Cash disponible", f"{cash:,.0f} {CURRENCY}")
     col5.metric("Valeur totale", f"{total_portfolio:,.0f} {CURRENCY}")
 
-    # --- Projected dividends ---
+    # --- Projected dividends (batch via all_stocks dict, 1 requete) ---
+    _stocks_dict = _load_all_stocks_dict()
     total_div = 0
     for _, pos in portfolio.iterrows():
-        fund = get_fundamentals(pos["ticker"])
+        fund = _stocks_dict.get(pos["ticker"])
         if fund and fund.get("dps"):
             total_div += fund["dps"] * pos["quantity"]
 
@@ -185,8 +234,13 @@ def render():
         col4.write(f"Investi: {pos['invested']:,.0f}")
         if pd.notna(pos.get("current_price")):
             col5.write(f"Actuel: {pos['current_price']:,.0f}")
-            pnl_color = "#28a745" if pos["pnl"] >= 0 else "#dc3545"
-            col6.markdown(f"<span style='color:{pnl_color}'>{pos['pnl']:+,.0f} ({pos['pnl_pct']:+.1f}%)</span>", unsafe_allow_html=True)
+            from utils.ui_helpers import delta as _delta
+            col6.markdown(
+                f"<span style='font-variant-numeric:tabular-nums'>"
+                f"{pos['pnl']:+,.0f}</span> "
+                + _delta(pos['pnl_pct'], with_arrow=False),
+                unsafe_allow_html=True,
+            )
         else:
             col5.write("Prix N/A")
             col6.write("—")
@@ -311,34 +365,33 @@ def _render_portfolio_analysis(portfolio, cash, total_value, total_portfolio, ti
     else:
         diagnostics.append(("🟢", "Bonne répartition par titre", f"Titre principal ({top_ticker}) à {top_ticker_pct:.0f}%."))
 
-    # 4. Analyse fondamentale des positions
+    # 4. Analyse fondamentale des positions — lecture depuis snapshots
+    # (plus de get_fundamentals + compute_hybrid_score par ticker)
+    stocks_dict = _load_all_stocks_dict()
+    scoring_dict = _load_scoring_dict()
     total_div = 0
     positions_analysis = []
     for ticker in portfolio["ticker"].unique():
-        fund = get_fundamentals(ticker)
+        fund = stocks_dict.get(ticker)
         pos_value = portfolio[portfolio["ticker"] == ticker]["current_value"].sum()
         weight = pos_value / total_value * 100 if total_value > 0 else 0
+        if not fund:
+            continue
 
-        if fund:
-            dps = fund.get("dps") or 0
-            qty = portfolio[portfolio["ticker"] == ticker]["quantity"].sum()
-            div = dps * qty
-            total_div += div
+        dps = fund.get("dps") or 0
+        qty = portfolio[portfolio["ticker"] == ticker]["quantity"].sum()
+        div = dps * qty
+        total_div += div
 
-            price_df = get_cached_prices(ticker)
-            try:
-                result = compute_hybrid_score(fund, price_df)
-                score = result["hybrid_score"]
-                verdict = result["recommendation"]["verdict"]
-                positions_analysis.append({
-                    "ticker": ticker,
-                    "weight": weight,
-                    "score": score,
-                    "verdict": verdict,
-                    "div_contribution": div,
-                })
-            except Exception:
-                pass
+        snap = scoring_dict.get(ticker)
+        if snap:
+            positions_analysis.append({
+                "ticker": ticker,
+                "weight": weight,
+                "score": snap.get("hybrid_score") or 0,
+                "verdict": snap.get("verdict") or "—",
+                "div_contribution": div,
+            })
 
     # Positions sous-performantes
     weak = [p for p in positions_analysis if p["score"] < 40]
@@ -373,22 +426,34 @@ def _render_position_recommendations(portfolio, total_value, cash):
         "et l'état du portefeuille (P&L, concentration, cash)."
     )
 
-    # ---- 1. Scanner TOUS les titres (mêmes données que p5) ----
+    # ---- 1. Scanner TOUS les titres via scoring_snapshot (1 requete) ----
+    # Etait une boucle N+1 de ~48 tickers × 3 requetes = ~150 round-trips
+    # Supabase = 20+ sec. Maintenant lecture cachee 5 min.
     tickers_meta = load_tickers()
     held_tickers = set(portfolio["ticker"].unique())
+    scoring_dict_all = _load_scoring_dict()
+    stocks_dict_all = _load_all_stocks_dict()
 
-    scans = []  # list of dicts: ticker, name, verdict, confidence, signals_cons, is_held, weight, pnl_pct
+    scans = []
     for t in tickers_meta:
         ticker = t["ticker"]
-        fund = get_fundamentals(ticker)
-        if not fund:
+        snap = scoring_dict_all.get(ticker)
+        fund = stocks_dict_all.get(ticker)
+        if not snap or not fund:
             continue
-        price_df = get_cached_prices(ticker)
-        try:
-            result = compute_hybrid_score(fund, price_df)
-            cons = compute_consolidated_verdict(result)
-        except Exception:
-            continue
+        # Reconstitue le dict result que consomment les blocs suivants
+        result = {
+            "hybrid_score": snap.get("hybrid_score"),
+            "fundamental_score": snap.get("fundamental_score"),
+            "technical_score": snap.get("technical_score"),
+            "recommendation": {
+                "verdict": snap.get("verdict"),
+                "stars": snap.get("stars"),
+            },
+            "trend": {"trend": snap.get("trend")},
+            "signals": snap.get("_signals") or [],
+        }
+        cons = snap.get("_consolidated") or {}
 
         is_held = ticker in held_tickers
         weight = 0.0
