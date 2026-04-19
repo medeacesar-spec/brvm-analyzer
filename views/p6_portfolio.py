@@ -17,6 +17,7 @@ from data.scraper import fetch_daily_quotes
 from analysis.scoring import compute_hybrid_score, compute_consolidated_verdict
 from utils.charts import pie_chart
 from utils.nav import ticker_analyze_button
+from utils.ui_helpers import section_heading
 
 import json as _json
 
