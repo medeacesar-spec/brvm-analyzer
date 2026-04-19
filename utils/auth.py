@@ -153,7 +153,7 @@ def require_login(feature_name: str = "cette fonctionnalité") -> bool:
         "Vos données (portefeuille, cash, profil investisseur) sont privées et "
         "isolées par compte."
     )
-    _render_login_buttons(container=st)
+    _render_login_buttons(container=st, key_prefix="main")
     return False
 
 
@@ -161,14 +161,14 @@ def require_login(feature_name: str = "cette fonctionnalité") -> bool:
 # Widgets UI
 # ─────────────────────────────────────────────────────────────
 
-def _render_login_buttons(container=st.sidebar):
+def _render_login_buttons(container=st.sidebar, key_prefix: str = "sidebar"):
     """Affiche le bouton de connexion OAuth.
-    Le mode développement a été retiré pour alléger la sidebar ; il reste
-    activable programmatiquement via st.session_state["dev_user_email"]
-    si besoin en dev local (non exposé dans l'UI)."""
+    `key_prefix` évite les clés dupliquées quand le bouton est rendu
+    simultanément dans la sidebar ET dans le main (cas require_login)."""
     if oauth_enabled():
         if container.button("🔐 Se connecter avec Google",
-                            use_container_width=True, key="login_google_btn"):
+                            use_container_width=True,
+                            key=f"login_google_btn_{key_prefix}"):
             try:
                 st.login("google")
             except Exception as e:
