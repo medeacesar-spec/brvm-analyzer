@@ -90,15 +90,15 @@ def _compute_period_performance(quotes: pd.DataFrame) -> dict:
     from data.storage import get_all_cached_prices
     results = {"day": [], "week": [], "month": [], "ranges": {}}
     today = datetime.now()
-    days_since_monday = today.weekday()
-    last_friday = today - timedelta(days=days_since_monday + 3)
-    last_monday = last_friday - timedelta(days=4)
+
+    # Fenêtre "Semaine" = 7 derniers jours calendaires glissants (simple).
+    week_start = today - timedelta(days=7)
     month_ago = today - timedelta(days=30)
 
     results["ranges"] = {
         "day": today.date(),
-        "week_start": last_monday.date(),
-        "week_end": last_friday.date(),
+        "week_start": week_start.date(),
+        "week_end": today.date(),
         "month_start": month_ago.date(),
         "month_end": today.date(),
     }
@@ -120,7 +120,7 @@ def _compute_period_performance(quotes: pd.DataFrame) -> dict:
             continue
 
         prices = prices.sort_values("date")
-        for period_key, start_dt, end_dt in [("week", last_monday, last_friday), ("month", month_ago, today)]:
+        for period_key, start_dt, end_dt in [("week", week_start, today), ("month", month_ago, today)]:
             pdata = prices[(prices["date"] >= pd.Timestamp(start_dt)) & (prices["date"] <= pd.Timestamp(end_dt))]
             if len(pdata) >= 2:
                 var = ((pdata.iloc[-1]["close"] - pdata.iloc[0]["close"]) / pdata.iloc[0]["close"] * 100) if pdata.iloc[0]["close"] > 0 else 0
@@ -562,8 +562,8 @@ def render():
     week_caption = ""
     if ranges.get("week_start") and ranges.get("week_end"):
         week_caption = (
-            f"Semaine du {_fmt_date(ranges['week_start'])} "
-            f"au {_fmt_date(ranges['week_end'])}"
+            f"7 derniers jours · "
+            f"{_fmt_date(ranges['week_start'])} → {_fmt_date(ranges['week_end'])}"
         )
     month_caption = ""
     if ranges.get("month_start") and ranges.get("month_end"):

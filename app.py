@@ -587,16 +587,16 @@ st.sidebar.markdown(
 )
 
 _PAGE_OPTIONS = [
-    "🏠 Dashboard Marché",
-    "🔍 Analyse d'un titre",
-    "🎯 Screening",
-    "⚖️ Comparateur",
-    "📡 Signaux",
-    "💼 Portefeuille",
-    "🤖 Assistant Investisseur",
-    "📈 Performance des titres",
-    "📜 Historique signaux",
-    "📅 Infos Générales Marché",
+    "Dashboard Marché",
+    "Analyse d'un titre",
+    "Screening",
+    "Comparateur",
+    "Signaux",
+    "Portefeuille",
+    "Assistant Investisseur",
+    "Performance des titres",
+    "Historique Signaux",
+    "Infos Générales Marché",
 ]
 
 # If another page requested navigation (e.g. a ticker-link button), honor it.
@@ -616,36 +616,36 @@ page = st.sidebar.radio(
 )
 
 # Import and run the selected page
-if page == "🏠 Dashboard Marché":
+if page == "Dashboard Marché":
     from views.p1_dashboard import render
     render()
-elif page == "🔍 Analyse d'un titre":
+elif page == "Analyse d'un titre":
     from views.p2_stock_analysis import render
     render()
-elif page == "🎯 Screening":
+elif page == "Screening":
     from views.p3_screening import render
     render()
-elif page == "⚖️ Comparateur":
+elif page == "Comparateur":
     from views.p4_comparator import render
     render()
-elif page == "📡 Signaux":
+elif page == "Signaux":
     from views.p5_signals import render
     render()
-elif page == "💼 Portefeuille":
+elif page == "Portefeuille":
     if require_login("le suivi de portefeuille"):
         from views.p6_portfolio import render
         render()
-elif page == "🤖 Assistant Investisseur":
+elif page == "Assistant Investisseur":
     if require_login("l'Assistant Investisseur"):
         from views.p7_assistant import render
         render()
-elif page == "📈 Performance des titres":
+elif page == "Performance des titres":
     from views.p9_performance import render
     render()
-elif page == "📜 Historique signaux":
+elif page == "Historique Signaux":
     from views.p10_calibration import render
     render()
-elif page == "📅 Infos Générales Marché":
+elif page == "Infos Générales Marché":
     from views.p8_publications import render
     render()
 

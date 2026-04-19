@@ -85,47 +85,69 @@ section[data-testid="stSidebar"] h3,
 section[data-testid="stSidebar"] [data-testid="stMetricValue"] {
   color: var(--ink) !important;
 }
-/* ─── Navigation sidebar : transforme st.radio en menu vertical ─── */
-/* Cache les ronds natifs de radio (on garde le clic via le label) */
+/* ─── Navigation sidebar : st.radio transformé en menu vertical propre ─── */
+/* Cache les ronds natifs de radio */
 section[data-testid="stSidebar"] .stRadio [data-baseweb="radio"] > div:first-child,
 section[data-testid="stSidebar"] .stRadio label > div:first-child > div:first-child {
   display: none !important;
 }
-/* Layout du groupe : pas de gap par défaut, pas de direction flex horizontal */
+/* Groupe : colonne, pas de gap horizontal */
 section[data-testid="stSidebar"] .stRadio > div {
-  gap: 1px !important;
+  gap: 2px !important;
   flex-direction: column !important;
 }
-/* Chaque item de navigation = bande pleine largeur, hover crème, actif primary */
+/* Chaque item : puce à gauche (dot) + label. Bordure transparente par défaut,
+   hover crème, actif encadré avec barre verticale primary. */
 section[data-testid="stSidebar"] .stRadio label {
   display: flex !important;
   align-items: center !important;
   width: 100% !important;
-  padding: 8px 10px !important;
+  padding: 8px 12px 8px 16px !important;
   margin: 0 !important;
   border-radius: 6px !important;
   border: 1px solid transparent !important;
   font-size: 13px !important;
   color: var(--ink-2) !important;
   cursor: pointer;
-  transition: background 120ms, color 120ms;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  position: relative;
+  transition: background 120ms, color 120ms, border-color 120ms;
+}
+/* Petite puce décorative à gauche de chaque item (comme les dots du design) */
+section[data-testid="stSidebar"] .stRadio label::before {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--ink-4);
+  transform: translateY(-50%);
+  transition: background 120ms;
 }
 section[data-testid="stSidebar"] .stRadio label:hover {
   background: var(--bg-hover) !important;
   color: var(--ink) !important;
 }
-/* État actif : label contenant un input coché (selector :has, supporté sur
-   navigateurs modernes). Fond primary-bg + texte primary, border subtile. */
-section[data-testid="stSidebar"] .stRadio label:has(input:checked) {
-  background: var(--primary-bg) !important;
-  color: var(--primary-2) !important;
-  font-weight: 600 !important;
-  border-color: var(--primary-bg) !important;
+section[data-testid="stSidebar"] .stRadio label:hover::before {
+  background: var(--ink-3);
 }
-/* L'emoji prend une taille fixe — la ligne reste alignée */
+/* Actif : encadré crème clair + barre verticale deep green + puce verte + bold */
+section[data-testid="stSidebar"] .stRadio label:has(input:checked) {
+  background: var(--bg-elev) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--ink) !important;
+  font-weight: 600 !important;
+  box-shadow: inset 3px 0 0 var(--primary);
+  padding-left: 18px !important;
+}
+section[data-testid="stSidebar"] .stRadio label:has(input:checked)::before {
+  background: var(--primary);
+  width: 5px;
+  height: 5px;
+  left: 8px;
+}
+/* Le span du label */
 section[data-testid="stSidebar"] .stRadio label p,
 section[data-testid="stSidebar"] .stRadio label > div:last-child {
   font-size: 13px !important;
