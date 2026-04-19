@@ -26,7 +26,7 @@ from analysis.technical import compute_all_indicators, detect_trend, detect_supp
 from analysis.scoring import compute_hybrid_score
 from utils.charts import candlestick_chart, gauge_chart, flag_badge, stars_display
 from utils.auth import is_admin
-from utils.ui_helpers import delta as _delta_html, tag as _tag_html, ticker as _ticker_html
+from utils.ui_helpers import delta as _delta_html, tag as _tag_html, ticker as _ticker_html, section_heading
 
 import json as _json
 
@@ -207,9 +207,14 @@ def render():
             unsafe_allow_html=True,
         )
     with col_stars:
+        # Stars + verdict tag juste en dessous (le verdict n'apparaît plus dans Recommandation)
         st.markdown(
             f"<div style='text-align:right;padding-top:4px;'>"
-            f"{stars_display(reco['stars'])}</div>",
+            f"{stars_display(reco['stars'])}"
+            f"<div style='margin-top:4px;'>"
+            + _tag_html(reco['verdict'], _verdict_tone(reco['verdict']))
+            + "</div>"
+            "</div>",
             unsafe_allow_html=True,
         )
 
@@ -339,81 +344,115 @@ def render():
 
 def _render_fundamental(fundamentals, ratios):
     """Onglet analyse fondamentale : ratios + comparaison secteur + checklist."""
-    st.markdown(
-        '<div class="label-xs" style="margin-top:8px;">Ratios calculés</div>',
-        unsafe_allow_html=True,
-    )
+    from utils.ui_helpers import section_heading
+    section_heading("Ratios calculés", spacing="tight")
 
     sector = fundamentals.get("sector", "")
-    # Load sector benchmarks for relative comparison
     benchmarks = get_sector_benchmarks(sector) if sector else {}
 
-    # Helpers for each comparable ratio
-    def _sector_cell(ratio_key, value, prefer_low=False):
+    def _seuil(short: str) -> str:
+        """Seuil court : ex '≥ 15% solide' / '≤ 1.5×' / '≥ 3×'. Pas de long détail."""
+        return short
+
+    def _status_cell(flag: str) -> str:
+        """Statut : dot coloré + mot court (Bon / À risque / Vigilance / N/A)."""
+        tone = {"OK": "up", "Vigilance": "warn", "Risque": "down"}.get(flag, "neutral")
+        label = {
+            "OK": "Bon", "Vigilance": "Vigilance",
+            "Risque": "À risque", "—": "N/A",
+        }.get(flag, flag)
+        return f"<span class='dot {tone}'></span>{label}"
+
+    def _sector_cell(ratio_key, value, prefer_low=False) -> str:
+        """Comparaison secteur courte : '+10.6 pts vs méd.' / 'au-dessus' / '—'."""
         cmp = compare_to_sector(ratio_key, value, benchmarks, prefer_low=prefer_low)
         if not cmp:
-            return "—"
-        fmt = "decimal" if ratio_key in ("per", "pb") else "pct"
-        med_str = format_ratio(cmp["median"], fmt)
-        return (
-            f"<span style='color:{cmp['color']};font-weight:600'>{cmp['badge']}</span>"
-            f"<br><small>Médiane {cmp['scope']} : {med_str} "
-            f"(N={cmp['count']})</small>"
-        )
+            return "<span class='muted'>—</span>"
+        diff = cmp["diff"]
+        # Résumé court : pts pour les %, x pour les ratios, sinon "au-dessus/en-dessous"
+        if ratio_key in ("roe", "net_margin", "dividend_yield", "fcf_margin", "payout_ratio"):
+            # diff est en relatif à la médiane, on convertit en pts absolus
+            med = cmp["median"]
+            if med is not None:
+                pts = (value - med) * 100 if (value is not None and med is not None) else 0
+                sign = "+" if pts >= 0 else ""
+                summary = f"{sign}{pts:.1f} pts vs méd."
+            else:
+                summary = "—"
+        elif ratio_key in ("per", "pb"):
+            med = cmp["median"]
+            if med is not None and value is not None:
+                rel = (value - med) / abs(med) * 100
+                sign = "+" if rel >= 0 else ""
+                summary = f"{sign}{rel:.0f}% vs méd."
+            else:
+                summary = "—"
+        else:
+            summary = "au-dessus" if diff > 0.05 else "au-dessous" if diff < -0.05 else "proche méd."
 
-    # Main ratios table
+        # Couleur : vert si favorable, rouge si défavorable, neutre si proche
+        is_good = (diff < -0.05 and prefer_low) or (diff > 0.05 and not prefer_low)
+        is_bad = (diff > 0.05 and prefer_low) or (diff < -0.05 and not prefer_low)
+        color = "var(--up)" if is_good else "var(--down)" if is_bad else "var(--ink-3)"
+        return f"<span style='color:{color};font-weight:500;'>{summary}</span>"
+
+    # Rangs : (name, value, seuil_court, flag_tuple, sector_cell_fn_args)
     flags = ratios.get("flags", {})
     ratio_rows = [
-        ("ROE", format_ratio(ratios.get("roe")), "≥ 15% (solide) ; ≥ 20% (excellent)",
-         flags.get("roe", ("—", "")), _sector_cell("roe", ratios.get("roe"), prefer_low=False)),
-        ("Marge nette", format_ratio(ratios.get("net_margin")), "≥ 10% (bon) ; ≥ 15% (très bon)",
-         flags.get("net_margin", ("—", "")), _sector_cell("net_margin", ratios.get("net_margin"), prefer_low=False)),
-        ("Dette/Equity", format_ratio(ratios.get("debt_equity"), "x"), "≤ 1.5 (hors banques)",
-         flags.get("debt_equity", ("—", "")), "—"),
-        ("Couverture intérêts", format_ratio(ratios.get("interest_coverage"), "x"), "≥ 3x (confortable)",
-         flags.get("interest_coverage", ("—", "")), "—"),
-        ("FCF", format_ratio(ratios.get("fcf"), "number"), "Positif et stable",
-         flags.get("fcf", ("—", "")), "—"),
-        ("FCF Margin", format_ratio(ratios.get("fcf_margin")), "≥ 5% (bon) ; ≥ 10% (très bon)",
-         flags.get("fcf_margin", ("—", "")), "—"),
-        ("EPS", format_ratio(ratios.get("eps"), "number"), "—", ("OK", ""), "—"),
-        ("DPS", format_ratio(ratios.get("dps"), "number"), "—", ("OK", ""), "—"),
-        ("Dividend Yield", format_ratio(ratios.get("dividend_yield")), "≥ 6% (cible BRVM)",
-         flags.get("dividend_yield", ("—", "")), _sector_cell("dividend_yield", ratios.get("dividend_yield"), prefer_low=False)),
-        ("Payout ratio", format_ratio(ratios.get("payout_ratio")), "40-70% (sain)",
-         flags.get("payout_ratio", ("—", "")), "—"),
-        ("PER", format_ratio(ratios.get("per"), "decimal"), "≤ 12-15 (value)",
-         flags.get("per", ("—", "")), _sector_cell("per", ratios.get("per"), prefer_low=True)),
-        ("P/B", format_ratio(ratios.get("pb"), "x"), "< 2 (hors banques)",
-         flags.get("pb", ("—", "")), _sector_cell("pb", ratios.get("pb"), prefer_low=True)),
-        ("Couverture div (cash)", format_ratio(ratios.get("dividend_cash_coverage"), "x"), "≥ 1.2x",
-         flags.get("dividend_cash_coverage", ("—", "")), "—"),
+        ("ROE",              format_ratio(ratios.get("roe")),            "≥ 15% solide",   flags.get("roe", ("—", "")),                 _sector_cell("roe", ratios.get("roe"), False)),
+        ("Marge nette",      format_ratio(ratios.get("net_margin")),     "≥ 10% bon",      flags.get("net_margin", ("—", "")),          _sector_cell("net_margin", ratios.get("net_margin"), False)),
+        ("Dette/Equity",     format_ratio(ratios.get("debt_equity"), "x"), "≤ 1.5×",       flags.get("debt_equity", ("—", "")),         "<span class='muted'>—</span>"),
+        ("Couverture int.",  format_ratio(ratios.get("interest_coverage"), "x"), "≥ 3×",   flags.get("interest_coverage", ("—", "")),   "<span class='muted'>—</span>"),
+        ("FCF Margin",       format_ratio(ratios.get("fcf_margin")),     "≥ 5%",           flags.get("fcf_margin", ("—", "")),          "<span class='muted'>—</span>"),
+        ("EPS",              format_ratio(ratios.get("eps"), "number"),  "—",              ("OK", ""),                                  "<span class='muted'>—</span>"),
+        ("DPS",              format_ratio(ratios.get("dps"), "number"),  "—",              ("OK", ""),                                  "<span class='muted'>—</span>"),
+        ("Dividend Yield",   format_ratio(ratios.get("dividend_yield")), "≥ 6%",           flags.get("dividend_yield", ("—", "")),      _sector_cell("dividend_yield", ratios.get("dividend_yield"), False)),
+        ("Payout ratio",     format_ratio(ratios.get("payout_ratio")),   "≤ 70%",          flags.get("payout_ratio", ("—", "")),        "<span class='muted'>—</span>"),
+        ("PER",              format_ratio(ratios.get("per"), "decimal"), "≤ 15",           flags.get("per", ("—", "")),                 _sector_cell("per", ratios.get("per"), True)),
+        ("P/B",              format_ratio(ratios.get("pb"), "x"),        "< 2×",           flags.get("pb", ("—", "")),                  _sector_cell("pb", ratios.get("pb"), True)),
+        ("Couv. div cash",   format_ratio(ratios.get("dividend_cash_coverage"), "x"), "≥ 1.2×", flags.get("dividend_cash_coverage", ("—", "")), "<span class='muted'>—</span>"),
     ]
 
-    # Header row
-    h1, h2, h3, h4, h5 = st.columns([2, 1.3, 2.7, 1.7, 2.3])
-    h1.markdown("**Indicateur**")
-    h2.markdown("**Valeur**")
-    h3.markdown("**Seuil**")
-    h4.markdown("**Drapeau**")
-    h5.markdown("**Vs secteur**")
+    # Rendu en tableau HTML compact (style éditorial v3)
+    # Headers en label-xs (small uppercase), rows avec tabular-nums et ligne
+    # horizontale subtile entre chaque row.
+    header_style = (
+        "font-size:10.5px;text-transform:uppercase;letter-spacing:0.08em;"
+        "color:var(--ink-3);font-weight:500;padding:8px 10px;"
+        "border-bottom:1px solid var(--border);background:var(--bg-sunken);"
+    )
+    cell_style = (
+        "padding:10px;border-bottom:1px solid var(--border);"
+        "font-size:13px;"
+    )
+    rows_html = (
+        f"<tr>"
+        f"<th style='{header_style};text-align:left;'>Indicateur</th>"
+        f"<th style='{header_style};text-align:right;'>Valeur</th>"
+        f"<th style='{header_style};text-align:left;'>Seuil</th>"
+        f"<th style='{header_style};text-align:left;'>Statut</th>"
+        f"<th style='{header_style};text-align:left;'>Vs secteur</th>"
+        f"</tr>"
+    )
+    for name, value, rule, (flag, _), sector_cell in ratio_rows:
+        rows_html += (
+            f"<tr>"
+            f"<td style='{cell_style};font-weight:500;'>{name}</td>"
+            f"<td style='{cell_style};text-align:right;font-variant-numeric:tabular-nums;'>{value}</td>"
+            f"<td style='{cell_style};color:var(--ink-3);'>{rule}</td>"
+            f"<td style='{cell_style};'>{_status_cell(flag)}</td>"
+            f"<td style='{cell_style};'>{sector_cell}</td>"
+            f"</tr>"
+        )
 
-    for name, value, rule, (flag, detail), sector_cell in ratio_rows:
-        c1, c2, c3, c4, c5 = st.columns([2, 1.3, 2.7, 1.7, 2.3])
-        c1.write(f"**{name}**")
-        c2.markdown(
-            f"<span style='font-variant-numeric:tabular-nums'>{value}</span>",
-            unsafe_allow_html=True,
-        )
-        c3.write(rule)
-        # Drapeau via Dot (design v3 : plus d'emojis)
-        flag_tone = {"OK": "up", "Vigilance": "warn", "Risque": "down"}.get(flag, "neutral")
-        c4.markdown(
-            f"<span class='dot {flag_tone}'></span>{flag}"
-            + (f" · {detail}" if detail else ""),
-            unsafe_allow_html=True,
-        )
-        c5.markdown(sector_cell, unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='border:1px solid var(--border);border-radius:10px;"
+        f"overflow:hidden;background:var(--bg-elev);'>"
+        f"<table style='width:100%;border-collapse:collapse;'>"
+        f"{rows_html}"
+        f"</table></div>",
+        unsafe_allow_html=True,
+    )
 
     # Sector peer box
     if benchmarks.get("sector"):
@@ -458,9 +497,13 @@ def _render_fundamental(fundamentals, ratios):
     passed = sum(1 for i in checklist if i["passed"] is True)
     total = len(checklist)
     st.markdown(
-        f'<div class="label-xs" style="margin-top:18px;">'
-        f'Checklist Value & Dividendes · <span style="color:var(--primary);'
-        f'font-weight:600;">{passed}/{total}</span> validés</div>',
+        f'<div style="font-size:15px;font-weight:600;color:var(--ink);'
+        f'letter-spacing:-0.01em;margin:22px 0 10px 0;">'
+        f'Checklist Value & Dividendes '
+        f'<span style="color:var(--primary);">·</span> '
+        f'<span style="color:var(--primary);font-weight:600;">{passed}/{total}</span> '
+        f'<span style="color:var(--ink-3);font-weight:400;font-size:13px;">validés</span>'
+        f'</div>',
         unsafe_allow_html=True,
     )
     _check_fmt = {"PER": "decimal", "Couverture": "x", "Dette": "x"}
@@ -506,10 +549,7 @@ def _render_fundamental(fundamentals, ratios):
         )
     else:
         year_labels = ["N-3", "N-2", "N-1", "N"]
-        st.markdown(
-            '<div class="label-xs" style="margin-top:20px;">Historique · N-3 → N</div>',
-            unsafe_allow_html=True,
-        )
+        section_heading("Historique · N-3 → N", spacing="loose")
 
     rev_series = [fundamentals.get(f"revenue_{s}") for s in ("n3", "n2", "n1", "n0")]
     ni_series = [fundamentals.get(f"net_income_{s}") for s in ("n3", "n2", "n1", "n0")]
@@ -665,10 +705,7 @@ def _render_technical(ticker, price_df, result):
     trend = result.get("trend", {})
     trend_name = trend.get("trend", "N/A")
     trend_tone = {"haussiere": "up", "baissiere": "down"}.get(trend_name, "neutral")
-    st.markdown(
-        '<div class="label-xs" style="margin-top:14px;">Tendance actuelle</div>',
-        unsafe_allow_html=True,
-    )
+    section_heading("Tendance actuelle")
     col_t1, col_t2, col_t3 = st.columns(3)
     with col_t1:
         st.markdown(
@@ -692,7 +729,8 @@ def _render_technical(ticker, price_df, result):
     col_sr1, col_sr2 = st.columns(2)
     with col_sr1:
         st.markdown(
-            '<div class="label-xs" style="margin-top:14px;">'
+            '<div style="font-size:15px;font-weight:600;color:var(--ink);'
+            'letter-spacing:-0.01em;margin:14px 0 8px 0;">'
             '<span class="dot up"></span>Supports</div>',
             unsafe_allow_html=True,
         )
@@ -706,7 +744,8 @@ def _render_technical(ticker, price_df, result):
             st.caption("Aucun support détecté")
     with col_sr2:
         st.markdown(
-            '<div class="label-xs" style="margin-top:14px;">'
+            '<div style="font-size:15px;font-weight:600;color:var(--ink);'
+            'letter-spacing:-0.01em;margin:14px 0 8px 0;">'
             '<span class="dot down"></span>Résistances</div>',
             unsafe_allow_html=True,
         )
@@ -720,10 +759,7 @@ def _render_technical(ticker, price_df, result):
             st.caption("Aucune résistance détectée")
 
     # Signaux techniques — dots + stars au lieu d'emojis
-    st.markdown(
-        '<div class="label-xs" style="margin-top:18px;">Signaux techniques</div>',
-        unsafe_allow_html=True,
-    )
+    section_heading("Signaux techniques", spacing="loose")
     signals = result.get("signals", [])
     if signals:
         for sig in signals:
@@ -878,62 +914,58 @@ def _render_indicator_explanations(df: pd.DataFrame, sma_labels: dict, freq: str
 
 
 def _render_recommendation(result, fundamentals):
-    """Onglet recommandation — 3 scores en metrics + verdict + synthèse."""
+    """Onglet recommandation — 3 scores en metrics + synthèse.
+    Le verdict+stars est affiché dans le header de la page, pas besoin
+    de le répéter ici."""
     reco = result["recommendation"]
 
-    # 3 scores en metrics (remplace les gauges Plotly — checklist v3 #8)
     fund_s = result.get("fundamental_score") or 0
     tech_s = result.get("technical_score") or 0
     hybrid = result.get("hybrid_score") or 0
-    col_g1, col_g2, col_g3, col_g4 = st.columns(4)
+
+    # 3 scores en metrics
+    col_g1, col_g2, col_g3 = st.columns(3)
     col_g1.metric("Score fondamental", f"{fund_s:.0f} / 50")
     col_g2.metric("Score technique", f"{tech_s:.0f} / 50")
     col_g3.metric("Score global", f"{hybrid:.0f} / 100")
-    with col_g4:
-        st.markdown(
-            '<div class="label-xs">Verdict</div>'
-            + _tag_html(reco['verdict'], _verdict_tone(reco['verdict']))
-            + f"<div style='margin-top:4px;'>{stars_display(reco['stars'])}</div>",
-            unsafe_allow_html=True,
-        )
 
-    # Barre de progression sous le score global (remplace visuellement le gauge)
-    st.progress(min(max(hybrid / 100, 0), 1), text=f"Score global : {hybrid:.0f} / 100")
-
-    # Points forts / vigilance — dots colorés, pas d'emojis ✅ ⚠️
+    # Points forts / vigilance — section_heading bold avec dot colorée
+    _dot_section_style = (
+        "font-size:15px;font-weight:600;color:var(--ink);"
+        "letter-spacing:-0.01em;margin:20px 0 10px 0;"
+    )
     col_s, col_w = st.columns(2)
     with col_s:
         st.markdown(
-            '<div class="label-xs" style="margin-top:14px;">'
+            f'<div style="{_dot_section_style}">'
             '<span class="dot up"></span>Points forts</div>',
             unsafe_allow_html=True,
         )
         for s in reco.get("strengths", []):
             st.markdown(
-                f"<div style='padding:3px 0;'><span class='dot up'></span>{s}</div>",
+                f"<div style='padding:3px 0;font-size:13px;'>"
+                f"<span class='dot up'></span>{s}</div>",
                 unsafe_allow_html=True,
             )
         if not reco.get("strengths"):
             st.caption("Aucun point fort identifié")
     with col_w:
         st.markdown(
-            '<div class="label-xs" style="margin-top:14px;">'
+            f'<div style="{_dot_section_style}">'
             '<span class="dot warn"></span>Points de vigilance</div>',
             unsafe_allow_html=True,
         )
         for w in reco.get("warnings", []):
             st.markdown(
-                f"<div style='padding:3px 0;'><span class='dot warn'></span>{w}</div>",
+                f"<div style='padding:3px 0;font-size:13px;'>"
+                f"<span class='dot warn'></span>{w}</div>",
                 unsafe_allow_html=True,
             )
         if not reco.get("warnings"):
             st.caption("Aucun point de vigilance")
 
     # Zones d'entrée
-    st.markdown(
-        '<div class="label-xs" style="margin-top:18px;">Zones d\'entrée suggérées</div>',
-        unsafe_allow_html=True,
-    )
+    section_heading("Zones d'entrée suggérées", spacing="loose")
     entry_zones = reco.get("entry_zones", [])
     if entry_zones:
         for zone in entry_zones:
@@ -1022,73 +1054,88 @@ def _render_profile(ticker: str, fundamentals: dict):
             for prefix in ["La société :", "La société :", "La société:", "La société:"]:
                 if desc.startswith(prefix):
                     desc = desc[len(prefix):].strip()
-            st.markdown(
-                '<div class="label-xs" style="margin-top:8px;">Présentation</div>',
-                unsafe_allow_html=True,
-            )
+            section_heading("Présentation", spacing="tight")
             st.markdown(desc)
 
-    # --- Dirigeants & Actionnariat (2 colonnes, pas de divider) ---
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.markdown(
-            '<div class="label-xs" style="margin-top:14px;">Dirigeants</div>',
-            unsafe_allow_html=True,
+    # Helper : rend une carte éditoriale (label-xs uppercase + contenu structuré)
+    def _info_card(label: str, items: list) -> str:
+        """items = [(key_label, value)] — rendus en lignes key/value serrées."""
+        rows_html = ""
+        for key, val in items:
+            if not val:
+                continue
+            rows_html += (
+                f"<div style='display:flex;justify-content:space-between;gap:12px;"
+                f"padding:6px 0;border-bottom:1px solid var(--border);'>"
+                f"<span style='color:var(--ink-3);font-size:12.5px;'>{key}</span>"
+                f"<span style='color:var(--ink);font-size:12.5px;font-weight:500;"
+                f"text-align:right;'>{val}</span>"
+                f"</div>"
+            )
+        if not rows_html:
+            rows_html = ("<div style='color:var(--ink-3);font-size:12.5px;"
+                         "padding:8px 0;'>Non disponible</div>")
+        # Dernière row sans border-bottom
+        rows_html = rows_html.rsplit(
+            "border-bottom:1px solid var(--border);", 1
+        )[0] + "".join(rows_html.rsplit("border-bottom:1px solid var(--border);", 1)[1:])
+        return (
+            f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
+            f"border-radius:10px;padding:12px 16px;'>"
+            f"<div style='font-size:10.5px;text-transform:uppercase;letter-spacing:0.08em;"
+            f"color:var(--ink-3);font-weight:500;margin-bottom:8px;'>{label}</div>"
+            f"{rows_html}"
+            f"</div>"
         )
-        has_officers = False
-        if profile.get("president"):
-            st.markdown(f"**Président du Conseil** · {profile['president']}")
-            has_officers = True
-        if profile.get("dg"):
-            st.markdown(f"**Directeur Général** · {profile['dg']}")
-            has_officers = True
-        if profile.get("dga"):
-            st.markdown(f"**DG Adjoint** · {profile['dga']}")
-            has_officers = True
-        if not has_officers:
-            st.caption("Non disponible")
+
+    # --- Dirigeants & Actionnariat (2 cards bordées) ---
+    conn = get_connection()
+    md = conn.execute(
+        "SELECT shares, float_pct, market_cap FROM market_data WHERE ticker = ?",
+        (ticker,)
+    ).fetchone()
+    conn.close()
+
+    col1, col2 = st.columns(2)
+    with col1:
+        dirigeants_items = [
+            ("Président du Conseil", profile.get("president")),
+            ("Directeur Général", profile.get("dg")),
+            ("DG Adjoint", profile.get("dga")),
+        ]
+        st.markdown(_info_card("Dirigeants", dirigeants_items), unsafe_allow_html=True)
 
     with col2:
+        pct = profile.get("major_shareholder_pct")
+        pct_str = f" · {pct:.1f}%" if pct else ""
+        shareholder = (
+            f"{profile['major_shareholder']}{pct_str}"
+            if profile.get("major_shareholder") else None
+        )
+        actionnariat_items = [
+            ("Actionnaire principal", shareholder),
+            ("Nombre de titres",
+             f"{md['shares']:,.0f}" if (md and md["shares"] and md["shares"] > 0) else None),
+            ("Flottant",
+             f"{md['float_pct']:.1f}%" if (md and md["float_pct"] and md["float_pct"] > 0) else None),
+            ("Capitalisation",
+             f"{md['market_cap']/1e3:,.1f} Md FCFA" if (md and md["market_cap"] and md["market_cap"] > 0) else None),
+        ]
+        st.markdown(_info_card("Actionnariat & Marché", actionnariat_items), unsafe_allow_html=True)
+
+    # --- Contact (card bordée si au moins une info) ---
+    contact_items = [
+        ("Adresse", profile.get("address")),
+        ("Téléphone", profile.get("phone")),
+        ("Fax", profile.get("fax")),
+    ]
+    if any(v for _, v in contact_items):
         st.markdown(
-            '<div class="label-xs" style="margin-top:14px;">Actionnariat & Marché</div>',
+            f"<div style='margin-top:12px;'>"
+            + _info_card("Contact", contact_items)
+            + "</div>",
             unsafe_allow_html=True,
         )
-        if profile.get("major_shareholder"):
-            pct = profile.get("major_shareholder_pct")
-            pct_str = f" · {pct:.1f}%" if pct else ""
-            st.markdown(f"**Actionnaire principal** · {profile['major_shareholder']}{pct_str}")
-
-        conn = get_connection()
-        md = conn.execute(
-            "SELECT shares, float_pct, market_cap FROM market_data WHERE ticker = ?",
-            (ticker,)
-        ).fetchone()
-        conn.close()
-
-        if md:
-            if md["shares"] and md["shares"] > 0:
-                st.markdown(f"**Nombre de titres** · {md['shares']:,.0f}")
-            if md["float_pct"] and md["float_pct"] > 0:
-                st.markdown(f"**Flottant** · {md['float_pct']:.1f}%")
-            if md["market_cap"] and md["market_cap"] > 0:
-                st.markdown(f"**Capitalisation** · {md['market_cap']/1e3:,.1f} Mds FCFA")
-
-    # --- Contact (sans emojis 📍📞📠) ---
-    contact_parts = []
-    if profile.get("address"):
-        contact_parts.append(f"**Adresse** · {profile['address']}")
-    if profile.get("phone"):
-        contact_parts.append(f"**Téléphone** · {profile['phone']}")
-    if profile.get("fax"):
-        contact_parts.append(f"**Fax** · {profile['fax']}")
-
-    if contact_parts:
-        st.markdown(
-            '<div class="label-xs" style="margin-top:14px;">Contact</div>',
-            unsafe_allow_html=True,
-        )
-        st.markdown(" &nbsp;·&nbsp; ".join(contact_parts))
 
     # --- Financial history ---
     conn = get_connection()
@@ -1099,10 +1146,7 @@ def _render_profile(ticker: str, fundamentals: dict):
     conn.close()
 
     if not fund.empty:
-        st.markdown(
-            '<div class="label-xs" style="margin-top:18px;">Historique financier</div>',
-            unsafe_allow_html=True,
-        )
+        section_heading("Historique financier", spacing="loose")
         display = fund.copy()
         display["fiscal_year"] = display["fiscal_year"].astype(int)
         display["revenue"] = display["revenue"].apply(
@@ -1132,10 +1176,7 @@ def _render_profile(ticker: str, fundamentals: dict):
     # --- Actualités récentes (densité v3, pas de divider) ---
     news = get_company_news(ticker, limit=8)
     if not news.empty:
-        st.markdown(
-            '<div class="label-xs" style="margin-top:18px;">Actualités récentes</div>',
-            unsafe_allow_html=True,
-        )
+        section_heading("Actualités récentes", spacing="loose")
         for _, art in news.iterrows():
             date_str = f" <span class='muted'>({art['article_date']})</span>" if art.get("article_date") else ""
             url = art.get("url", "")
@@ -1145,10 +1186,7 @@ def _render_profile(ticker: str, fundamentals: dict):
                 st.markdown(f"- {art['title']}{date_str}", unsafe_allow_html=True)
 
     # --- Notes d'analyse (tag catégorie via design kit au lieu d'emojis) ---
-    st.markdown(
-        '<div class="label-xs" style="margin-top:18px;">Notes d\'analyse</div>',
-        unsafe_allow_html=True,
-    )
+    section_heading("Notes d'analyse", spacing="loose")
     notes = get_qualitative_notes(ticker)
     if not notes.empty:
         for _, note in notes.iterrows():

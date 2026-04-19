@@ -66,8 +66,25 @@ def flag_dot(status: str) -> str:
 
 
 def section_title(txt: str):
-    """Titre de section avec underline discret."""
+    """Titre de section avec underline discret (style éditorial h2)."""
     st.markdown(f'<h2 class="section-title">{txt}</h2>', unsafe_allow_html=True)
+
+
+def section_heading(txt: str, spacing: str = "default"):
+    """Titre de section compact (h3 style, bold regular).
+    Remplace l'usage de label-xs quand on veut une VRAIE section lisible
+    (pas un micro-label d'annotation). Utilisé pour Ratios calculés,
+    Historique, Hausses du jour, Indices principaux, etc.
+
+    spacing : "tight" (margin top 6px) | "default" (14px) | "loose" (22px)
+    """
+    mt = {"tight": 6, "default": 14, "loose": 22}.get(spacing, 14)
+    st.markdown(
+        f'<div class="section-heading" '
+        f'style="font-size:15px;font-weight:600;color:var(--ink);'
+        f'letter-spacing:-0.01em;margin:{mt}px 0 10px 0;">{txt}</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def stars(n: int, max_n: int = 5) -> str:
