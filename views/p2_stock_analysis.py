@@ -101,16 +101,20 @@ def render():
             st.info("L'administrateur doit intégrer les données de ce titre (import Excel ou saisie manuelle).")
         return
 
-    # Load price data
-    price_df = get_cached_prices(selected_ticker)
-    if price_df.empty:
-        with st.spinner("Chargement des prix historiques..."):
-            try:
-                price_df = fetch_historical_prices(selected_ticker)
-                if not price_df.empty:
-                    cache_prices(selected_ticker, price_df)
-            except Exception:
-                price_df = pd.DataFrame()
+    # Load price data — cache session pour éviter re-downloads entre navigations
+    _pdf_key = f"price_df_{selected_ticker}"
+    price_df = st.session_state.get(_pdf_key)
+    if price_df is None:
+        price_df = get_cached_prices(selected_ticker)
+        if price_df.empty:
+            with st.spinner("Chargement des prix historiques..."):
+                try:
+                    price_df = fetch_historical_prices_page(selected_ticker, period="mensuel", years_back=5)
+                    if not price_df.empty:
+                        cache_prices(selected_ticker, price_df)
+                except Exception:
+                    price_df = pd.DataFrame()
+        st.session_state[_pdf_key] = price_df
 
     # --- Compute scores ---
     result = compute_hybrid_score(fundamentals, price_df)

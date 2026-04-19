@@ -86,8 +86,21 @@ _SQLITE_TO_PG_PATTERNS = [
 ]
 
 
+_IOR_PATTERN = re.compile(r"\bINSERT\s+OR\s+REPLACE\s+INTO\b", re.IGNORECASE)
+
+
 def _translate_query(query: str) -> str:
     """Traduit les motifs SQLite-only vers Postgres."""
+    # INSERT OR REPLACE : non traduisible génériquement (besoin conflit cols).
+    # On rewrite en INSERT INTO avec warning — le caller DOIT fournir
+    # ON CONFLICT DO UPDATE pour éviter une erreur de clé dupliquée.
+    if _IOR_PATTERN.search(query):
+        import logging
+        logging.getLogger(__name__).warning(
+            "INSERT OR REPLACE sur Postgres — converti en INSERT INTO. "
+            "Utilisez ON CONFLICT DO UPDATE. Query: %s", query[:120]
+        )
+        query = _IOR_PATTERN.sub("INSERT INTO", query)
     for pattern, replacement in _SQLITE_TO_PG_PATTERNS:
         query = pattern.sub(replacement, query)
     # Placeholder: ? → %s (psycopg utilise %s par défaut)
@@ -143,9 +156,17 @@ class _PostgresCursor:
 
     def execute(self, query, params=None):
         # Support pour pandas qui appelle cursor.execute() directement
-        from data.db import _translate_query, _PostgresWrapper
+        from data.db import _translate_query
         translated = _translate_query(query)
-        self._cur.execute(translated, params or ())
+        try:
+            self._cur.execute(translated, params or ())
+        except Exception:
+            # Rollback auto pour éviter InFailedSqlTransaction en cascade
+            try:
+                self._cur.connection.rollback()
+            except Exception:
+                pass
+            raise
         return self
 
     def executemany(self, query, params_list):
@@ -187,7 +208,7 @@ class _PostgresWrapper:
         self._conn = conn
 
     def _run(self, query: str, params=None):
-        # Traduction SQLite → Postgres
+        # Traduction SQLite → Postgres (inclut INSERT OR IGNORE/REPLACE, placeholders, PRAGMA)
         translated = _translate_query(query)
         had_ignore = "INSERT OR IGNORE" in query.upper()
         if had_ignore:
@@ -216,7 +237,19 @@ class _PostgresWrapper:
             cur = self._conn.cursor(row_factory=tuple_row)
         else:
             cur = self._conn.cursor()
-        cur.execute(translated, params or ())
+        try:
+            cur.execute(translated, params or ())
+        except Exception:
+            # Sur Postgres, toute erreur dans une transaction la laisse en
+            # état "aborted" → tout statement suivant échoue avec
+            # InFailedSqlTransaction. On rollback immédiatement pour
+            # préserver la connexion, puis on re-raise pour que l'appelant
+            # voie l'erreur originale.
+            try:
+                self._conn.rollback()
+            except Exception:
+                pass
+            raise
         return _PostgresCursor(cur, had_ignore=had_ignore)
 
     def execute(self, query: str, params=None):

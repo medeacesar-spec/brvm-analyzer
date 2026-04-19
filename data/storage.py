@@ -745,8 +745,11 @@ def cache_prices(ticker: str, df: pd.DataFrame):
     conn = get_connection()
     for _, row in df.iterrows():
         conn.execute(
-            """INSERT OR REPLACE INTO price_cache (ticker, date, open, high, low, close, volume)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO price_cache (ticker, date, open, high, low, close, volume)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(ticker, date) DO UPDATE SET
+                 open=excluded.open, high=excluded.high, low=excluded.low,
+                 close=excluded.close, volume=excluded.volume""",
             (
                 ticker,
                 row["date"].strftime("%Y-%m-%d") if hasattr(row["date"], "strftime") else str(row["date"]),
@@ -1053,16 +1056,21 @@ def save_publication(pub: dict) -> bool:
     """Sauvegarde une publication. Retourne True si c'est une nouvelle."""
     conn = get_connection()
     try:
-        conn.execute(
+        cur = conn.execute(
             """INSERT INTO publications (ticker, title, pub_type, period, url, pub_date)
                VALUES (?, ?, ?, ?, ?, ?)
                ON CONFLICT(ticker, title) DO NOTHING""",
             (pub.get("ticker"), pub.get("title"), pub.get("type"),
              pub.get("period"), pub.get("url"), pub.get("date")),
         )
+        # cursor.rowcount : compatible SQLite + Postgres (évite SELECT changes())
+        is_new = bool(getattr(cur, "rowcount", 0) and cur.rowcount > 0)
         conn.commit()
-        is_new = conn.execute("SELECT changes()").fetchone()[0] > 0
     except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         is_new = False
     conn.close()
     return is_new

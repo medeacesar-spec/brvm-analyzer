@@ -4,11 +4,19 @@ Dashboard d'aide a la decision d'investissement sur la BRVM.
 Données chargées automatiquement au démarrage.
 """
 
+import logging
 import time
 import streamlit as st
 
 from data.storage import get_connection, init_db, seed_known_report_links
 from utils.auth import render_auth_widget, require_login, is_admin
+
+# Logger global : remontent dans les logs Streamlit Cloud (stderr)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+_log = logging.getLogger("brvm_analyzer")
 
 st.set_page_config(
     page_title="BRVM Analyzer",
@@ -394,15 +402,24 @@ def _scrape_brvm_indices():
         return
 
     conn = get_connection()
-    # Ensure columns exist
+    # Ensure columns exist (idempotent, tolerant des drivers abortant la txn).
     try:
         conn.execute("SELECT prev_close FROM indices_cache LIMIT 1")
     except Exception:
+        # Postgres abort la transaction sur un SELECT en erreur → rollback obligatoire
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         for col, ctype in [("prev_close", "REAL"), ("ytd_variation", "REAL"), ("category", "TEXT")]:
             try:
                 conn.execute(f"ALTER TABLE indices_cache ADD COLUMN {col} {ctype}")
+                conn.commit()
             except Exception:
-                pass
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
     conn.execute("DELETE FROM indices_cache")
     for name, close, var, ytd, cat in indices:
         conn.execute(
@@ -457,8 +474,8 @@ def _sync_full_details():
                 "dps": dps, "dividend_history": div_hist,
             })
             ok += 1
-        except Exception:
-            pass
+        except Exception as e:
+            _log.exception("save_market_data failed for %s: %s", ticker, e)
         time.sleep(0.3)
 
     # 3. Indices (from brvm.org — 12 indices: principaux + sectoriels + total return)
@@ -471,8 +488,14 @@ def _sync_full_details():
             conn = get_connection()
             conn.execute("CREATE TABLE IF NOT EXISTS indices_cache (name TEXT PRIMARY KEY, value REAL, variation REAL, updated_at TIMESTAMP)")
             for _, idx in indices.iterrows():
-                conn.execute("INSERT OR REPLACE INTO indices_cache (name, value, variation, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
-                             (idx["name"], idx.get("value"), idx.get("variation")))
+                conn.execute(
+                    """INSERT INTO indices_cache (name, value, variation, updated_at)
+                       VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                       ON CONFLICT(name) DO UPDATE SET
+                         value=excluded.value, variation=excluded.variation,
+                         updated_at=CURRENT_TIMESTAMP""",
+                    (idx["name"], idx.get("value"), idx.get("variation")),
+                )
             conn.commit()
             conn.close()
         except Exception:
@@ -508,8 +531,8 @@ def _sync_incremental_prices():
                 if not df.empty:
                     cache_prices(ticker, df)
                     updated += 1
-            except Exception:
-                pass
+            except Exception as e:
+                _log.exception("cache_prices initial failed for %s: %s", ticker, e)
             time.sleep(0.3)
         else:
             last_date = existing["date"].max()
@@ -528,8 +551,8 @@ def _sync_incremental_prices():
                 if not df.empty:
                     cache_prices(ticker, df)
                     updated += 1
-            except Exception:
-                pass
+            except Exception as e:
+                _log.exception("cache_prices incremental failed for %s: %s", ticker, e)
             time.sleep(0.3)
 
     return updated
@@ -611,9 +634,19 @@ if not st.session_state.get("db_verified"):
                 try:
                     _sync_daily_quotes()
                     _sync_incremental_prices()
-                except Exception:
-                    pass  # Erreur transitoire → on continue, l'utilisateur peut rafraîchir
+                except Exception as _e:
+                    _log.exception("Daily sync failed: %s", _e)
+                    st.session_state.daily_sync_error = f"{type(_e).__name__}: {_e}"
             st.session_state.sync_done = True
+        # Indices BRVM : rafraîchissement léger une fois par session, pour TOUS
+        # (1 requête HTTP ~1s, indépendant de la fraîcheur des cotations).
+        if not st.session_state.get("indices_synced"):
+            try:
+                _scrape_brvm_indices()
+                st.session_state.indices_error = None
+            except Exception as _e:
+                st.session_state.indices_error = f"{type(_e).__name__}: {_e}"
+            st.session_state.indices_synced = True
     else:
         # count == 0 : vraiment vide (ou erreur de connexion)
         # On tente un sync complet MAIS on ne boucle pas indéfiniment
@@ -683,8 +716,31 @@ conn.close()
 
 st.sidebar.caption(f"{count} titres | MAJ: {str(updated)[:16] if updated else '?'}")
 
-# Refresh buttons — admin only
-if is_admin():
+# Debug indices + daily sync (admin uniquement)
+_idx_err = st.session_state.get("indices_error")
+_sync_err = st.session_state.get("daily_sync_error")
+if (_idx_err or _sync_err) and is_admin():
+    if _idx_err:
+        st.sidebar.error(f"⚠️ Indices : {_idx_err}")
+    if _sync_err:
+        st.sidebar.error(f"⚠️ Sync : {_sync_err}")
+    if st.sidebar.button("🔄 Retenter", key="retry_all_btn"):
+        try:
+            _scrape_brvm_indices()
+            st.session_state.indices_error = None
+        except Exception as _e:
+            st.session_state.indices_error = f"{type(_e).__name__}: {_e}"
+        try:
+            _sync_daily_quotes()
+            _sync_incremental_prices()
+            st.session_state.daily_sync_error = None
+        except Exception as _e:
+            st.session_state.daily_sync_error = f"{type(_e).__name__}: {_e}"
+        st.rerun()
+
+# Refresh buttons — admin connecté uniquement (pas en mode local implicite)
+from utils.auth import is_logged_in as _is_logged_in
+if is_admin() and _is_logged_in():
     col_r1, col_r2 = st.sidebar.columns(2)
     if col_r1.button("🔄 Cotations"):
         with st.spinner("Mise à jour..."):
@@ -771,7 +827,7 @@ st.sidebar.markdown("---")
 if "confirm_shutdown" not in st.session_state:
     st.session_state.confirm_shutdown = False
 
-if is_admin() and not st.session_state.confirm_shutdown:
+if is_admin() and _is_logged_in() and not st.session_state.confirm_shutdown:
     if st.sidebar.button("🛑 Arrêter l'application", use_container_width=True):
         st.session_state.confirm_shutdown = True
         st.rerun()
