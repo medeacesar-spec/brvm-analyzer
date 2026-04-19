@@ -276,6 +276,25 @@ def init_db():
     if "fiscal_year" not in cols:
         _safe_alter(conn, "ALTER TABLE publications ADD COLUMN fiscal_year INTEGER")
 
+    # Réconciliation de schéma : colonnes ajoutées après la migration initiale.
+    # Évite les "UndefinedColumn" sur Postgres où CREATE TABLE IF NOT EXISTS
+    # est no-op si la table existait déjà avec un schéma partiel.
+    _fund_cols = _table_columns(conn, "fundamentals")
+    for col, ctype in [
+        ("total_assets", "REAL"), ("eps", "REAL"), ("per", "REAL"),
+        ("revenue_growth", "REAL"), ("net_income_growth", "REAL"),
+        ("shares", "REAL"), ("float_pct", "REAL"),
+    ]:
+        if col not in _fund_cols:
+            _safe_alter(conn, f"ALTER TABLE fundamentals ADD COLUMN {col} REAL")
+    _md_cols = _table_columns(conn, "market_data")
+    for col, ctype in [
+        ("shares", "REAL"), ("float_pct", "REAL"),
+        ("dividend_yield", "REAL"), ("per", "REAL"),
+    ]:
+        if col not in _md_cols:
+            _safe_alter(conn, f"ALTER TABLE market_data ADD COLUMN {col} REAL")
+
     # ─────────────────────────────────────────────────────────────
     # Migration multi-utilisateurs : ajout de user_id sur les tables
     # propres à chaque utilisateur (portfolio, cash, profil, notes).
@@ -1008,6 +1027,10 @@ def get_all_stocks_for_analysis() -> pd.DataFrame:
     BS_FIELDS = ("equity", "total_debt", "total_assets", "cfo", "capex",
                  "ebit", "interest_expense", "dividends_total")
     HIST_SUFFIXES = ["n0", "n1", "n2", "n3"]
+    # Ne garder que les colonnes qui existent réellement (évite UndefinedColumn
+    # sur Postgres si une colonne a été ajoutée après la migration).
+    _existing_cols = set(_table_columns(conn, "fundamentals"))
+    _bs_available = tuple(f for f in BS_FIELDS if f in _existing_cols)
     if not df.empty:
         for i, row in df.iterrows():
             ticker = row["ticker"]
@@ -1015,15 +1038,18 @@ def get_all_stocks_for_analysis() -> pd.DataFrame:
             if not ticker or not ref_year:
                 continue
             # Fallback bilan/cashflow
-            missing = [f for f in BS_FIELDS if pd.isna(row.get(f)) or row.get(f) is None]
+            missing = [f for f in _bs_available if pd.isna(row.get(f)) or row.get(f) is None]
             for fld in missing:
-                proxy = conn.execute(
-                    f"""SELECT {fld}, fiscal_year FROM fundamentals
-                       WHERE ticker = ? AND {fld} IS NOT NULL AND {fld} != 0
-                       AND fiscal_year <= ?
-                       ORDER BY fiscal_year DESC LIMIT 1""",
-                    (ticker, ref_year),
-                ).fetchone()
+                try:
+                    proxy = conn.execute(
+                        f"""SELECT {fld}, fiscal_year FROM fundamentals
+                           WHERE ticker = ? AND {fld} IS NOT NULL AND {fld} != 0
+                           AND fiscal_year <= ?
+                           ORDER BY fiscal_year DESC LIMIT 1""",
+                        (ticker, ref_year),
+                    ).fetchone()
+                except Exception:
+                    proxy = None
                 if proxy:
                     df.at[i, fld] = proxy[0]
 

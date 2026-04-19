@@ -630,7 +630,16 @@ if not st.session_state.get("db_verified"):
         st.session_state.db_verified = True
         # Sync incrémental optionnel, seulement si vraiment pas frais
         if not is_fresh and not st.session_state.get("sync_done"):
-            with st.spinner("Mise à jour des cotations du jour…"):
+            # Page de garde pendant la mise à jour quotidienne.
+            st.markdown("## 📊 BRVM Analyzer")
+            st.info(
+                "⏳ **Mise à jour des cotations en cours**\n\n"
+                "Récupération des prix du jour et des historiques manquants "
+                "(sikafinance.com). Cela peut prendre **1 à 3 minutes** selon le nombre "
+                "de titres à rafraîchir. Cette opération ne se fait qu'une fois par session.\n\n"
+                "_Merci de patienter — la page se rechargera automatiquement._"
+            )
+            with st.spinner("Téléchargement des cotations…"):
                 try:
                     _sync_daily_quotes()
                     _sync_incremental_prices()
@@ -638,6 +647,7 @@ if not st.session_state.get("db_verified"):
                     _log.exception("Daily sync failed: %s", _e)
                     st.session_state.daily_sync_error = f"{type(_e).__name__}: {_e}"
             st.session_state.sync_done = True
+            st.rerun()
         # Indices BRVM : rafraîchissement léger une fois par session, pour TOUS
         # (1 requête HTTP ~1s, indépendant de la fraîcheur des cotations).
         if not st.session_state.get("indices_synced"):
