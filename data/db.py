@@ -251,20 +251,46 @@ class _PostgresWrapper:
 # Point d'entrée principal
 # ─────────────────────────────────────────────────────────────────
 
+class _HybridRow(dict):
+    """Row compatible sqlite3.Row : supporte row[0] ET row['col'] ET dict(row)."""
+    __slots__ = ('_keys',)
+
+    def __init__(self, mapping, keys):
+        super().__init__(mapping)
+        object.__setattr__(self, '_keys', keys)
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return self[self._keys[key]] if 0 <= key < len(self._keys) else dict.__getitem__(self, key)
+        return dict.__getitem__(self, key)
+
+    def keys(self):
+        return self._keys
+
+
+def _hybrid_row_factory(cursor):
+    """Factory psycopg renvoyant des _HybridRow."""
+    keys = [c[0] for c in (cursor.description or [])]
+
+    def make_row(values):
+        return _HybridRow(dict(zip(keys, values)), keys)
+
+    return make_row
+
+
 def get_connection():
     """Retourne une connexion SQLite ou Postgres.
     Interface identique côté appelant (execute, fetchone, commit, close)."""
     if is_postgres():
         try:
             import psycopg
-            from psycopg.rows import dict_row
         except ImportError as e:
             raise ImportError(
                 "DATABASE_URL pointe vers Postgres mais psycopg n'est pas installé. "
                 "Lancer : pip install 'psycopg[binary]'"
             ) from e
         url = _get_database_url()
-        conn = psycopg.connect(url, row_factory=dict_row, autocommit=False)
+        conn = psycopg.connect(url, row_factory=_hybrid_row_factory, autocommit=False)
         return _PostgresWrapper(conn)
 
     # SQLite (défaut)

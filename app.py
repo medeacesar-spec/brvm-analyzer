@@ -601,9 +601,12 @@ count, is_fresh = _check_data_status()
 if count == 0:
     # Premiere utilisation : sync complet obligatoire (~30s)
     st.markdown("## 📊 BRVM Analyzer")
-    st.markdown("### Premier lancement - Chargement des données...")
-    st.markdown("Cette operation prend ~30 secondes et ne se fait qu'une seule fois.")
-    with st.spinner("Téléchargement des 48 titres BRVM..."):
+    st.markdown("### Premier lancement — Chargement des données…")
+    st.markdown(
+        "Cette opération prend **quelques minutes** (scraping de sikafinance "
+        "pour les 48 titres BRVM + prix historiques). Elle ne se fait qu'une seule fois."
+    )
+    with st.spinner("Téléchargement des 48 titres BRVM…"):
         result = _sync_full_details()
     st.success(f"✅ {result} titres chargés !")
     # Aussi charger les prix recents
