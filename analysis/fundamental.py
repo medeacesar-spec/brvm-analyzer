@@ -168,7 +168,12 @@ def compute_ratios(data: dict) -> dict:
     revenue = _safe(data.get("revenue"), 0)
     net_income = _safe(data.get("net_income"), 0)
     equity = _safe(data.get("equity"), 0)
-    total_debt = _safe(data.get("total_debt"), 0)
+    # total_debt : on garde la trace de "donnée manquante" (None en DB) vs
+    # "vraiment 0" (entreprise sans dette financière). Sans cette distinction,
+    # un ticker sans donnée affichait à tort "Faible endettement 0.00×".
+    total_debt_raw = data.get("total_debt")
+    total_debt_missing = total_debt_raw is None
+    total_debt = _safe(total_debt_raw, 0)
     ebit = _safe(data.get("ebit"), 0)
     interest_expense = _safe(data.get("interest_expense"), 0)
     cfo = data.get("cfo")
@@ -197,7 +202,12 @@ def compute_ratios(data: dict) -> dict:
     ratios["net_margin"] = net_income / revenue if revenue != 0 else None
 
     # --- Dette / Capitaux propres ---
-    ratios["debt_equity"] = total_debt / equity if equity != 0 else 0
+    # Si la donnée dette est absente (NULL en DB), on renvoie None plutôt que
+    # 0 pour éviter l'interprétation "Faible endettement" abusive.
+    if total_debt_missing or equity == 0:
+        ratios["debt_equity"] = None
+    else:
+        ratios["debt_equity"] = total_debt / equity
 
     # --- Couverture des intérêts ---
     ratios["interest_coverage"] = ebit / interest_expense if interest_expense != 0 else None
@@ -302,10 +312,12 @@ def _compute_flags(ratios: dict, is_bank: bool) -> dict:
     else:
         flags["net_margin"] = ("Risque", "N/A")
 
-    # Dette / Equity
-    de = ratios.get("debt_equity", 0)
+    # Dette / Equity — None si donnée absente, ne pas interpréter comme "très faible"
+    de = ratios.get("debt_equity")
     if is_bank:
         flags["debt_equity"] = ("OK", "Banque - non applicable")
+    elif de is None:
+        flags["debt_equity"] = ("—", "Donnée absente")
     elif de <= 0.5:
         flags["debt_equity"] = ("OK", "Tres faible")
     elif de <= 1.0:

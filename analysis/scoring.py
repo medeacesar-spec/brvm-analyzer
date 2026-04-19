@@ -116,8 +116,11 @@ def _generate_recommendation(
         strengths.append(f"Bonne couverture des intérêts ({ratios['interest_coverage']:.1f}x)")
     if ratios.get("fcf_margin") and ratios["fcf_margin"] >= 0.10:
         strengths.append(f"FCF Margin solide ({ratios['fcf_margin']:.1%})")
-    if ratios.get("debt_equity") is not None and 0 <= ratios["debt_equity"] <= 0.5:
-        strengths.append(f"Faible endettement ({ratios['debt_equity']:.2f}x)")
+    # Faible endettement : uniquement si on a une vraie valeur > 0 mais <= 0.5
+    # (zéro pile = souvent donnée absente, évite l'interprétation abusive)
+    de = ratios.get("debt_equity")
+    if de is not None and 0 < de <= 0.5:
+        strengths.append(f"Faible endettement ({de:.2f}x)")
     if trend["trend"] == "haussiere":
         strengths.append(f"Tendance haussière {trend['strength']}")
     # Achat signals

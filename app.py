@@ -580,9 +580,10 @@ except Exception:
 # Widget authentification (connexion Google OAuth ou mode dev)
 render_auth_widget()
 
-# Label de section éditorial (remplace le label "Navigation" brut)
+# Espace avant la liste de navigation (pas de titre "Navigation" — la liste
+# se comprend d'elle-même).
 st.sidebar.markdown(
-    "<div class='label-xs' style='margin:14px 0 4px 2px;'>Navigation</div>",
+    "<div style='margin-top:14px;'></div>",
     unsafe_allow_html=True,
 )
 
