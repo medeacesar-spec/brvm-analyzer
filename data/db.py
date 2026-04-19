@@ -163,12 +163,31 @@ class _PostgresWrapper:
         translated = _translate_query(query)
         had_ignore = "INSERT OR IGNORE" in query.upper()
         if had_ignore:
-            # Ajouter ON CONFLICT DO NOTHING (à la fin de l'INSERT)
-            # Attention : si le query a déjà ON CONFLICT, on ne double pas
             if "ON CONFLICT" not in translated.upper():
-                # On insère avant tout RETURNING ou ; final
                 translated = translated.rstrip(" ;") + " ON CONFLICT DO NOTHING"
-        cur = self._conn.cursor()
+
+        # PRAGMA table_info(t) → SELECT sur information_schema (émule SQLite)
+        use_tuple_row = False
+        m = re.match(r"\s*PRAGMA\s+table_info\s*\(\s*(\w+)\s*\)\s*;?\s*$",
+                     translated, re.IGNORECASE)
+        if m:
+            table = m.group(1)
+            translated = (
+                "SELECT ordinal_position AS cid, column_name AS name, "
+                "data_type AS type, "
+                "CASE WHEN is_nullable='NO' THEN 1 ELSE 0 END AS notnull, "
+                "column_default AS dflt_value, 0 AS pk "
+                "FROM information_schema.columns "
+                f"WHERE table_name = '{table}' ORDER BY ordinal_position"
+            )
+            params = None
+            use_tuple_row = True  # SQLite PRAGMA renvoie des tuples, pas des dicts
+
+        if use_tuple_row:
+            from psycopg.rows import tuple_row
+            cur = self._conn.cursor(row_factory=tuple_row)
+        else:
+            cur = self._conn.cursor()
         cur.execute(translated, params or ())
         return _PostgresCursor(cur, had_ignore=had_ignore)
 

@@ -218,6 +218,61 @@ def _render_pending_publications_alert():
                 "🔒 Les actions (télécharger, ignorer, intégrer) sont réservées à l'administrateur."
             )
 
+        # ─── Helpers de rendu (utilisés dans les 2 blocs pending + gaps) ───
+        CELL_STYLE = (
+            "font-size:0.82rem;line-height:1.2;white-space:nowrap;"
+            "overflow:hidden;text-overflow:ellipsis;"
+            "display:flex;align-items:center;min-height:32px;"
+        )
+        HEAD_STYLE = CELL_STYLE + "font-weight:700;"
+
+        def _cell(txt, title=None):
+            tip = f' title="{title}"' if title else ''
+            return f'<div style="{CELL_STYLE}"{tip}>{txt}</div>'
+
+        def _head(txt):
+            return f'<div style="{HEAD_STYLE}">{txt}</div>'
+
+        # Dictionnaire pour restaurer les accents français
+        _ACCENT_REPLACEMENTS = [
+            ("dactivites", "d'activités"),
+            ("dactivite", "d'activité"),
+            ("dinformation", "d'information"),
+            ("dexercice", "d'exercice"),
+            ("cote divoire", "Côte d'Ivoire"),
+            ("Etats financiers", "États financiers"),
+            ("etats financiers", "états financiers"),
+            ("Etats ", "États "),
+            ("Rapport dactivites", "Rapport d'activités"),
+            ("Assemblee generale", "Assemblée générale"),
+            ("assemblee generale", "assemblée générale"),
+            ("Societe generale", "Société Générale"),
+            ("societe generale", "société générale"),
+            ("annule et remplace le precedent", "annulé et remplacé le précédent"),
+            ("resultats", "résultats"),
+            ("1er trimestre", "1er trimestre"),
+            ("2eme trimestre", "2ème trimestre"),
+            ("3eme trimestre", "3ème trimestre"),
+            ("1er semestre", "1er semestre"),
+            ("Extraordinaire", "Extraordinaire"),
+            ("Societe ", "Société "),
+            ("benin", "Bénin"),
+            ("Benin", "Bénin"),
+            ("Senegal", "Sénégal"),
+            ("senegal", "Sénégal"),
+            ("evoir", "évoir"),
+            ("general ", "général "),
+            ("generale ", "générale "),
+        ]
+
+        def _fr(text: str) -> str:
+            if not text:
+                return ""
+            out = text
+            for old, new in _ACCENT_REPLACEMENTS:
+                out = out.replace(old, new)
+            return out[:1].upper() + out[1:] if out else out
+
         # Scraped pending publications
         if pending is not None and not pending.empty:
             st.markdown("#### 📥 Publications des 7 derniers jours à intégrer")
@@ -226,59 +281,6 @@ def _render_pending_publications_alert():
                     "**🚀 Chercher** télécharge l'état financier (PDF) et rafraîchit sika. "
                     "**🚫 Ignorer** retire la ligne."
                 )
-
-            # Style inline réutilisable pour chaque cellule : police compacte +
-            # troncature par ellipsis. Pas de dépendance à un wrapper CSS.
-            CELL_STYLE = (
-                "font-size:0.82rem;line-height:1.2;white-space:nowrap;"
-                "overflow:hidden;text-overflow:ellipsis;"
-                "display:flex;align-items:center;min-height:32px;"
-            )
-            HEAD_STYLE = CELL_STYLE + "font-weight:700;"
-
-            def _cell(txt, title=None):
-                tip = f' title="{title}"' if title else ''
-                return f'<div style="{CELL_STYLE}"{tip}>{txt}</div>'
-
-            def _head(txt):
-                return f'<div style="{HEAD_STYLE}">{txt}</div>'
-
-            # Dictionnaire pour restaurer les accents français (les slugs
-            # scrapés depuis richbourse n'ont pas d'accents ni d'apostrophes).
-            _ACCENT_REPLACEMENTS = [
-                # Apostrophes (doivent passer avant les accents)
-                ("dactivites", "d'activités"),
-                ("dactivite", "d'activité"),
-                ("dinformation", "d'information"),
-                ("dexercice", "d'exercice"),
-                ("cote divoire", "Côte d'Ivoire"),
-                # Accents courants
-                ("Etats financiers", "États financiers"),
-                ("etats financiers", "états financiers"),
-                ("Etats ", "États "),
-                ("Rapport dactivites", "Rapport d'activités"),
-                ("Assemblee generale", "Assemblée générale"),
-                ("assemblee generale", "assemblée générale"),
-                ("Societe generale", "Société Générale"),
-                ("societe generale", "société générale"),
-                ("annule et remplace le precedent", "annulé et remplacé le précédent"),
-                ("resultats", "résultats"),
-                ("1er trimestre", "1er trimestre"),
-                ("2eme trimestre", "2ème trimestre"),
-                ("3eme trimestre", "3ème trimestre"),
-                ("1er semestre", "1er semestre"),
-                ("Extraordinaire", "Extraordinaire"),
-                # Noms de sociétés usuels
-                ("Societe ", "Société "),
-                ("benin", "Bénin"),
-                ("Benin", "Bénin"),
-                ("Senegal", "Sénégal"),
-                ("senegal", "Sénégal"),
-                # Termes généraux
-                ("evoir", "évoir"),  # "percevoir"
-                ("general ", "général "),
-                ("generale ", "générale "),
-            ]
 
             _TYPE_LABELS = {
                 "annuel": "Annuel",
@@ -289,15 +291,6 @@ def _render_pending_publications_alert():
                 "corporate": "Opération capital",
                 "autre": "Autre",
             }
-
-            def _fr(text: str) -> str:
-                if not text:
-                    return ""
-                out = text
-                for old, new in _ACCENT_REPLACEMENTS:
-                    out = out.replace(old, new)
-                # Capitaliser la première lettre
-                return out[:1].upper() + out[1:] if out else out
 
             # Header — colonnes larges pour le titre, étroites pour les métadonnées
             if admin:

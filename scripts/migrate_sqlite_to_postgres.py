@@ -95,9 +95,9 @@ def _truncate_postgres(tables: List[str]):
     conn.close()
 
 
-def _copy_table(sqlite_conn, pg_conn, table: str) -> int:
-    """Copie toutes les lignes d'une table SQLite vers Postgres.
-    Retourne le nombre de lignes copiées."""
+def _copy_table(sqlite_conn, pg_conn_raw, table: str) -> int:
+    """Copie toutes les lignes d'une table SQLite vers Postgres via psycopg brut.
+    Utilise autocommit pour éviter les transactions bloquées Postgres."""
     try:
         cur = sqlite_conn.execute(f"SELECT * FROM {table}")
     except sqlite3.OperationalError as e:
@@ -111,20 +111,28 @@ def _copy_table(sqlite_conn, pg_conn, table: str) -> int:
         return 0
 
     col_names = ", ".join(cols)
-    placeholders = ", ".join(["?"] * len(cols))
-
-    # Le wrapper traduit automatiquement ? → %s + ajoute ON CONFLICT DO NOTHING
-    sql = f"INSERT OR IGNORE INTO {table} ({col_names}) VALUES ({placeholders})"
+    placeholders = ", ".join(["%s"] * len(cols))
+    sql = f"INSERT INTO {table} ({col_names}) VALUES ({placeholders}) ON CONFLICT DO NOTHING"
 
     inserted = 0
+    errors = 0
+    first_err = None
     for r in rows:
         try:
-            pg_conn.execute(sql, tuple(r))
+            with pg_conn_raw.cursor() as cur:
+                cur.execute(sql, tuple(r))
             inserted += 1
         except Exception as e:
-            print(f"    {table}: erreur sur une ligne — {e}")
-    pg_conn.commit()
-    print(f"    {table}: {inserted}/{len(rows)} lignes insérées")
+            errors += 1
+            if first_err is None:
+                first_err = str(e)[:200]
+
+    status = f"{inserted}/{len(rows)} lignes"
+    if errors:
+        status += f" · {errors} erreurs"
+    print(f"    {table}: {status}")
+    if first_err:
+        print(f"    ↳ 1re erreur: {first_err}")
     return inserted
 
 
@@ -189,17 +197,21 @@ def migrate(skip_schema: bool = False, truncate: bool = False):
     if truncate:
         _truncate_postgres(ordered_tables)
 
-    # 4. Copie
-    pg_conn = get_connection()
+    # 4. Copie — connexion psycopg brute en autocommit (robuste avec pooler Supabase)
+    import psycopg
+    from data.db import _get_database_url
+    pg_conn_raw = psycopg.connect(_get_database_url(), autocommit=True)
     total_rows = 0
     for table in ordered_tables:
         print(f"  {table}:")
-        n = _copy_table(sqlite_conn, pg_conn, table)
+        n = _copy_table(sqlite_conn, pg_conn_raw, table)
         total_rows += n
 
     # 5. Réinitialisation des séquences
+    pg_conn = get_connection()
     _reset_sequences(pg_conn, ordered_tables)
 
+    pg_conn_raw.close()
     pg_conn.close()
     sqlite_conn.close()
 
