@@ -85,12 +85,53 @@ section[data-testid="stSidebar"] h3,
 section[data-testid="stSidebar"] [data-testid="stMetricValue"] {
   color: var(--ink) !important;
 }
-section[data-testid="stSidebar"] .stRadio label {
-  padding: 5px 8px;
-  border-radius: 6px;
-  font-size: 13px !important;
+/* ─── Navigation sidebar : transforme st.radio en menu vertical ─── */
+/* Cache les ronds natifs de radio (on garde le clic via le label) */
+section[data-testid="stSidebar"] .stRadio [data-baseweb="radio"] > div:first-child,
+section[data-testid="stSidebar"] .stRadio label > div:first-child > div:first-child {
+  display: none !important;
 }
-section[data-testid="stSidebar"] .stRadio label:hover { background: var(--bg-hover); }
+/* Layout du groupe : pas de gap par défaut, pas de direction flex horizontal */
+section[data-testid="stSidebar"] .stRadio > div {
+  gap: 1px !important;
+  flex-direction: column !important;
+}
+/* Chaque item de navigation = bande pleine largeur, hover crème, actif primary */
+section[data-testid="stSidebar"] .stRadio label {
+  display: flex !important;
+  align-items: center !important;
+  width: 100% !important;
+  padding: 8px 10px !important;
+  margin: 0 !important;
+  border-radius: 6px !important;
+  border: 1px solid transparent !important;
+  font-size: 13px !important;
+  color: var(--ink-2) !important;
+  cursor: pointer;
+  transition: background 120ms, color 120ms;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+section[data-testid="stSidebar"] .stRadio label:hover {
+  background: var(--bg-hover) !important;
+  color: var(--ink) !important;
+}
+/* État actif : label contenant un input coché (selector :has, supporté sur
+   navigateurs modernes). Fond primary-bg + texte primary, border subtile. */
+section[data-testid="stSidebar"] .stRadio label:has(input:checked) {
+  background: var(--primary-bg) !important;
+  color: var(--primary-2) !important;
+  font-weight: 600 !important;
+  border-color: var(--primary-bg) !important;
+}
+/* L'emoji prend une taille fixe — la ligne reste alignée */
+section[data-testid="stSidebar"] .stRadio label p,
+section[data-testid="stSidebar"] .stRadio label > div:last-child {
+  font-size: 13px !important;
+  line-height: 1.35 !important;
+  margin: 0 !important;
+}
 
 /* Buttons — défaut ghost/outline, primary deep green */
 .stButton > button, .stDownloadButton > button, .stFormSubmitButton > button {

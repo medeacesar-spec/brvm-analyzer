@@ -429,10 +429,10 @@ def _render_technical(ticker, price_df, result):
     if price_df.empty or len(price_df) < 5:
         st.warning("Données de prix insuffisantes pour l'analyse technique.")
         if not is_admin():
-            st.info("L'administrateur doit charger les prix historiques depuis sikafinance.com.")
+            st.info("L'administrateur doit charger les prix historiques.")
             return
-        st.info("Cliquez sur le bouton ci-dessous pour charger les prix depuis sikafinance.com")
-        if st.button("📥 Charger les prix (5 ans mensuel)"):
+        st.info("Cliquez sur le bouton ci-dessous pour charger les prix historiques.")
+        if st.button("Charger les prix (5 ans mensuel)"):
             with st.spinner("Téléchargement en cours..."):
                 try:
                     price_df = fetch_historical_prices_page(ticker, period="mensuel", years_back=5)
@@ -860,7 +860,7 @@ def _render_profile(ticker: str, fundamentals: dict):
     conn.close()
 
     if not fund.empty:
-        st.markdown("#### Historique financier (sikafinance)")
+        st.markdown("#### Historique financier")
         display = fund.copy()
         display["fiscal_year"] = display["fiscal_year"].astype(int)
         display["revenue"] = display["revenue"].apply(

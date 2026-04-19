@@ -83,17 +83,25 @@ def _load_indices_from_db() -> pd.DataFrame:
 def _compute_period_performance(quotes: pd.DataFrame) -> dict:
     """Calcule les variations jour/semaine/mois pour tous les tickers.
 
-    Optimisation : utilise get_all_cached_prices (1 requête batch cachée 5 min)
-    au lieu de get_cached_prices(ticker) dans une boucle = 48 round-trips
-    Supabase. Réduit le Dashboard de ~1 min 30 à < 2 s.
+    Retourne également `ranges` : pour chaque période, les dates de début
+    et de fin utilisées pour le calcul (affichées à l'utilisateur pour
+    lever toute ambiguïté sur la fenêtre glissante).
     """
     from data.storage import get_all_cached_prices
-    results = {"day": [], "week": [], "month": []}
+    results = {"day": [], "week": [], "month": [], "ranges": {}}
     today = datetime.now()
     days_since_monday = today.weekday()
     last_friday = today - timedelta(days=days_since_monday + 3)
     last_monday = last_friday - timedelta(days=4)
     month_ago = today - timedelta(days=30)
+
+    results["ranges"] = {
+        "day": today.date(),
+        "week_start": last_monday.date(),
+        "week_end": last_friday.date(),
+        "month_start": month_ago.date(),
+        "month_end": today.date(),
+    }
 
     # 1 seule requête pour tous les tickers (mise en cache 5 min)
     all_prices = get_all_cached_prices()
@@ -120,12 +128,17 @@ def _compute_period_performance(quotes: pd.DataFrame) -> dict:
                 var = 0
             results[period_key].append({"ticker": ticker, "name": name, "price": last_price, "variation": var})
 
-    return {k: pd.DataFrame(v) for k, v in results.items()}
+    # Sépare "ranges" (dict de dates, pas un DataFrame) du reste
+    ranges = results.pop("ranges", {})
+    out = {k: pd.DataFrame(v) for k, v in results.items()}
+    out["ranges"] = ranges
+    return out
 
 
 def _render_top5(df: pd.DataFrame, label: str):
-    """Liste éditoriale des plus fortes hausses / baisses avec les helpers
-    officiels du kit design (delta, ticker chip, tabular nums)."""
+    """Affiche les 5 plus fortes hausses + 5 plus fortes baisses de la période.
+    Le `label` est inséré dans le titre de chaque colonne pour lever toute
+    ambiguïté sur la fenêtre temporelle comparée."""
     from utils.ui_helpers import delta, ticker as ticker_chip
     if df.empty or "variation" not in df.columns:
         return
@@ -136,7 +149,12 @@ def _render_top5(df: pd.DataFrame, label: str):
     col_up, col_dn = st.columns(2)
 
     def _render_list(rows: pd.DataFrame, heading: str, empty_msg: str):
-        st.markdown(f'<div class="label-xs">{heading}</div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="label-xs">{heading}</div>'
+            f'<div style="font-size:11px;color:var(--ink-3);margin-bottom:8px;">'
+            f'Top {min(5, max(1, len(rows)))} plus fortes variations</div>',
+            unsafe_allow_html=True,
+        )
         if rows.empty:
             st.caption(empty_msg)
             return
@@ -468,9 +486,9 @@ def _render_pending_publications_alert():
 
         if admin:
             st.caption(
-                "💡 **🚀 Chercher** télécharge le PDF dans `pdfs/{ticker}/` et rafraîchit les "
-                "données depuis sikafinance. Pour les PDFs téléchargés, lancer "
-                "`python3 scripts/extract_pdfs.py` pour extraire les données détaillées."
+                "**Chercher** télécharge le PDF dans `pdfs/{ticker}/` et rafraîchit les "
+                "données de marché. Pour extraire les données détaillées, lancer "
+                "`python3 scripts/extract_pdfs.py`."
             )
 
 
@@ -521,26 +539,55 @@ def render():
         f"{total_mcap/1e3:,.0f} Mds" if total_mcap > 0 else "—",
     )
 
-    # Tabs Jour / Semaine / Mois — labels épurés, date en suffixe du jour
+    # Tabs Jour / Semaine / Mois — labels avec date explicite dans chaque caption
     perf = _compute_period_performance(quotes)
+    ranges = perf.get("ranges", {})
+
+    def _fmt_date(d):
+        try:
+            return f"{d.day} {MOIS_FR[d.month-1][:4]}"
+        except Exception:
+            return "—"
+
     day_label = "Jour"
+    day_caption = ""
     if last_trading_date:
         try:
             dt = pd.to_datetime(last_trading_date)
             day_label = f"Jour · {dt.day}/{dt.month:02d}"
+            day_caption = f"Clôture du {JOURS_FR[dt.weekday()]} {dt.day} {MOIS_FR[dt.month-1]}"
         except Exception:
             pass
 
+    week_caption = ""
+    if ranges.get("week_start") and ranges.get("week_end"):
+        week_caption = (
+            f"Semaine du {_fmt_date(ranges['week_start'])} "
+            f"au {_fmt_date(ranges['week_end'])}"
+        )
+    month_caption = ""
+    if ranges.get("month_start") and ranges.get("month_end"):
+        month_caption = (
+            f"30 derniers jours · "
+            f"{_fmt_date(ranges['month_start'])} → {_fmt_date(ranges['month_end'])}"
+        )
+
     tab_day, tab_week, tab_month = st.tabs([day_label, "Semaine", "Mois"])
     with tab_day:
+        if day_caption:
+            st.caption(day_caption)
         _render_top5(perf.get("day", pd.DataFrame()), "du jour")
     with tab_week:
+        if week_caption:
+            st.caption(week_caption)
         week_df = perf.get("week", pd.DataFrame())
         if not week_df.empty and week_df["variation"].abs().sum() > 0:
             _render_top5(week_df, "de la semaine")
         else:
             st.info("Prix historiques en cours de chargement...")
     with tab_month:
+        if month_caption:
+            st.caption(month_caption)
         month_df = perf.get("month", pd.DataFrame())
         if not month_df.empty and month_df["variation"].abs().sum() > 0:
             _render_top5(month_df, "du mois")
@@ -591,64 +638,65 @@ def render():
         ]
         ticker_quick_picker(picker_options, key="dash_goto", label="Ouvrir l'analyse d'un titre")
 
-    # --- Indices (sans divider — la hiérarchie est portée par le h2) ---
+    # --- Indices (grille 4 colonnes fixe pour homogénéité des tailles) ---
     st.subheader("Indices BRVM")
     indices = _load_indices_from_db()
-    if not indices.empty:
+    if indices.empty:
+        st.info("Indices non disponibles — lancez scripts/scrape_indices.py")
+    else:
         has_category = "category" in indices.columns
 
-        # Indices principaux
+        def _short_name(name: str) -> str:
+            return (name or "").replace("BRVM - ", "").replace("BRVM-", "").strip()
+
+        def _render_idx_metric(idx):
+            val_str = f"{idx['value']:,.2f}" if pd.notna(idx.get("value")) else "—"
+            delta_str = f"{idx['variation']:.2f}%" if pd.notna(idx.get("variation")) else None
+            ytd = f" | YTD: {idx['ytd_variation']:+.2f}%" if pd.notna(idx.get("ytd_variation")) else ""
+            help_txt = f"Variation depuis le 31 déc{ytd}" if ytd else None
+            st.metric(_short_name(idx["name"]), val_str, delta=delta_str, help=help_txt)
+
+        # Sélection par catégorie
         if has_category:
             principaux = indices[indices["category"] == "principal"]
-        else:
-            principaux = indices[indices["name"].str.contains("COMPOSITE|BRVM-30|PRESTIGE|PRINCIPAL", case=False, na=False)]
-
-        if not principaux.empty:
-            cols = st.columns(min(len(principaux), 4))
-            for i, (_, idx) in enumerate(principaux.iterrows()):
-                with cols[i % 4]:
-                    val_str = f"{idx['value']:,.2f}" if pd.notna(idx.get("value")) else "—"
-                    delta_str = f"{idx['variation']:.2f}%" if pd.notna(idx.get("variation")) else None
-                    short_name = idx["name"].replace("BRVM - ", "").replace("BRVM-", "")
-                    ytd = f" | YTD: {idx['ytd_variation']:+.2f}%" if pd.notna(idx.get("ytd_variation")) else ""
-                    st.metric(short_name, val_str, delta=delta_str, help=f"Variation depuis le 31 dec{ytd}")
-
-        # Indices sectoriels
-        if has_category:
             sectoriels = indices[indices["category"] == "sectoriel"]
-        else:
-            sectoriels = indices[~indices["name"].str.contains("COMPOSITE|BRVM-30|PRESTIGE|PRINCIPAL|TOTAL RETURN", case=False, na=False)]
-
-        if not sectoriels.empty:
-            st.markdown("**Indices sectoriels**")
-            sect_list = list(sectoriels.iterrows())
-            # First row: up to 4
-            row1 = sect_list[:4]
-            cols_s1 = st.columns(len(row1))
-            for i, (_, idx) in enumerate(row1):
-                with cols_s1[i]:
-                    val_str = f"{idx['value']:,.2f}" if pd.notna(idx.get("value")) else "—"
-                    delta_str = f"{idx['variation']:.2f}%" if pd.notna(idx.get("variation")) else None
-                    short_name = idx["name"].replace("BRVM - ", "").replace("BRVM-", "")
-                    st.metric(short_name, val_str, delta=delta_str)
-            # Second row: rest
-            row2 = sect_list[4:]
-            if row2:
-                cols_s2 = st.columns(len(row2))
-                for i, (_, idx) in enumerate(row2):
-                    with cols_s2[i]:
-                        val_str = f"{idx['value']:,.2f}" if pd.notna(idx.get("value")) else "—"
-                        delta_str = f"{idx['variation']:.2f}%" if pd.notna(idx.get("variation")) else None
-                        short_name = idx["name"].replace("BRVM - ", "").replace("BRVM-", "")
-                        st.metric(short_name, val_str, delta=delta_str)
-
-        # Total Return
-        if has_category:
             total_return = indices[indices["category"] == "total_return"]
-            if not total_return.empty:
-                idx = total_return.iloc[0]
-                val_str = f"{idx['value']:,.2f}" if pd.notna(idx.get("value")) else "—"
-                delta_str = f"{idx['variation']:.2f}%" if pd.notna(idx.get("variation")) else None
-                st.metric("COMPOSITE TOTAL RETURN", val_str, delta=delta_str)
-    else:
-        st.info("Indices non disponibles — lancez scripts/scrape_indices.py")
+        else:
+            principaux = indices[indices["name"].str.contains(
+                "COMPOSITE|BRVM-30|PRESTIGE|PRINCIPAL", case=False, na=False)]
+            total_return = indices[indices["name"].str.contains(
+                "TOTAL RETURN", case=False, na=False)]
+            sectoriels = indices[~indices["name"].str.contains(
+                "COMPOSITE|BRVM-30|PRESTIGE|PRINCIPAL|TOTAL RETURN", case=False, na=False)]
+
+        # Rangée 1 : principaux + total return → toujours sur la même ligne
+        # (Composite, BRVM-30, Prestige, Total Return = max 4)
+        row1 = list(principaux.iterrows()) + list(total_return.iterrows())
+        if row1:
+            st.markdown(
+                '<div class="label-xs" style="margin:6px 0 4px 2px;">'
+                'Indices principaux</div>',
+                unsafe_allow_html=True,
+            )
+            cols = st.columns(4)  # grille fixe 4 colonnes
+            for i, (_, idx) in enumerate(row1[:4]):
+                with cols[i]:
+                    _render_idx_metric(idx)
+
+        # Sectoriels : grille fixe 4 colonnes, padded avec empty slots
+        if not sectoriels.empty:
+            st.markdown(
+                '<div class="label-xs" style="margin:10px 0 4px 2px;">'
+                'Indices sectoriels</div>',
+                unsafe_allow_html=True,
+            )
+            sect_list = list(sectoriels.iterrows())
+            # Par rangées de 4 — toujours 4 colonnes même si la dernière en a moins
+            for start in range(0, len(sect_list), 4):
+                chunk = sect_list[start:start + 4]
+                cols_s = st.columns(4)
+                for i in range(4):
+                    with cols_s[i]:
+                        if i < len(chunk):
+                            _render_idx_metric(chunk[i][1])
+                        # else : colonne vide → largeur préservée, pas de reflow

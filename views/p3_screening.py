@@ -17,7 +17,7 @@ def render():
 
     all_stocks = get_all_stocks_for_analysis()
     if all_stocks.empty:
-        st.warning("Aucune donnée disponible. Lancez l'enrichissement depuis sikafinance.")
+        st.warning("Aucune donnée disponible. Lancez l'enrichissement des données de marché.")
         return
 
     # --- Selection Secteurs & Titres ---

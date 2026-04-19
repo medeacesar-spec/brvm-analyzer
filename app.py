@@ -409,7 +409,7 @@ if not st.session_state.get("db_verified"):
             st.info(
                 "⏳ **Mise à jour quotidienne en cours — durée estimée ~1 minute**\n\n"
                 "Récupération des cotations du jour et des prix manquants pour "
-                "les 48 titres (sikafinance.com). Cette opération ne se fait qu'une "
+                "les 48 titres. Cette opération ne se fait qu'une "
                 "fois par jour et par session.\n\n"
                 "_Merci de patienter — la page se rechargera automatiquement._"
             )
@@ -447,8 +447,8 @@ if not st.session_state.get("db_verified"):
         st.info(
             "⏳ **Durée estimée : ~2 minutes**\n\n"
             "L'application récupère les cotations, profils et prix historiques "
-            "des **48 titres BRVM** depuis sikafinance.com. Un délai anti-ban de "
-            "300 ms est appliqué entre chaque titre (~48 × 1.3 s + rapports + indices).\n\n"
+            "des **48 titres BRVM**. Un délai anti-requête de 300 ms est appliqué "
+            "entre chaque titre (~48 × 1.3 s + rapports + indices).\n\n"
             "**Cette opération ne se fait qu'une seule fois.** Les sessions "
             "suivantes utilisent la base de données Supabase et se chargent en "
             "moins de 3 secondes."
@@ -579,18 +579,23 @@ except Exception:
 
 # Widget authentification (connexion Google OAuth ou mode dev)
 render_auth_widget()
-st.sidebar.markdown("---")
+
+# Label de section éditorial (remplace le label "Navigation" brut)
+st.sidebar.markdown(
+    "<div class='label-xs' style='margin:14px 0 4px 2px;'>Navigation</div>",
+    unsafe_allow_html=True,
+)
 
 _PAGE_OPTIONS = [
     "🏠 Dashboard Marché",
-    "🔍 Analyse d'un Titre",
+    "🔍 Analyse d'un titre",
     "🎯 Screening",
     "⚖️ Comparateur",
     "📡 Signaux",
     "💼 Portefeuille",
     "🤖 Assistant Investisseur",
     "📈 Performance des titres",
-    "🎯 Historique Signaux & Recommandations",
+    "📜 Historique signaux",
     "📅 Infos Générales Marché",
 ]
 
@@ -607,13 +612,14 @@ page = st.sidebar.radio(
     "Navigation",
     _PAGE_OPTIONS,
     key="nav_radio",
+    label_visibility="collapsed",
 )
 
 # Import and run the selected page
 if page == "🏠 Dashboard Marché":
     from views.p1_dashboard import render
     render()
-elif page == "🔍 Analyse d'un Titre":
+elif page == "🔍 Analyse d'un titre":
     from views.p2_stock_analysis import render
     render()
 elif page == "🎯 Screening":
@@ -636,7 +642,7 @@ elif page == "🤖 Assistant Investisseur":
 elif page == "📈 Performance des titres":
     from views.p9_performance import render
     render()
-elif page == "🎯 Historique Signaux & Recommandations":
+elif page == "📜 Historique signaux":
     from views.p10_calibration import render
     render()
 elif page == "📅 Infos Générales Marché":
@@ -685,7 +691,7 @@ if _info["type"] == "sqlite" and _info.get("size_mb"):
 st.sidebar.markdown(
     "<div style='text-align:center;padding:0.5rem 0;'>"
     "<span style='font-size:0.72rem;color:var(--ink-3);font-weight:500;'>BRVM Analyzer v1.0</span><br>"
-    "<span style='font-size:0.68rem;color:var(--ink-4);'>Données · sikafinance.com</span><br>"
+    "<span style='font-size:0.68rem;color:var(--ink-4);'>Données marché BRVM</span><br>"
     f"<span style='font-size:0.62rem;color:var(--ink-4);'>{_db_label}</span></div>",
     unsafe_allow_html=True,
 )
