@@ -623,6 +623,15 @@ def _check_data_status():
 # on ne relance JAMAIS de sync automatique (évite les boucles sur Streamlit Cloud
 # où chaque navigation ré-exécute app.py).
 if not st.session_state.get("db_verified"):
+    # Réconciliation du schéma dès le démarrage : ajoute les colonnes
+    # manquantes sur les installations existantes (évite UndefinedColumn
+    # sur n'importe quelle page qui référence total_assets, eps, per, etc.).
+    try:
+        init_db()
+    except Exception as _e:
+        _log.exception("init_db failed at startup: %s", _e)
+        st.session_state.init_db_error = f"{type(_e).__name__}: {_e}"
+
     count, is_fresh = _check_data_status()
 
     if count > 0:

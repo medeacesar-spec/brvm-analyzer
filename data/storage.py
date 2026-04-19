@@ -573,16 +573,22 @@ def get_fundamentals(ticker: str, fiscal_year: Optional[int] = None) -> Optional
         if row:
             row_dict = dict(row)
             ref_year = row_dict.get("fiscal_year")
+            _cols_avail = set(_table_columns(conn, "fundamentals"))
             for fld in ("equity", "total_debt", "total_assets", "cfo", "capex",
                         "ebit", "interest_expense", "dividends_total"):
+                if fld not in _cols_avail:
+                    continue  # colonne absente de cette DB → skip
                 if row_dict.get(fld) is None:
-                    proxy = conn.execute(
-                        f"""SELECT {fld}, fiscal_year FROM fundamentals
-                           WHERE ticker=? AND {fld} IS NOT NULL AND {fld} != 0
-                           AND fiscal_year <= ?
-                           ORDER BY fiscal_year DESC LIMIT 1""",
-                        (ticker, ref_year),
-                    ).fetchone()
+                    try:
+                        proxy = conn.execute(
+                            f"""SELECT {fld}, fiscal_year FROM fundamentals
+                               WHERE ticker=? AND {fld} IS NOT NULL AND {fld} != 0
+                               AND fiscal_year <= ?
+                               ORDER BY fiscal_year DESC LIMIT 1""",
+                            (ticker, ref_year),
+                        ).fetchone()
+                    except Exception:
+                        proxy = None
                     if proxy:
                         row_dict[fld] = proxy[0]
                         row_dict[f"_{fld}_from_year"] = proxy[1]
