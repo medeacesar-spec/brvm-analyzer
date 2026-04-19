@@ -24,30 +24,32 @@ def render():
 
     portfolio = get_portfolio()
 
-    # --- Import from screenshot ---
-    with st.expander("📸 Importer depuis un screenshot SGI", expanded=False):
-        st.markdown(
-            "Uploadez une capture d'écran de votre portefeuille SGI. "
-            "L'application analysera l'image et extraira automatiquement vos positions."
-        )
-        screenshot = st.file_uploader(
-            "Screenshot du portefeuille SGI",
-            type=["png", "jpg", "jpeg"],
-            key="sgi_screenshot",
-        )
-        if screenshot:
-            st.image(screenshot, caption="Votre portefeuille SGI", use_container_width=True)
-            st.markdown("---")
-
-            # Try OCR extraction with spinner
-            with st.spinner("Analyse de l'image en cours (OCR)... La première exécution peut prendre 1-2 minutes pour télécharger le modèle."):
-                extracted = _extract_portfolio_from_image(screenshot)
-            if extracted:
-                st.success(f"✅ {len(extracted)} position(s) détectée(s) dans l'image")
-                _render_extracted_positions(extracted, load_tickers())
-            else:
-                st.warning("L'extraction automatique n'a pas détecté de positions. Saisissez manuellement :")
-                _render_batch_input(load_tickers())
+    # --- Import from screenshot (si OCR dispo sur l'instance) ---
+    if _ocr_available():
+        with st.expander("📸 Importer depuis un screenshot SGI", expanded=False):
+            st.markdown(
+                "Uploadez une capture d'écran de votre portefeuille SGI. "
+                "L'application analysera l'image et extraira automatiquement vos positions."
+            )
+            screenshot = st.file_uploader(
+                "Screenshot du portefeuille SGI",
+                type=["png", "jpg", "jpeg"],
+                key="sgi_screenshot",
+            )
+            if screenshot:
+                st.image(screenshot, caption="Votre portefeuille SGI", use_container_width=True)
+                st.markdown("---")
+                with st.spinner("Analyse de l'image en cours (OCR)…"):
+                    extracted = _extract_portfolio_from_image(screenshot)
+                if extracted:
+                    st.success(f"✅ {len(extracted)} position(s) détectée(s) dans l'image")
+                    _render_extracted_positions(extracted, load_tickers())
+                else:
+                    st.warning("L'extraction automatique n'a pas détecté de positions. Saisissez manuellement :")
+                    _render_batch_input(load_tickers())
+    # Sinon : pas d'expander OCR du tout — la saisie manuelle ci-dessous
+    # reste la seule voie d'import, ce qui est cohérent avec les capacités
+    # du déploiement (Streamlit Cloud free tier n'installe pas easyocr/torch).
 
     # --- Add position ---
     with st.expander("➕ Ajouter une position", expanded=portfolio.empty):
@@ -873,68 +875,74 @@ def _extract_portfolio_from_image(uploaded_file) -> list:
     """
     Extrait les positions d'un screenshot de portefeuille SGI via OCR.
     Essaie easyocr d'abord, puis pytesseract en fallback.
-    Retourne une liste de dicts: [{titre, qte, cmp, cours}, ...]
+    Retourne une liste de dicts: [{titre, qte, cmp, cours}, ...].
+
+    Si aucune librairie OCR n'est installée sur le déploiement (ex. Streamlit
+    Cloud free tier, où easyocr+torch est trop lourd), on retourne [] sans
+    spammer la sidebar d'erreurs d'imports. Un seul message propre est
+    affiché par l'appelant (_render_add_position_form).
     """
     import io
-    import re
     from PIL import Image
 
     image_bytes = uploaded_file.getvalue()
     image = Image.open(io.BytesIO(image_bytes))
 
-    # Try easyocr first, then pytesseract
-    raw_text = None
-    ocr_results = None
-
-    # Method 1: easyocr (with position info)
+    # Method 1 : easyocr (best, with positions)
     try:
         reader = _get_ocr_reader()
-        ocr_results = reader.readtext(image_bytes, paragraph=False)
-        st.caption(f"OCR: {len(ocr_results)} éléments détectés")
-        if ocr_results:
-            positions = _parse_ocr_results(ocr_results)
-            if positions:
-                return positions
-            # If parsing found nothing, show raw OCR for debugging
-            st.caption("Texte OCR brut : " + " | ".join(r[1] for r in ocr_results[:20]))
-    except Exception as e:
-        st.caption(f"easyocr indisponible ({type(e).__name__}: {e}), essai pytesseract...")
-
-    # Method 2: pytesseract (text only)
-    try:
-        import pytesseract
-        # Preprocess: convert to grayscale, increase contrast
-        gray = image.convert("L")
-        # Increase size for better OCR
-        w, h = gray.size
-        if w < 1500:
-            scale = 1500 / w
-            gray = gray.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
-        raw_text = pytesseract.image_to_string(gray, lang="fra+eng", config="--psm 6")
-        if raw_text and raw_text.strip():
-            return _parse_text_lines(raw_text)
-    except Exception as e:
-        st.caption(f"pytesseract indisponible ({type(e).__name__})")
-
-    # Method 3: pytesseract with data output (position info)
-    try:
-        import pytesseract
-        gray = image.convert("L")
-        w, h = gray.size
-        if w < 1500:
-            scale = 1500 / w
-            gray = gray.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
-        data = pytesseract.image_to_data(gray, lang="fra+eng", output_type=pytesseract.Output.DATAFRAME)
-        if data is not None and not data.empty:
-            raw_text = "\n".join(
-                str(w) for w in data[data["conf"] > 30]["text"].dropna().tolist()
-            )
-            if raw_text.strip():
-                return _parse_text_lines(raw_text)
+    except ImportError:
+        reader = None
     except Exception:
-        pass
+        reader = None
+
+    if reader is not None:
+        try:
+            ocr_results = reader.readtext(image_bytes, paragraph=False)
+            if ocr_results:
+                positions = _parse_ocr_results(ocr_results)
+                if positions:
+                    return positions
+        except Exception:
+            pass
+
+    # Method 2 : pytesseract (text only)
+    try:
+        import pytesseract
+    except ImportError:
+        pytesseract = None
+
+    if pytesseract is not None:
+        try:
+            gray = image.convert("L")
+            w, h = gray.size
+            if w < 1500:
+                scale = 1500 / w
+                gray = gray.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+            raw_text = pytesseract.image_to_string(gray, lang="fra+eng", config="--psm 6")
+            if raw_text and raw_text.strip():
+                parsed = _parse_text_lines(raw_text)
+                if parsed:
+                    return parsed
+        except Exception:
+            pass
 
     return []
+
+
+def _ocr_available() -> bool:
+    """True si au moins une librairie OCR est installée."""
+    try:
+        import easyocr  # noqa: F401
+        return True
+    except ImportError:
+        pass
+    try:
+        import pytesseract  # noqa: F401
+        return True
+    except ImportError:
+        pass
+    return False
 
 
 def _parse_ocr_results(results: list) -> list:
