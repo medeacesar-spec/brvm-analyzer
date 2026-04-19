@@ -127,6 +127,11 @@ def render():
     # --- Compute scores (cache session pour éviter 7s de recalcul à chaque clic) ---
     # Clé : ticker + dernière date prix + hash des fondamentaux. Si inchangé,
     # on réutilise le résultat précédent.
+    # ── Source unique : on calcule les ratios localement (ils dependent
+    # de compute_ratios sur les fondamentaux, c'est deterministe et rapide)
+    # mais on PREFERE les scores / verdict / signals du snapshot quotidien
+    # quand il existe, pour rester COHERENT avec p5 Signaux / p10 Historique
+    # / la requete admin. Si le snapshot est absent, fallback live compute.
     import hashlib as _h
     _pdf_sig = ""
     if not price_df.empty and "date" in price_df.columns:
@@ -139,8 +144,69 @@ def render():
     if _score_key in st.session_state:
         result = st.session_state[_score_key]
     else:
-        with st.spinner("Calcul des scores…"):
-            result = compute_hybrid_score(fundamentals, price_df)
+        # 1. Calcul ratios en local (rapide, pur Python)
+        ratios_local = compute_ratios(fundamentals)
+
+        # 2. Charge le snapshot (ticker unique, 1 requete Supabase cachee)
+        snap = _load_one_scoring_snapshot(selected_ticker)
+
+        if snap and snap.get("hybrid_score") is not None:
+            # 3a. Reconstitue result à partir du snapshot
+            try:
+                signals = _json.loads(snap.get("signals_json") or "[]")
+            except Exception:
+                signals = []
+            try:
+                consolidated = _json.loads(snap.get("consolidated_json") or "{}")
+            except Exception:
+                consolidated = {}
+            # Supports/Résistances recalculés localement si pas dans le snapshot
+            from analysis.technical import detect_support_resistance
+            if not price_df.empty and len(price_df) >= 8:
+                sr_levels = detect_support_resistance(price_df)
+            else:
+                sr_levels = {"supports": [], "resistances": []}
+
+            verdict = snap.get("verdict") or "N/A"
+            stars = int(snap.get("stars") or 0)
+            result = {
+                "ratios": ratios_local,
+                "hybrid_score": snap.get("hybrid_score"),
+                "fundamental_score": snap.get("fundamental_score"),
+                "technical_score": snap.get("technical_score"),
+                "signals": signals,
+                "trend": {
+                    "trend": snap.get("trend") or "indetermine",
+                    "strength": "",
+                    "details": "",
+                },
+                "supports": sr_levels["supports"],
+                "resistances": sr_levels["resistances"],
+                "recommendation": {
+                    "verdict": verdict,
+                    "stars": stars,
+                    "verdict_color": "#1F5D3A" if "ACHAT" in verdict else
+                                     "#B42318" if "VENTE" in verdict else "#B5730E",
+                    "strengths": ratios_local.get("checklist_strengths", []) or [],
+                    "warnings": ratios_local.get("checklist_warnings", []) or [],
+                    "entry_zones": [],
+                },
+            }
+            # Pour le texte de profil et les strengths/warnings, on appelle
+            # compute_hybrid_score sur le même fund+price pour enrichir.
+            try:
+                _full = compute_hybrid_score(fundamentals, price_df)
+                result["recommendation"]["strengths"] = _full["recommendation"].get("strengths", [])
+                result["recommendation"]["warnings"] = _full["recommendation"].get("warnings", [])
+                result["recommendation"]["entry_zones"] = _full["recommendation"].get("entry_zones", [])
+                result["trend"] = _full["trend"]
+            except Exception:
+                pass
+        else:
+            # 3b. Fallback live compute (snapshot absent = 1er lancement / cache vide)
+            with st.spinner("Calcul des scores…"):
+                result = compute_hybrid_score(fundamentals, price_df)
+
         st.session_state[_score_key] = result
     ratios = result["ratios"]
     reco = result["recommendation"]
