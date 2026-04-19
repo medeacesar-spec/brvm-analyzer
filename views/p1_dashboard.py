@@ -110,10 +110,24 @@ def _compute_period_performance(quotes: pd.DataFrame) -> dict:
         ticker, name, last_price = row.get("ticker", ""), row.get("name", ""), row.get("last", 0)
         if not ticker or not last_price:
             continue
-        day_var = row.get("variation", 0) or 0
-        results["day"].append({"ticker": ticker, "name": name, "price": last_price, "variation": day_var})
 
         prices = all_prices.get(ticker, pd.DataFrame())
+
+        # Variation "Jour" : toujours recalculée depuis price_cache (last vs
+        # last-1). market_data.variation est souvent 0 sur weekend / lundi
+        # pre-open (pas de trade du jour) — ne pas s'y fier.
+        day_var = 0.0
+        if not prices.empty and len(prices) >= 2:
+            _p = prices.sort_values("date")
+            last_close = _p.iloc[-1]["close"]
+            prev_close = _p.iloc[-2]["close"]
+            if prev_close and prev_close > 0:
+                day_var = (last_close - prev_close) / prev_close * 100
+        else:
+            # Pas d'historique : fallback sur market_data.variation (rare)
+            day_var = row.get("variation", 0) or 0
+        results["day"].append({"ticker": ticker, "name": name, "price": last_price, "variation": day_var})
+
         if prices.empty or len(prices) < 5:
             results["week"].append({"ticker": ticker, "name": name, "price": last_price, "variation": 0})
             results["month"].append({"ticker": ticker, "name": name, "price": last_price, "variation": 0})
