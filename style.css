@@ -86,19 +86,23 @@ section[data-testid="stSidebar"] [data-testid="stMetricValue"] {
   color: var(--ink) !important;
 }
 /* ─── Navigation sidebar : st.radio transformé en menu vertical propre ─── */
-/* Cache les ronds natifs de radio */
-section[data-testid="stSidebar"] .stRadio [data-baseweb="radio"] > div:first-child,
-section[data-testid="stSidebar"] .stRadio label > div:first-child > div:first-child {
+/* IMPORTANT : toutes les règles ci-dessous sont scopées à [role="radiogroup"]
+   pour ne PAS affecter le label du widget (celui qui dit "Navigation" et que
+   l'on passe en label_visibility="collapsed"). Sans ce scoping, la puce ::before
+   s'affichait aussi sur ce label caché, créant un "• Navigation" fantôme. */
+
+/* Cache les ronds natifs de radio (seulement dans le radiogroup) */
+section[data-testid="stSidebar"] [role="radiogroup"] [data-baseweb="radio"] > div:first-child,
+section[data-testid="stSidebar"] [role="radiogroup"] label > div:first-child > div:first-child {
   display: none !important;
 }
 /* Groupe : colonne, pas de gap horizontal */
-section[data-testid="stSidebar"] .stRadio > div {
+section[data-testid="stSidebar"] [role="radiogroup"] {
   gap: 2px !important;
   flex-direction: column !important;
 }
-/* Chaque item : puce à gauche (dot) + label. Bordure transparente par défaut,
-   hover crème, actif encadré avec barre verticale primary. */
-section[data-testid="stSidebar"] .stRadio label {
+/* Chaque item du radiogroup : puce à gauche + label */
+section[data-testid="stSidebar"] [role="radiogroup"] label {
   display: flex !important;
   align-items: center !important;
   width: 100% !important;
@@ -112,8 +116,7 @@ section[data-testid="stSidebar"] .stRadio label {
   position: relative;
   transition: background 120ms, color 120ms, border-color 120ms;
 }
-/* Petite puce décorative à gauche de chaque item (comme les dots du design) */
-section[data-testid="stSidebar"] .stRadio label::before {
+section[data-testid="stSidebar"] [role="radiogroup"] label::before {
   content: "";
   position: absolute;
   left: 6px;
@@ -125,15 +128,15 @@ section[data-testid="stSidebar"] .stRadio label::before {
   transform: translateY(-50%);
   transition: background 120ms;
 }
-section[data-testid="stSidebar"] .stRadio label:hover {
+section[data-testid="stSidebar"] [role="radiogroup"] label:hover {
   background: var(--bg-hover) !important;
   color: var(--ink) !important;
 }
-section[data-testid="stSidebar"] .stRadio label:hover::before {
+section[data-testid="stSidebar"] [role="radiogroup"] label:hover::before {
   background: var(--ink-3);
 }
-/* Actif : encadré crème clair + barre verticale deep green + puce verte + bold */
-section[data-testid="stSidebar"] .stRadio label:has(input:checked) {
+/* Actif : encadré + barre verticale primary + puce verte + bold */
+section[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) {
   background: var(--bg-elev) !important;
   border: 1px solid var(--border) !important;
   color: var(--ink) !important;
@@ -141,15 +144,14 @@ section[data-testid="stSidebar"] .stRadio label:has(input:checked) {
   box-shadow: inset 3px 0 0 var(--primary);
   padding-left: 18px !important;
 }
-section[data-testid="stSidebar"] .stRadio label:has(input:checked)::before {
+section[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked)::before {
   background: var(--primary);
   width: 5px;
   height: 5px;
   left: 8px;
 }
-/* Le span du label */
-section[data-testid="stSidebar"] .stRadio label p,
-section[data-testid="stSidebar"] .stRadio label > div:last-child {
+section[data-testid="stSidebar"] [role="radiogroup"] label p,
+section[data-testid="stSidebar"] [role="radiogroup"] label > div:last-child {
   font-size: 13px !important;
   line-height: 1.35 !important;
   margin: 0 !important;
