@@ -14,12 +14,14 @@ from data.storage import (
 )
 from analysis.fundamental import compute_ratios, format_ratio
 from utils.nav import ticker_analyze_button
-from utils.charts import radar_chart, performance_chart
+from utils.charts import radar_chart, performance_chart, COLORS
+from utils.ui_helpers import section_heading
 
 
 def render():
-    st.markdown('<div class="main-header">⚖️ Comparateur Sectoriel</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">Choisissez un secteur pour comparer les titres automatiquement</div>', unsafe_allow_html=True)
+    # Hiérarchie v3 : Title + caption → sélecteur → tableau → charts
+    st.title("Comparateur")
+    st.caption("Comparer les titres d'un secteur ou une sélection libre")
 
     analyzable = get_analyzable_tickers()
     all_stocks = get_all_stocks_for_analysis()
@@ -28,40 +30,36 @@ def render():
         st.warning("Aucune donnée disponible.")
         return
 
-    # --- Mode de selection ---
-    mode = st.radio("Mode de comparaison", ["Par secteur", "Selection libre"], horizontal=True)
+    mode = st.radio("Mode de comparaison", ["Par secteur", "Sélection libre"], horizontal=True)
 
     if mode == "Par secteur":
         sectors = sorted(set(t["sector"] for t in analyzable if t.get("sector")))
-        selected_sector = st.selectbox("Choisir un secteur", sectors)
-
+        selected_sector = st.selectbox("Secteur", sectors)
         sector_tickers = [t for t in analyzable if t["sector"] == selected_sector]
-        st.info(f"**{len(sector_tickers)} titres** avec données dans le secteur {selected_sector}")
+        st.caption(f"{len(sector_tickers)} titres avec données · secteur {selected_sector}")
 
-        options = [f"{t['ticker']} - {t['name']}" + (" 📊" if t.get("has_fundamentals") else " 📈") for t in sector_tickers]
+        options = [f"{t['ticker']} · {t['name']}" for t in sector_tickers]
         selected = st.multiselect(
-            "Titres à comparer",
-            options,
+            "Titres à comparer", options,
             default=options[:min(5, len(options))],
         )
-        tickers = [s.split(" - ")[0] for s in selected]
-
+        tickers = [s.split(" · ")[0] for s in selected]
     else:
-        all_options = [f"{t['ticker']} - {t['name']}" + (" 📊" if t.get("has_fundamentals") else " 📈") for t in analyzable]
+        all_options = [f"{t['ticker']} · {t['name']}" for t in analyzable]
         selected = st.multiselect("Sélectionnez 2 à 5 titres", all_options, default=[])
-        tickers = [s.split(" - ")[0] for s in selected]
+        tickers = [s.split(" · ")[0] for s in selected]
 
     if len(tickers) < 2:
         st.info("Sélectionnez au moins 2 titres pour comparer.")
         return
 
-    # Quick analyze buttons for selected tickers
+    # Boutons "Ouvrir" pour chaque ticker sélectionné
     if tickers:
         btn_cols = st.columns(len(tickers))
         for i, ticker in enumerate(tickers):
             with btn_cols[i]:
                 ticker_analyze_button(
-                    ticker, label=f"🔍 {ticker}",
+                    ticker, label=ticker,
                     key=f"cmp_goto_{ticker}", use_container_width=True,
                 )
 

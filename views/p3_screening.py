@@ -9,47 +9,49 @@ import pandas as pd
 from data.storage import get_all_stocks_for_analysis, get_analyzable_tickers
 from analysis.fundamental import compute_ratios, format_ratio
 from utils.nav import ticker_quick_picker
+from utils.ui_helpers import section_heading
 
 
 def render():
-    st.markdown('<div class="main-header">🎯 Screening Multi-Critères</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">Filtrez les titres BRVM ayant des données disponibles</div>', unsafe_allow_html=True)
+    # Hiérarchie v3 : Title + caption → univers → filtres → résultat
+    st.title("Screening")
+    st.caption("Filtrer les titres BRVM par secteur et ratios fondamentaux")
 
     all_stocks = get_all_stocks_for_analysis()
     if all_stocks.empty:
         st.warning("Aucune donnée disponible. Lancez l'enrichissement des données de marché.")
         return
 
-    # --- Selection Secteurs & Titres ---
-    st.markdown("### Selection de l'univers d'analyse")
-
+    # ─── Univers d'analyse ───
+    section_heading("Univers d'analyse", spacing="tight")
     available_sectors = sorted(all_stocks["sector"].dropna().unique().tolist())
     col_sector, col_info = st.columns([3, 1])
 
     with col_sector:
-        selected_sectors = st.multiselect("Secteurs", available_sectors)
+        selected_sectors = st.multiselect("Secteurs", available_sectors, label_visibility="collapsed",
+                                          placeholder="Tous les secteurs")
         if not selected_sectors:
             selected_sectors = available_sectors
 
     with col_info:
         st.metric("Titres avec données", f"{len(all_stocks)}")
 
-    # Filter by sector
     filtered_stocks = all_stocks[all_stocks["sector"].isin(selected_sectors)]
 
-    # Ticker selection
-    ticker_options = [f"{r['ticker']} - {r['company_name']}" + (" 📊" if r.get("has_fundamentals") else " 📈")
+    # Sélecteur de tickers — ticker · nom (sans marqueur [fondamentaux]/[marché])
+    ticker_options = [f"{r['ticker']} · {r['company_name']}"
                       for _, r in filtered_stocks.iterrows()]
     selected_tickers = st.multiselect(
         f"Titres ({len(filtered_stocks)} disponibles)",
         ticker_options,
+        placeholder="Tous les titres du/des secteur(s) sélectionné(s)",
     )
     if not selected_tickers:
         selected_tickers = ticker_options
-    target_tickers = {s.split(" - ")[0] for s in selected_tickers}
+    target_tickers = {s.split(" · ")[0] for s in selected_tickers}
 
-    # --- Ratio Filters ---
-    st.markdown("### Filtres fondamentaux")
+    # ─── Filtres fondamentaux ───
+    section_heading("Filtres fondamentaux")
 
     col_f1, col_f2, col_f3, col_f4, col_f5 = st.columns(5)
 
@@ -74,8 +76,7 @@ def render():
         min_de = st.number_input("D/E min", min_value=0.0, max_value=20.0, value=0.0, step=0.5, key="de_min")
         max_de = st.number_input("D/E max", min_value=0.0, max_value=20.0, value=20.0, step=0.5, key="de_max")
 
-    # --- Compute ratios ---
-    st.markdown("---")
+    # --- Compute ratios (plus de divider — la hiérarchie suffit) ---
     results = []
     for _, row in filtered_stocks.iterrows():
         ticker = row.get("ticker", "")
@@ -153,9 +154,8 @@ def render():
 
     filtered = screen_df[mask].sort_values("fundamental_score", ascending=False)
 
-    # --- Results ---
-    st.markdown("---")
-    st.markdown(f"### {len(filtered)} titre(s) correspondent à vos critères")
+    # ─── Résultats ───
+    section_heading(f"Résultats · {len(filtered)} titre(s)", spacing="loose")
 
     if filtered.empty:
         st.info("Aucun titre ne correspond. Élargissez vos critères.")
@@ -171,14 +171,15 @@ def render():
     display_df["checklist"] = display_df.apply(lambda r: f"{r['checklist_passed']}/{r['checklist_total']}" if r['checklist_total'] > 0 else "—", axis=1)
     display_df["price"] = display_df["price"].apply(lambda x: f"{x:,.0f}" if pd.notna(x) and x > 0 else "—")
     display_df["score"] = display_df["fundamental_score"].apply(lambda x: f"{x:.0f}/50")
-    display_df["data"] = display_df["has_fundamentals"].apply(lambda x: "📊" if x else "📈")
 
     display_df["beta_fmt"] = display_df.get("beta", pd.Series()).apply(lambda x: f"{x:.2f}" if pd.notna(x) and x else "—")
     display_df["rsi_fmt"] = display_df.get("rsi", pd.Series()).apply(lambda x: f"{x:.0f}" if pd.notna(x) and x else "—")
     display_df["dps_fmt"] = display_df["dps"].apply(lambda x: f"{x:,.0f}" if pd.notna(x) and x else "—")
 
+    # Colonne "data" retirée : les emojis 📊/📈 n'apportent pas de valeur dans un tableau
+    # éditorial. L'info est déjà dans la présence ou non des ratios calculés.
     show_cols = {
-        "data": "", "ticker": "Ticker", "name": "Nom", "sector": "Secteur", "price": "Prix",
+        "ticker": "Ticker", "name": "Nom", "sector": "Secteur", "price": "Prix",
         "dividend_yield": "Yield", "dps_fmt": "DPS", "per": "PER", "roe": "ROE",
         "payout_ratio": "Payout", "debt_equity": "D/E",
         "beta_fmt": "Beta", "rsi_fmt": "RSI",
@@ -196,8 +197,8 @@ def render():
         (row["ticker"], f"{row['ticker']} — {row['name']}")
         for _, row in filtered.iterrows()
     ]
-    ticker_quick_picker(picker_options, key="screen_goto", label="🔍 Ouvrir l'analyse d'un titre")
+    ticker_quick_picker(picker_options, key="screen_goto", label="Ouvrir l'analyse d'un titre")
 
     csv = filtered[["ticker", "name", "sector", "price", "dividend_yield", "per", "roe",
                      "net_margin", "payout_ratio", "debt_equity", "fundamental_score"]].to_csv(index=False)
-    st.download_button("📥 Exporter CSV", csv, "brvm_screening.csv", "text/csv")
+    st.download_button("Exporter CSV", csv, "brvm_screening.csv", "text/csv")

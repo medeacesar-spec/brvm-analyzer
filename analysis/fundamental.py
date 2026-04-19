@@ -545,10 +545,12 @@ def _compute_fundamental_score(ratios: dict, is_bank: bool) -> float:
         elif nm >= 0.05:
             score += 1
 
-    # Dette/Equity (5 pts) - hors banques
+    # Dette/Equity (5 pts) - hors banques. None = donnée absente → score neutre
     if not is_bank:
-        de = ratios.get("debt_equity", 0)
-        if de <= 0.3:
+        de = ratios.get("debt_equity")
+        if de is None:
+            score += 2  # neutre si donnée manquante
+        elif de <= 0.3:
             score += 5
         elif de <= 0.5:
             score += 4
