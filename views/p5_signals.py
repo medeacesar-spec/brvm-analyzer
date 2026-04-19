@@ -86,8 +86,11 @@ def render():
     with col_verdict:
         st.markdown("<div class='label-xs' style='margin-bottom:4px;'>Filtrer verdict</div>",
                     unsafe_allow_html=True)
+        # 6 options : Tous + 4 catégories regroupées (Achat / Conserver / Vente /
+        # Contradictions). Plus simple et couvre tous les cas de figure.
         verdict_filter_choice = st.selectbox(
-            "Verdict", ["Tous", "ACHAT FORT", "ACHAT", "CONSERVER", "PRUDENCE", "ÉVITER"],
+            "Verdict",
+            ["Tous", "Achat", "Conserver", "Vente", "Contradictions"],
             label_visibility="collapsed",
         )
 
@@ -293,14 +296,24 @@ def render():
     from utils.ui_helpers import section_heading
     section_heading("Synthèse par titre", spacing="loose")
 
-    # Filtrage par verdict (choice = "Tous" ou un verdict spécifique)
+    # Filtrage par categorie de verdict (Achat / Conserver / Vente / Contradictions)
     def _match_verdict(entry, choice):
         if choice == "Tous":
             return True
-        v = (entry.get("consolidated", {}).get("verdict") or "").upper()
-        v_reco = (entry.get("result", {}).get("recommendation", {}).get("verdict") or "").upper()
-        target = choice.upper().replace("É", "E")
-        return target in v or target in v_reco
+        v = (entry.get("result", {}).get("recommendation", {}).get("verdict") or "").upper()
+        v_cons = (entry.get("consolidated", {}).get("verdict") or "").upper()
+        conflict = entry.get("consolidated", {}).get("conflict") or False
+        if choice == "Contradictions":
+            return conflict
+        if choice == "Achat":
+            return "ACHAT" in v or "ACHAT" in v_cons
+        if choice == "Conserver":
+            return ("CONSERVER" in v or "NEUTRE" in v or "PRUDENCE" in v
+                    or "CONSERVER" in v_cons or "NEUTRE" in v_cons)
+        if choice == "Vente":
+            return ("VENTE" in v or "EVITER" in v
+                    or "VENTE" in v_cons)
+        return True
 
     filtered = [e for e in per_ticker if _match_verdict(e, verdict_filter_choice)]
 
