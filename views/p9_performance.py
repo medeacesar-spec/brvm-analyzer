@@ -125,87 +125,126 @@ def _color_pct(val):
 
 
 def render():
-    st.markdown(
-        '<div class="main-header">📈 Performance des titres</div>',
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        '<div class="sub-header">Titres et secteurs les plus/moins performants sur différentes périodes</div>',
-        unsafe_allow_html=True,
-    )
+    from utils.ui_helpers import section_heading
+    st.title("Performance des titres")
 
-    # Load data — depuis snapshot si dispo, sinon fallback live (lent).
     perf_df, from_snapshot = _load_all_performances()
-
     if perf_df.empty:
         st.warning("Aucune donnée de prix disponible.")
         return
 
-    if not from_snapshot and is_admin():
-        st.warning(
-            "⚠️ Snapshot de performance vide (calcul live en cours). Cliquez sur "
-            "**📸 Regénérer snapshots** dans la sidebar pour accélérer cette page."
+    # ─── Ligne titre : caption gauche + period pills droite ───
+    col_sub, col_period = st.columns([3, 2])
+
+    with col_period:
+        period = st.radio(
+            "Période", list(PERIODS.keys()),
+            horizontal=True, index=2, label_visibility="collapsed",
         )
 
-    # ── Period selector ──
-    period = st.radio(
-        "Période",
-        list(PERIODS.keys()),
-        horizontal=True,
-        index=2,  # default 1A
-    )
-
-    col_perf = period  # column name matches period key
-
-    # Filter to tickers that have data for this period
+    col_perf = period
     valid = perf_df.dropna(subset=[col_perf]).copy()
     if valid.empty:
         st.warning(f"Pas assez de données historiques pour la période {period}.")
         return
-
     valid_sorted = valid.sort_values(col_perf, ascending=False)
 
-    # ── KPIs ──
-    st.markdown("---")
-    k1, k2, k3, k4 = st.columns(4)
+    with col_sub:
+        st.caption(f"Classement sur {period.lower()} · {len(valid)} titres")
+
+    if not from_snapshot and is_admin():
+        st.caption("⚠️ Snapshot vide — clic Regénérer snapshots admin pour accélérer.")
+
+    # ─── 4 KPI cards ──────────────────────────────────────────────────
     best = valid_sorted.iloc[0]
     worst = valid_sorted.iloc[-1]
     median_perf = valid[col_perf].median()
     positive_count = (valid[col_perf] >= 0).sum()
+    total = len(valid)
+    pct_market = positive_count / total * 100 if total else 0
 
-    k1.metric("Meilleure perf.", f"{best['name']}", f"{_format_pct(best[col_perf])}")
-    k2.metric("Pire perf.", f"{worst['name']}", f"{_format_pct(worst[col_perf])}")
-    k3.metric("Perf. médiane", _format_pct(median_perf))
-    k4.metric("Titres en hausse", f"{positive_count}/{len(valid)}")
+    def _kpi(label, value, sub, arrow_tone="neutral"):
+        arrow = {"up": "▲", "down": "▼"}.get(arrow_tone, "")
+        sub_color = {"up": "var(--up)", "down": "var(--down)"}.get(
+            arrow_tone, "var(--ink-3)"
+        )
+        return (
+            f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
+            f"border-radius:10px;padding:14px 16px;min-height:92px;'>"
+            f"<div class='label-xs' style='margin-bottom:6px;'>{label}</div>"
+            f"<div style='font-size:22px;font-weight:600;letter-spacing:-0.02em;"
+            f"color:var(--ink);line-height:1.15;'>{value}</div>"
+            f"<div style='font-size:11.5px;color:{sub_color};margin-top:6px;"
+            f"font-weight:500;'>{arrow + ' ' if arrow else ''}{sub}</div>"
+            f"</div>"
+        )
 
-    # ── Tabs: Titres | Secteurs ──
-    tab_stocks, tab_sectors, tab_chart = st.tabs(
-        ["📊 Par Titre", "🏢 Par Secteur", "📈 Graphique"]
+    k1, k2, k3, k4 = st.columns(4)
+    with k1:
+        st.markdown(_kpi("Meilleure perf.", best["name"],
+                          _format_pct(best[col_perf]), "up"),
+                     unsafe_allow_html=True)
+    with k2:
+        st.markdown(_kpi("Pire perf.", worst["name"],
+                          _format_pct(worst[col_perf]), "down"),
+                     unsafe_allow_html=True)
+    with k3:
+        st.markdown(_kpi("Perf. médiane", _format_pct(median_perf),
+                          f"{total} titres", "neutral"),
+                     unsafe_allow_html=True)
+    with k4:
+        st.markdown(_kpi("Titres en hausse", f"{positive_count} / {total}",
+                          f"{pct_market:.0f}% du marché",
+                          "up" if pct_market >= 50 else "down"),
+                     unsafe_allow_html=True)
+
+    # ─── Tabs ─────────────────────────────────────────────────────────
+    tab_stocks, tab_sectors, tab_chart, tab_multi = st.tabs(
+        ["Classement", "Par secteur", "Graphique", "Tableau multi-périodes"]
     )
 
-    # ───────── TAB 1: By stock ─────────
+    # ───────── TAB 1 : Classement avec bars horizontaux Top / Pires ──
     with tab_stocks:
-        st.subheader(f"Classement des titres — {period}")
+        n_show = st.slider("Nombre de titres affichés", 5, len(valid_sorted),
+                           min(8, len(valid_sorted)), key="p9_n_show",
+                           label_visibility="collapsed")
 
-        n_show = st.slider("Nombre de titres", 5, len(valid_sorted), min(20, len(valid_sorted)))
+        col_top, col_bot = st.columns(2)
 
-        col_top, col_bottom = st.columns(2)
+        def _hbar_list(df_subset, tone_color, title, dot_class):
+            """Liste bar horizontaux: nom + bar propotionnel + % à droite."""
+            max_abs = max(abs(v) for v in df_subset[col_perf]) if not df_subset.empty else 1
+            max_abs = max_abs or 1
+            inner = ""
+            for _, r in df_subset.iterrows():
+                v = r[col_perf]
+                w = abs(v) / max_abs * 100
+                sign = "+" if v >= 0 else ""
+                inner += (
+                    f"<div style='display:flex;align-items:center;gap:10px;"
+                    f"padding:7px 0;border-bottom:1px solid var(--border);font-size:13px;'>"
+                    f"<div style='min-width:100px;color:var(--ink);font-weight:500;'>{r['name']}</div>"
+                    f"<div style='flex:1;height:10px;background:var(--bg-sunken);"
+                    f"border-radius:4px;overflow:hidden;'>"
+                    f"<div style='width:{w:.0f}%;height:100%;background:{tone_color};"
+                    f"border-radius:4px;'></div></div>"
+                    f"<div style='min-width:65px;text-align:right;color:{tone_color};"
+                    f"font-weight:600;font-variant-numeric:tabular-nums;'>"
+                    f"{sign}{v*100:.1f}%</div>"
+                    f"</div>"
+                )
+            st.markdown(
+                f"<div style='font-size:14px;font-weight:600;color:var(--ink);"
+                f"margin-bottom:10px;'><span class='dot {dot_class}'></span>{title}</div>"
+                f"<div>{inner}</div>",
+                unsafe_allow_html=True,
+            )
 
         with col_top:
-            st.markdown("#### 🟢 Top performers")
-            top = valid_sorted.head(n_show)
-            _display_perf_table(top, col_perf)
-
-        with col_bottom:
-            st.markdown("#### 🔴 Pires performers")
-            bottom = valid_sorted.tail(n_show).sort_values(col_perf)
-            _display_perf_table(bottom, col_perf)
-
-        # Bar chart all tickers
-        st.markdown("---")
-        st.subheader(f"Vue complète — {period}")
-        fig = _bar_chart(valid_sorted, col_perf, f"Performance {period} — Tous les titres")
-        st.plotly_chart(fig, use_container_width=True)
+            _hbar_list(valid_sorted.head(n_show), "var(--up)", "Top performers", "up")
+        with col_bot:
+            _hbar_list(valid_sorted.tail(n_show).sort_values(col_perf),
+                        "var(--down)", "Pires performers", "down")
 
     # ───────── TAB 2: By sector ─────────
     with tab_sectors:
@@ -333,35 +372,33 @@ def render():
         else:
             st.info("Sélectionnez des titres pour afficher le graphique comparé.")
 
-    # ── Multi-period summary table ──
-    st.markdown("---")
-    st.subheader("📋 Tableau récapitulatif multi-périodes")
+    # ───────── TAB 4 : Tableau multi-périodes ──────────────
+    with tab_multi:
+        summary = perf_df[["ticker", "name", "sector", "price"] + list(PERIODS.keys())].copy()
+        summary = summary.sort_values(period, ascending=False, na_position="last")
+        summary["price_fmt"] = summary["price"].apply(
+            lambda x: f"{x:,.0f}" if x and not pd.isna(x) else "—"
+        )
 
-    summary = perf_df[["ticker", "name", "sector", "price"] + list(PERIODS.keys())].copy()
-    summary = summary.sort_values(period, ascending=False, na_position="last")
-    summary["price_fmt"] = summary["price"].apply(
-        lambda x: f"{x:,.0f}" if x and not pd.isna(x) else "—"
-    )
+        display_cols = {"ticker": "Ticker", "name": "Nom", "sector": "Secteur", "price_fmt": "Prix"}
+        for p in PERIODS:
+            col_name = f"perf_{p}"
+            summary[col_name] = summary[p].apply(_format_pct)
+            display_cols[col_name] = p
 
-    display_cols = {"ticker": "Ticker", "name": "Nom", "sector": "Secteur", "price_fmt": "Prix"}
-    for p in PERIODS:
-        col_name = f"perf_{p}"
-        summary[col_name] = summary[p].apply(_format_pct)
-        display_cols[col_name] = p
+        st.dataframe(
+            summary[list(display_cols.keys())].rename(columns=display_cols),
+            use_container_width=True,
+            hide_index=True,
+            height=600,
+        )
 
-    st.dataframe(
-        summary[list(display_cols.keys())].rename(columns=display_cols),
-        use_container_width=True,
-        hide_index=True,
-        height=600,
-    )
-
-    # Quick jump to stock analysis
-    picker_options = [
-        (row["ticker"], f"{row['ticker']} — {row['name']}")
-        for _, row in summary.iterrows()
-    ]
-    ticker_quick_picker(picker_options, key="perf_goto", label="🔍 Ouvrir l'analyse d'un titre")
+        picker_options = [
+            (row["ticker"], f"{row['ticker']} — {row['name']}")
+            for _, row in summary.iterrows()
+        ]
+        ticker_quick_picker(picker_options, key="perf_goto",
+                             label="Ouvrir l'analyse d'un titre")
 
 
 def _display_perf_table(df: pd.DataFrame, col_perf: str):

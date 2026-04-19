@@ -163,8 +163,6 @@ def render():
                 "consolidated": consolidated,
             })
 
-        if is_admin():
-            st.caption("⚡ Lecture depuis les snapshots précalculés — temps de réponse < 1 s")
     else:
         # ─── Fallback : calcul live (lent, utilisé si snapshot vide) ────────
         if is_admin():
