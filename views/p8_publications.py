@@ -170,8 +170,9 @@ def _render_company_overview():
         mcap_str = f" | Cap: {mcap/1e3:,.1f} Mds" if mcap else ""
 
         with st.expander(f"**{name}** ({ticker}) — {sector}{price_str}{mcap_str}"):
-            if profile.get("description"):
-                desc = profile["description"]
+            desc = profile.get("description")
+            # profile peut venir d'une row pandas/psycopg : NaN ou None possibles
+            if desc is not None and isinstance(desc, str) and desc.strip():
                 for prefix in ["La société :", "La société :", "La société:", "La société:"]:
                     if desc.startswith(prefix):
                         desc = desc[len(prefix):].strip()
