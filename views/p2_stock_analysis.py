@@ -68,12 +68,8 @@ def render():
         st.warning("Aucune donnée disponible. Lancez l'enrichissement des données de marché.")
         return
 
-    # Sélecteur compact — pleine largeur, l'import Excel est dans un expander discret
-    all_options = [
-        f"{t['ticker']} · {t['name']}"
-        + ("  [fondamentaux]" if t.get("has_fundamentals") else "  [marché]")
-        for t in analyzable
-    ]
+    # Sélecteur compact — ticker · nom (sans marqueur de type de données)
+    all_options = [f"{t['ticker']} · {t['name']}" for t in analyzable]
     default_index = 0
     target_ticker = st.session_state.pop("target_ticker", None)
     if target_ticker:
@@ -87,7 +83,6 @@ def render():
         all_options, index=default_index,
         key="p2_ticker_select",
         label_visibility="collapsed",
-        help="[fondamentaux] : données bilan/cashflow  |  [marché] : cotation uniquement",
     )
     selected_ticker = selection.split(" · ")[0]
 
