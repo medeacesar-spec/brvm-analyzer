@@ -207,15 +207,21 @@ def render_auth_widget():
         admin = is_admin()
         admin_tag = " 👑 admin" if admin else ""
         tag = "🛠️ dev" if is_dev else "🔐"
-        # Fond semi-transparent + bordure colorée selon rôle (jaune = admin, gris = user)
-        border_color = "#FFC107" if admin else "rgba(255,255,255,0.2)"
-        bg = "rgba(255,193,7,0.15)" if admin else "rgba(255,255,255,0.08)"
+        # Design v2 : badge clair avec accent terracotta pour admin, crème pour user.
+        if admin:
+            border_color = "var(--terracotta)"
+            bg = "var(--terracotta-bg)"
+            accent_color = "var(--terracotta-2)"
+        else:
+            border_color = "var(--border)"
+            bg = "var(--bg-sunken)"
+            accent_color = "var(--ink-2)"
         st.sidebar.markdown(
-            f"<div style='padding:0.5rem 0.75rem;"
+            f"<div style='padding:0.55rem 0.75rem;"
             f"background:{bg};border:1px solid {border_color};"
             f"border-radius:8px;margin-bottom:0.5rem;'>"
-            f"<b>{tag} {name}{admin_tag}</b><br>"
-            f"<small style='opacity:0.8;font-size:0.75rem;'>{email}</small>"
+            f"<b style='color:{accent_color};font-size:0.82rem;'>{tag} {name}{admin_tag}</b><br>"
+            f"<small style='color:var(--ink-3);font-size:0.72rem;'>{email}</small>"
             f"</div>",
             unsafe_allow_html=True,
         )
@@ -225,19 +231,24 @@ def render_auth_widget():
     else:
         # En mode local pur (pas d'OAuth), l'utilisateur est implicitement admin local
         if not oauth_enabled():
-            # Fond transparent (dark bleu sidebar), bordure jaune = accent admin
             st.sidebar.markdown(
-                "<div style='padding:0.5rem 0.75rem;"
-                "background:rgba(255,193,7,0.15);"
-                "border:1px solid #FFC107;"
+                "<div style='padding:0.55rem 0.75rem;"
+                "background:var(--terracotta-bg);"
+                "border:1px solid var(--terracotta);"
                 "border-radius:8px;margin-bottom:0.5rem;'>"
-                "<b>🗄️ Mode local 👑 admin</b><br>"
-                "<small>Instance mono-utilisateur</small>"
+                "<b style='color:var(--terracotta-2);font-size:0.82rem;'>🗄️ Mode local · 👑 admin</b><br>"
+                "<small style='color:var(--ink-3);font-size:0.72rem;'>Instance mono-utilisateur</small>"
                 "</div>",
                 unsafe_allow_html=True,
             )
         else:
-            st.sidebar.markdown("##### 🔒 Non connecté")
+            st.sidebar.markdown(
+                "<div style='padding:0.55rem 0.75rem;background:var(--bg-sunken);"
+                "border:1px solid var(--border);border-radius:8px;margin-bottom:0.5rem;'>"
+                "<b style='color:var(--ink-2);font-size:0.82rem;'>🔒 Non connecté</b>"
+                "</div>",
+                unsafe_allow_html=True,
+            )
         _render_login_buttons(container=st.sidebar)
 
 

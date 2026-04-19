@@ -25,258 +25,340 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Custom CSS — Modern dashboard design (light theme, rounded cards, clean typography)
+# ─── Design v2 : palette « Africain moderne » (terracotta / ocre / deep green) ───
+# Tokens extraits de design/BRVM Analyzer - Design v2 (standalone).html
 st.markdown("""
 <style>
+    :root {
+        /* Neutres chauds */
+        --bg:            #FAF8F4;
+        --bg-elev:       #FFFFFF;
+        --bg-sunken:     #F3EFE8;
+        --bg-hover:      #EFEAE1;
+        --border:        #E6DFD3;
+        --border-strong: #C9BFAE;
+        --ink:           #1C1A17;
+        --ink-2:         #4A453E;
+        --ink-3:         #8A8275;
+        --ink-4:         #B8AF9E;
+        /* Accents Africain moderne */
+        --terracotta:    #B8532A;
+        --terracotta-2:  #8F3F1F;
+        --terracotta-bg: #FBE9DE;
+        --ocre:          #C99A3B;
+        --ocre-bg:       #F8EED2;
+        --deep-green:    #1F5D3A;
+        --deep-green-2:  #174A2D;
+        --deep-green-bg: #DBEBDF;
+        /* Signaux marché */
+        --up:            #1F5D3A;
+        --up-soft:       #DBEBDF;
+        --down:          #A8321A;
+        --down-soft:     #F5DAD1;
+        --neutral:       #8A8275;
+        --neutral-soft:  #EDE8DD;
+    }
+
     /* ── Global ── */
     .stApp {
-        background-color: #F5F6FA;
+        background-color: var(--bg);
+        font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
+                     "Helvetica Neue", Helvetica, Arial, sans-serif;
+        color: var(--ink);
+        -webkit-font-smoothing: antialiased;
+        font-feature-settings: "ss01", "cv01", "tnum";
     }
     .main .block-container {
-        padding-top: 1.5rem;
+        padding-top: 1.25rem;
         padding-bottom: 1rem;
         max-width: 1400px;
     }
 
     /* ── Headers ── */
     .main-header {
-        font-size: 1.6rem;
-        font-weight: 700;
-        color: #1B2559;
+        font-size: 1.55rem;
+        font-weight: 600;
+        color: var(--ink);
         margin-bottom: 0.2rem;
         letter-spacing: -0.02em;
     }
     .sub-header {
-        font-size: 0.95rem;
-        color: #8F9BBA;
-        margin-bottom: 1.5rem;
+        font-size: 0.92rem;
+        color: var(--ink-3);
+        margin-bottom: 1.4rem;
+    }
+    h2, h3, .stSubheader {
+        color: var(--ink) !important;
+        font-weight: 600;
+        letter-spacing: -0.01em;
     }
 
-    /* ── KPI cards ── */
+    /* ── KPI cards (metrics) ── */
     [data-testid="stMetric"] {
-        background: #FFFFFF;
-        border-radius: 16px;
-        padding: 16px 20px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-        border: 1px solid #E9EDF7;
+        background: var(--bg-elev);
+        border-radius: 12px;
+        padding: 14px 18px;
+        border: 1px solid var(--border);
+        box-shadow: 0 1px 0 rgba(28,26,23,0.04);
     }
     [data-testid="stMetricLabel"] {
-        color: #8F9BBA;
-        font-size: 0.82rem;
+        color: var(--ink-3);
+        font-size: 0.72rem;
         font-weight: 500;
         text-transform: uppercase;
-        letter-spacing: 0.03em;
+        letter-spacing: 0.08em;
     }
     [data-testid="stMetricValue"] {
-        color: #1B2559;
-        font-size: 1.5rem;
-        font-weight: 700;
+        color: var(--ink);
+        font-size: 1.55rem;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: -0.01em;
     }
     [data-testid="stMetricDelta"] {
-        font-size: 0.85rem;
-        font-weight: 600;
+        font-size: 0.82rem;
+        font-weight: 500;
+        font-variant-numeric: tabular-nums;
     }
 
-    /* ── Cards (expanders, containers) ── */
+    /* ── Cards / expanders ── */
     [data-testid="stExpander"] {
-        background: #FFFFFF;
-        border-radius: 14px;
-        border: 1px solid #E9EDF7;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+        background: var(--bg-elev);
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        box-shadow: none;
         margin-bottom: 0.5rem;
     }
     [data-testid="stExpander"] summary {
         font-weight: 600;
-        color: #1B2559;
+        color: var(--ink);
     }
 
     /* ── DataFrames / Tables ── */
     [data-testid="stDataFrame"] {
-        background: #FFFFFF;
-        border-radius: 14px;
-        border: 1px solid #E9EDF7;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+        background: var(--bg-elev);
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        box-shadow: none;
         overflow: hidden;
+        font-variant-numeric: tabular-nums;
     }
 
     /* ── Tabs ── */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 4px;
-        background: #FFFFFF;
-        border-radius: 12px;
+        gap: 2px;
+        background: var(--bg-elev);
+        border-radius: 10px;
         padding: 4px;
-        border: 1px solid #E9EDF7;
+        border: 1px solid var(--border);
     }
     .stTabs [data-baseweb="tab"] {
-        border-radius: 10px;
-        padding: 8px 18px;
-        font-weight: 600;
-        font-size: 0.88rem;
-        color: #8F9BBA;
+        border-radius: 6px;
+        padding: 6px 14px;
+        font-weight: 500;
+        font-size: 0.82rem;
+        color: var(--ink-2);
     }
     .stTabs [data-baseweb="tab"][aria-selected="true"] {
-        background: #4318FF;
-        color: #FFFFFF;
+        background: var(--terracotta-bg);
+        color: var(--terracotta-2);
+        font-weight: 600;
     }
 
-    /* ── Sidebar ── */
+    /* ── Sidebar : clair crème (design v2) ── */
     [data-testid="stSidebar"] {
-        background: #1B2559;
-        border-right: none;
+        background: var(--bg-elev);
+        border-right: 1px solid var(--border);
     }
     [data-testid="stSidebar"] * {
-        color: #FFFFFF !important;
+        color: var(--ink) !important;
     }
     [data-testid="stSidebar"] .stMarkdown h2,
     [data-testid="stSidebar"] .stMarkdown h3,
     [data-testid="stSidebar"] .stMarkdown p,
-    [data-testid="stSidebar"] .stMarkdown small,
-    [data-testid="stSidebar"] .stMarkdown span,
     [data-testid="stSidebar"] label,
-    [data-testid="stSidebar"] .stRadio label span,
     [data-testid="stSidebar"] p {
-        color: #FFFFFF !important;
-    }
-    [data-testid="stSidebar"] .stRadio label {
-        color: #FFFFFF !important;
-        font-weight: 500;
-        padding: 6px 0;
-    }
-    [data-testid="stSidebar"] .stRadio label:hover {
-        color: #FFFFFF !important;
-        background: rgba(255,255,255,0.1);
-        border-radius: 8px;
-    }
-    [data-testid="stSidebar"] [data-testid="stMetric"] {
-        background: rgba(255,255,255,0.08);
-        border: 1px solid rgba(255,255,255,0.12);
-    }
-    [data-testid="stSidebar"] [data-testid="stMetricLabel"] {
-        color: #C4C9DE !important;
-    }
-    [data-testid="stSidebar"] [data-testid="stMetricValue"] {
-        color: #FFFFFF !important;
-    }
-    [data-testid="stSidebar"] hr {
-        border-color: rgba(255,255,255,0.15);
+        color: var(--ink) !important;
     }
     [data-testid="stSidebar"] .stCaption,
     [data-testid="stSidebar"] .stCaption p {
-        color: #C4C9DE !important;
+        color: var(--ink-3) !important;
     }
-    [data-testid="stSidebar"] .stButton button {
-        color: #FFFFFF !important;
-    }
-
-    /* ── Buttons ── */
-    .stButton > button {
-        background: #4318FF;
-        color: white;
-        border: none;
-        border-radius: 10px;
-        font-weight: 600;
+    [data-testid="stSidebar"] .stRadio label {
+        color: var(--ink-2) !important;
+        font-weight: 500;
+        padding: 4px 8px;
+        border-radius: 6px;
         font-size: 0.85rem;
-        padding: 8px 16px;
-        transition: all 0.2s;
     }
-    .stButton > button:hover {
-        background: #3311CC;
-        box-shadow: 0 4px 12px rgba(67,24,255,0.3);
+    [data-testid="stSidebar"] .stRadio label:hover {
+        background: var(--bg-hover);
     }
-    [data-testid="stSidebar"] .stButton > button {
-        background: rgba(255,255,255,0.1);
-        border: 1px solid rgba(255,255,255,0.15);
-    }
-    [data-testid="stSidebar"] .stButton > button:hover {
-        background: rgba(255,255,255,0.2);
+    [data-testid="stSidebar"] hr {
+        border-color: var(--border);
+        margin: 0.8rem 0;
     }
 
-    /* ── Sidebar expander : fond transparent, texte blanc lisible ── */
+    /* Sidebar metric : fond crème passif */
+    [data-testid="stSidebar"] [data-testid="stMetric"] {
+        background: var(--bg-sunken);
+        border: 1px solid var(--border);
+    }
+    [data-testid="stSidebar"] [data-testid="stMetricLabel"] {
+        color: var(--ink-3) !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stMetricValue"] {
+        color: var(--ink) !important;
+    }
+
+    /* Sidebar expander */
     [data-testid="stSidebar"] [data-testid="stExpander"],
     [data-testid="stSidebar"] details {
-        background: rgba(255,255,255,0.08) !important;
-        border: 1px solid rgba(255,255,255,0.15) !important;
+        background: var(--bg-sunken) !important;
+        border: 1px solid var(--border) !important;
         box-shadow: none !important;
     }
-    /* Header (summary) : on force le fond transparent par-dessus le blanc de Streamlit */
     [data-testid="stSidebar"] details > summary,
     [data-testid="stSidebar"] [data-testid="stExpander"] summary,
     [data-testid="stSidebar"] [data-testid="stExpanderToggleIcon"],
-    [data-testid="stSidebar"] [data-testid="stExpanderDetails"] > div:first-child,
     [data-testid="stSidebar"] [data-baseweb="accordion"],
     [data-testid="stSidebar"] [data-baseweb="accordion"] > div {
         background: transparent !important;
         background-color: transparent !important;
-        color: #FFFFFF !important;
+        color: var(--ink) !important;
     }
     [data-testid="stSidebar"] details > summary *,
     [data-testid="stSidebar"] [data-testid="stExpander"] * {
-        color: #FFFFFF !important;
+        color: var(--ink) !important;
     }
-    /* Inputs dans sidebar : garder fond blanc mais texte sombre lisible */
+    /* Sidebar inputs */
     [data-testid="stSidebar"] input[type="text"],
     [data-testid="stSidebar"] input[type="email"],
     [data-testid="stSidebar"] input[type="password"],
     [data-testid="stSidebar"] input[type="number"] {
-        background: #FFFFFF !important;
-        color: #1B2559 !important;
+        background: var(--bg-elev) !important;
+        color: var(--ink) !important;
+        border: 1px solid var(--border) !important;
     }
     [data-testid="stSidebar"] input::placeholder {
-        color: #8F9BBA !important;
+        color: var(--ink-4) !important;
+    }
+
+    /* ── Buttons : terracotta primary ── */
+    .stButton > button {
+        background: var(--terracotta);
+        color: var(--bg-elev);
+        border: 1px solid transparent;
+        border-radius: 8px;
+        font-weight: 500;
+        font-size: 0.83rem;
+        padding: 7px 14px;
+        letter-spacing: 0.01em;
+        transition: background 120ms cubic-bezier(0.2,0,0,1);
+    }
+    .stButton > button:hover {
+        background: var(--terracotta-2);
+        box-shadow: 0 2px 6px -2px rgba(184,83,42,0.35);
+    }
+    /* Sidebar buttons : neutres (pas de terracotta partout) */
+    [data-testid="stSidebar"] .stButton > button {
+        background: var(--bg-sunken);
+        color: var(--ink) !important;
+        border: 1px solid var(--border);
+    }
+    [data-testid="stSidebar"] .stButton > button:hover {
+        background: var(--bg-hover);
+        box-shadow: none;
     }
 
     /* ── Selectbox / Inputs ── */
-    .stSelectbox > div > div {
-        border-radius: 10px;
-        border: 1px solid #E9EDF7;
-        background: #FFFFFF;
+    .stSelectbox > div > div,
+    .stMultiSelect > div > div,
+    .stTextInput > div > div {
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: var(--bg-elev);
+    }
+    .stSelectbox > div > div:focus-within,
+    .stTextInput > div > div:focus-within {
+        border-color: var(--terracotta);
+        box-shadow: 0 0 0 3px rgba(184,83,42,0.12);
     }
     .stSlider > div > div {
-        color: #4318FF;
+        color: var(--terracotta);
     }
 
     /* ── Charts ── */
     [data-testid="stPlotlyChart"] {
-        background: #FFFFFF;
-        border-radius: 14px;
-        border: 1px solid #E9EDF7;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+        background: var(--bg-elev);
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        box-shadow: none;
         padding: 8px;
     }
 
     /* ── Progress bars ── */
     .stProgress > div > div {
-        background: #4318FF;
-        border-radius: 8px;
+        background: var(--terracotta);
+        border-radius: 999px;
     }
 
-    /* ── Flag badges ── */
-    .flag-ok { color: #05CD99; font-weight: bold; }
-    .flag-warn { color: #FFB547; font-weight: bold; }
-    .flag-risk { color: #EE5D50; font-weight: bold; }
+    /* ── Flag badges (OK / Vigilance / Risque) ── */
+    .flag-ok   { color: var(--deep-green); font-weight: 600; }
+    .flag-warn { color: var(--ocre);       font-weight: 600; }
+    .flag-risk { color: var(--down);       font-weight: 600; }
 
-    /* ── Subheaders ── */
-    h2, h3, .stSubheader {
-        color: #1B2559 !important;
-        font-weight: 700;
-    }
+    /* Classes utilitaires up/down (marché) pour réutilisation */
+    .up   { color: var(--up); }
+    .down { color: var(--down); }
+    .muted { color: var(--ink-3); }
 
     /* ── Horizontal rules ── */
     hr {
-        border-color: #E9EDF7;
+        border-color: var(--border);
         margin: 1rem 0;
     }
 
     /* ── Info / Warning boxes ── */
     .stAlert {
-        border-radius: 12px;
-        border: none;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: var(--bg-sunken);
+        color: var(--ink-2);
+    }
+    div[data-baseweb="notification"][kind="info"] {
+        background: var(--ocre-bg) !important;
+        border-color: var(--ocre) !important;
+    }
+    div[data-baseweb="notification"][kind="success"] {
+        background: var(--deep-green-bg) !important;
+        border-color: var(--deep-green) !important;
+    }
+    div[data-baseweb="notification"][kind="warning"] {
+        background: var(--ocre-bg) !important;
+        border-color: var(--ocre) !important;
+    }
+    div[data-baseweb="notification"][kind="error"] {
+        background: var(--down-soft) !important;
+        border-color: var(--down) !important;
     }
 
-    /* ── Scrollbar ── */
-    ::-webkit-scrollbar { width: 6px; }
-    ::-webkit-scrollbar-track { background: #F5F6FA; }
-    ::-webkit-scrollbar-thumb { background: #C4C9DE; border-radius: 3px; }
+    /* ── Scrollbar (discret, éditorial) ── */
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-thumb {
+        background: var(--border-strong);
+        border-radius: 999px;
+        border: 2px solid transparent;
+        background-clip: padding-box;
+    }
+    ::-webkit-scrollbar-track { background: transparent; }
+
+    /* ── Tabular numerics dans toutes les tables et métriques ── */
+    .num, .mono {
+        font-family: ui-monospace, "SF Mono", "Menlo", "Consolas", monospace;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: -0.01em;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -722,9 +804,10 @@ if "calibration_review_checked" not in st.session_state:
 
 # ─── SIDEBAR ───
 st.sidebar.markdown(
-    "<div style='text-align:center;padding:1rem 0 0.5rem;'>"
-    "<span style='font-size:1.4rem;font-weight:800;color:#FFFFFF;letter-spacing:-0.02em;'>📊 BRVM</span><br>"
-    "<span style='font-size:0.85rem;color:#8F9BBA;'>Analyzer</span></div>",
+    "<div style='text-align:center;padding:0.5rem 0 0.5rem;'>"
+    "<span style='font-size:1.35rem;font-weight:700;color:var(--ink);letter-spacing:-0.02em;'>"
+    "<span style='color:var(--terracotta);'>📊</span> BRVM</span><br>"
+    "<span style='font-size:0.78rem;color:var(--ink-3);letter-spacing:0.04em;text-transform:uppercase;font-weight:500;'>Analyzer</span></div>",
     unsafe_allow_html=True,
 )
 
@@ -922,8 +1005,8 @@ if _info["type"] == "sqlite" and _info.get("size_mb"):
 
 st.sidebar.markdown(
     "<div style='text-align:center;padding:0.5rem 0;'>"
-    "<span style='font-size:0.75rem;color:#8F9BBA;'>BRVM Analyzer v1.0</span><br>"
-    "<span style='font-size:0.7rem;color:#6A7199;'>Données: sikafinance.com</span><br>"
-    f"<span style='font-size:0.65rem;color:#6A7199;'>{_db_label}</span></div>",
+    "<span style='font-size:0.72rem;color:var(--ink-3);font-weight:500;'>BRVM Analyzer v1.0</span><br>"
+    "<span style='font-size:0.68rem;color:var(--ink-4);'>Données · sikafinance.com</span><br>"
+    f"<span style='font-size:0.62rem;color:var(--ink-4);'>{_db_label}</span></div>",
     unsafe_allow_html=True,
 )
