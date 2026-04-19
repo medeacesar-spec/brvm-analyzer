@@ -30,8 +30,5 @@ psycopg[binary]>=3.2
 # Stockage Supabase (upload PDFs)
 supabase>=2.8
 
-# LLM (chat assistant, optionnel)
-anthropic>=0.39
-
 # TOML parsing (Python 3.9/3.10 compat — 3.11+ a tomllib natif)
 tomli>=2.0;python_version<"3.11"
