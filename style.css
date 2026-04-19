@@ -1,42 +1,70 @@
-/* BRVM Analyzer — Streamlit theme v2 (Africain moderne) */
+/* BRVM Analyzer — Streamlit theme v3 (Primary deep green, densité +30%) */
 
 :root {
-  /* Neutres chauds */
-  --bg:            #FAF8F4;
-  --bg-elev:       #FFFFFF;
-  --bg-sunken:     #F3EFE8;
-  --bg-hover:      #EFEAE1;
-  --border:        #E6DFD3;
+  /* Palette v3 — 7 couleurs fixes */
+  --bg:            #F7F5F0;       /* fond éditorial neutre chaud */
+  --bg-elev:       #FFFFFF;       /* surface cards */
+  --bg-sunken:     #EFEBDF;       /* zones passives, inputs, headers tables */
+  --bg-hover:      #E7E2D2;
+  --border:        #E1DAC9;
   --border-strong: #C9BFAE;
-  --ink:           #1C1A17;
+  --ink:           #1A1A1A;       /* texte principal AAA */
   --ink-2:         #4A453E;
-  --ink-3:         #8A8275;
+  --ink-3:         #7A756C;       /* captions, labels (4.5:1 min) */
   --ink-4:         #B8AF9E;
 
-  /* Accents "Africain moderne" */
-  --terracotta:    #B8532A;
-  --terracotta-2:  #8F3F1F;
-  --terracotta-bg: #FBE9DE;
-  --ocre:          #C99A3B;
+  /* Accents (Primary = deep green, Accent secondaire = terracotta) */
+  --primary:       #1F5D3A;
+  --primary-2:     #174A2D;
+  --primary-bg:    #DBEBDF;
+  --accent:        #B8532A;
+  --accent-2:      #8F3F1F;
+  --accent-bg:    #FBE9DE;
+  --ocre:          #B5730E;       /* warning, plus sombre qu'en v2 pour contraste */
   --ocre-bg:       #F8EED2;
-  --deep-green:    #1F5D3A;
-  --deep-green-bg: #DBEBDF;
 
-  /* Signaux marché */
+  /* Sémantique marché (up/down/warn) */
   --up:            #1F5D3A;
   --up-soft:       #DBEBDF;
-  --down:          #A8321A;
+  --down:          #B42318;
   --down-soft:     #F5DAD1;
-  --neutral:       #8A8275;
+  --warn:          #B5730E;
+  --warn-soft:     #F8EED2;
+  --neutral:       #7A756C;
+  --neutral-soft:  #EFEBDF;
+
+  /* Aliases de compat v2 — permettent de ne pas casser les helpers existants */
+  --deep-green:    var(--primary);
+  --deep-green-2:  var(--primary-2);
+  --deep-green-bg: var(--primary-bg);
+  --terracotta:    var(--accent);
+  --terracotta-2:  var(--accent-2);
+  --terracotta-bg: var(--accent-bg);
 }
 
 /* ---------- Streamlit overrides ---------- */
 
-/* App background */
 .stApp { background: var(--bg); }
 
-/* Sidebar : fond clair, on évite le sélecteur `*` qui casse les icônes et
-   composants Streamlit internes (radio, boutons, inputs ont leur propre logique). */
+/* Main container — densité +30% : padding top réduit */
+.main .block-container {
+  padding-top: 1rem;
+  padding-bottom: 2rem;
+  max-width: 1400px;
+}
+
+/* Typographie — système uniquement, tabular-nums */
+html, body {
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
+               "Helvetica Neue", Helvetica, Arial, sans-serif;
+  color: var(--ink);
+  font-feature-settings: "tnum";
+}
+.main h1 { font-size: 26px !important; font-weight: 600 !important; letter-spacing: -0.02em; margin-bottom: 2px !important; }
+.main h2 { font-size: 19px !important; font-weight: 600 !important; margin-top: 8px !important; }
+.main h3 { font-size: 15px !important; font-weight: 600 !important; margin-top: 4px !important; }
+
+/* Sidebar — fond clair, sélecteurs ciblés (pas de * universel) */
 section[data-testid="stSidebar"] {
   background: var(--bg-elev);
   border-right: 1px solid var(--border);
@@ -57,41 +85,20 @@ section[data-testid="stSidebar"] h3,
 section[data-testid="stSidebar"] [data-testid="stMetricValue"] {
   color: var(--ink) !important;
 }
-/* Radio de navigation : un peu plus d'espace + survol crème */
 section[data-testid="stSidebar"] .stRadio label {
-  padding: 6px 8px;
+  padding: 5px 8px;
   border-radius: 6px;
+  font-size: 13px !important;
 }
-section[data-testid="stSidebar"] .stRadio label:hover {
-  background: var(--bg-hover);
-}
+section[data-testid="stSidebar"] .stRadio label:hover { background: var(--bg-hover); }
 
-/* Main container */
-.main .block-container {
-  padding-top: 1.5rem;
-  max-width: 1400px;
-}
-
-/* Typography system — on cible uniquement html/body pour éviter de casser
-   les classes internes Emotion de Streamlit (elles sont toutes préfixées "css-xxx"). */
-html, body {
-  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
-               "Helvetica Neue", Helvetica, Arial, sans-serif;
-  color: var(--ink);
-  font-feature-settings: "tnum";
-}
-/* Titres dans le contenu principal uniquement (pas dans la sidebar ni les widgets) */
-.main h1 { font-size: 28px !important; font-weight: 600 !important; letter-spacing: -0.01em; }
-.main h2 { font-size: 20px !important; font-weight: 600 !important; }
-.main h3 { font-size: 16px !important; font-weight: 600 !important; }
-
-/* Buttons — st.button, st.download_button, st.form_submit_button */
+/* Buttons — défaut ghost/outline, primary deep green */
 .stButton > button, .stDownloadButton > button, .stFormSubmitButton > button {
   background: var(--bg-elev);
   color: var(--ink);
   border: 1px solid var(--border-strong);
   border-radius: 8px;
-  padding: 6px 14px;
+  padding: 5px 12px;
   font-weight: 500;
   font-size: 13px;
   transition: all 120ms;
@@ -100,78 +107,84 @@ html, body {
   background: var(--bg-hover);
   border-color: var(--ink-3);
 }
-/* Primary button */
 .stButton > button[kind="primary"], .stFormSubmitButton > button[kind="primary"] {
-  background: var(--terracotta);
+  background: var(--primary);
   color: #fff;
-  border-color: var(--terracotta);
+  border-color: var(--primary);
 }
 .stButton > button[kind="primary"]:hover {
-  background: var(--terracotta-2);
-  border-color: var(--terracotta-2);
+  background: var(--primary-2);
+  border-color: var(--primary-2);
 }
 
-/* Metric cards — st.metric */
+/* Metric cards — densifiées (padding 12 au lieu de 16, label 10px) */
 [data-testid="stMetric"] {
   background: var(--bg-elev);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 16px;
+  border-radius: 10px;
+  padding: 12px 14px;
   position: relative;
   overflow: hidden;
 }
 [data-testid="stMetricLabel"] {
-  font-size: 11px !important;
+  font-size: 10.5px !important;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--ink-3) !important;
   font-weight: 500 !important;
+  margin-bottom: 2px !important;
 }
 [data-testid="stMetricValue"] {
-  font-size: 28px !important;
+  font-size: 22px !important;
+  line-height: 1.15 !important;
   font-weight: 600 !important;
   letter-spacing: -0.02em;
   color: var(--ink) !important;
   font-variant-numeric: tabular-nums;
 }
-[data-testid="stMetricDelta"] { font-weight: 600 !important; font-size: 12.5px !important; }
-/* Positive delta = deep green, negative = down red */
+[data-testid="stMetricDelta"] {
+  font-weight: 600 !important;
+  font-size: 12px !important;
+  font-variant-numeric: tabular-nums;
+  margin-top: 2px !important;
+}
 [data-testid="stMetricDelta"] svg[data-testid="stMetricDeltaIcon-Up"] ~ div { color: var(--up) !important; }
 [data-testid="stMetricDelta"] svg[data-testid="stMetricDeltaIcon-Down"] ~ div { color: var(--down) !important; }
 
-/* Tabs — st.tabs */
+/* Tabs — sous-lignés, accent deep green */
 .stTabs [data-baseweb="tab-list"] {
-  gap: 24px;
+  gap: 20px;
   border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
 }
 .stTabs [data-baseweb="tab"] {
-  padding: 10px 0;
-  font-size: 13.5px;
+  padding: 8px 0;
+  font-size: 13px;
   color: var(--ink-3);
   background: transparent;
 }
 .stTabs [aria-selected="true"] {
   color: var(--ink) !important;
   font-weight: 600;
-  border-bottom: 2px solid var(--terracotta);
+  border-bottom: 2px solid var(--primary);
 }
 
-/* Inputs — st.text_input, st.number_input, st.selectbox */
+/* Inputs — subtils */
 .stTextInput input, .stNumberInput input, .stSelectbox > div > div {
-  background: var(--bg-sunken) !important;
+  background: var(--bg-elev) !important;
   border: 1px solid var(--border) !important;
   border-radius: 8px !important;
   font-size: 13px;
 }
 .stTextInput input:focus, .stNumberInput input:focus {
-  border-color: var(--terracotta) !important;
-  background: var(--bg-elev) !important;
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 3px rgba(31,93,58,0.12) !important;
 }
 
-/* DataFrame — st.dataframe, st.table */
+/* DataFrame — row-height tight, headers sunken */
 [data-testid="stDataFrame"] {
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 10px;
   overflow: hidden;
 }
 [data-testid="stDataFrame"] thead tr th {
@@ -181,29 +194,31 @@ html, body {
   font-size: 10.5px !important;
   letter-spacing: 0.08em;
   font-weight: 500 !important;
+  height: 30px !important;
 }
 [data-testid="stDataFrame"] td {
-  font-size: 13px !important;
+  font-size: 12.5px !important;
   font-variant-numeric: tabular-nums;
+  height: 30px !important;
 }
 
 /* Expander */
 [data-testid="stExpander"] {
   background: var(--bg-elev);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 10px;
 }
 [data-testid="stExpander"] summary {
   font-weight: 500;
-  font-size: 13.5px;
+  font-size: 13px;
 }
 
-/* Radio & checkbox — more compact */
-.stRadio > label { font-size: 12px !important; color: var(--ink-3); }
+/* Radio & checkbox compact */
+.stRadio > label { font-size: 12.5px !important; color: var(--ink-3); }
 
-/* Alerts — palette v2 pour les 4 variantes Streamlit */
+/* Alerts */
 .stAlert {
-  border-radius: 12px;
+  border-radius: 10px;
   border: 1px solid var(--border);
 }
 [data-testid="stAlert"][kind="info"] {
@@ -212,14 +227,14 @@ html, body {
   color: var(--ink);
 }
 [data-testid="stAlert"][kind="success"] {
-  background: var(--deep-green-bg);
-  border-color: var(--deep-green);
-  color: var(--deep-green);
+  background: var(--primary-bg);
+  border-color: var(--primary);
+  color: var(--primary-2);
 }
 [data-testid="stAlert"][kind="warning"] {
-  background: var(--ocre-bg);
-  border-color: var(--ocre);
-  color: #6a4f13;
+  background: var(--warn-soft);
+  border-color: var(--warn);
+  color: var(--warn);
 }
 [data-testid="stAlert"][kind="error"] {
   background: var(--down-soft);
@@ -227,75 +242,114 @@ html, body {
   color: var(--down);
 }
 
-/* Progress */
-.stProgress > div > div { background: var(--terracotta) !important; }
+/* Progress — primary deep green */
+.stProgress > div > div { background: var(--primary) !important; border-radius: 999px; }
 
-/* Divider */
-hr { border-color: var(--border); margin: 24px 0; }
+/* Divider — réduit à son minimum (principe 04, densité) */
+hr { border-color: var(--border); margin: 12px 0; opacity: 0.6; }
+.stDivider { margin: 8px 0 !important; }
 
-/* --- Custom helper classes for HTML in st.markdown(unsafe_allow_html=True) --- */
+/* ============================================================
+   Classes utilitaires pour HTML injecté via st.markdown
+   (kpi_card, tag, dot, delta, ticker, label-xs, section-title)
+   ============================================================ */
 
 .kpi-card {
   background: var(--bg-elev);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 16px;
+  border-radius: 10px;
+  padding: 12px 14px;
   position: relative;
+  min-height: 70px;
 }
-.kpi-card.up::before, .kpi-card.down::before, .kpi-card.neutral::before {
+.kpi-card.up::before, .kpi-card.down::before, .kpi-card.neutral::before,
+.kpi-card.primary::before, .kpi-card.accent::before {
   content: "";
-  position: absolute; left: 0; top: 12px; bottom: 12px;
+  position: absolute; left: 0; top: 10px; bottom: 10px;
   width: 3px; border-radius: 2px;
 }
-.kpi-card.up::before    { background: var(--up); }
-.kpi-card.down::before  { background: var(--down); }
-.kpi-card.neutral::before { background: var(--ink-3); opacity: 0.3; }
+.kpi-card.up::before      { background: var(--up); }
+.kpi-card.down::before    { background: var(--down); }
+.kpi-card.primary::before { background: var(--primary); }
+.kpi-card.accent::before  { background: var(--accent); }
+.kpi-card.neutral::before { background: var(--ink-3); opacity: 0.4; }
 .kpi-card .label {
-  font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
-  color: var(--ink-3); font-weight: 500; margin-bottom: 8px; padding-left: 8px;
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--ink-3); font-weight: 500; margin-bottom: 4px; padding-left: 10px;
 }
 .kpi-card .value {
-  font-size: 28px; font-weight: 600; letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums; padding-left: 8px;
+  font-size: 22px; line-height: 1.15; font-weight: 600; letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums; padding-left: 10px; color: var(--ink);
 }
-.kpi-card .unit { font-size: 12px; color: var(--ink-3); margin-left: 6px; font-weight: 400; }
-.kpi-card .sub  { font-size: 11.5px; color: var(--ink-3); margin-top: 4px; padding-left: 8px; }
+.kpi-card .value.sm { font-size: 18px; }
+.kpi-card .unit { font-size: 12px; color: var(--ink-3); margin-left: 4px; font-weight: 400; }
+.kpi-card .sub  { font-size: 11px; color: var(--ink-3); margin-top: 3px; padding-left: 10px; }
+.kpi-card .delta { font-size: 12px; font-weight: 500; margin-top: 3px; padding-left: 10px; font-variant-numeric: tabular-nums; }
+.kpi-card .delta.up { color: var(--up); }
+.kpi-card .delta.down { color: var(--down); }
+.kpi-card .delta.flat { color: var(--ink-3); }
 
+/* Tags / pills */
 .tag {
   display: inline-flex; align-items: center;
-  padding: 2px 8px; border-radius: 4px;
-  font-size: 11.5px; font-weight: 600;
+  padding: 2px 7px; border-radius: 4px;
+  font-size: 11px; font-weight: 600;
   letter-spacing: 0.02em; text-transform: uppercase;
 }
-.tag.up    { background: var(--up-soft); color: var(--up); }
-.tag.down  { background: var(--down-soft); color: var(--down); }
-.tag.ocre  { background: var(--ocre-bg); color: #7A5A13; }
-.tag.terra { background: var(--terracotta-bg); color: var(--terracotta-2); }
-.tag.neutral { background: var(--bg-sunken); color: var(--ink-2); }
+.tag.up, .tag.buy      { background: var(--up-soft); color: var(--up); }
+.tag.down, .tag.sell   { background: var(--down-soft); color: var(--down); }
+.tag.ocre, .tag.hold   { background: var(--warn-soft); color: var(--warn); }
+.tag.terra, .tag.accent { background: var(--accent-bg); color: var(--accent-2); }
+.tag.neutral           { background: var(--bg-sunken); color: var(--ink-2); }
 
 .delta-up   { color: var(--up); font-weight: 600; font-variant-numeric: tabular-nums; }
 .delta-down { color: var(--down); font-weight: 600; font-variant-numeric: tabular-nums; }
 
+/* Ticker mono chip */
 .ticker {
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 11px; font-weight: 600;
+  font-size: 10.5px; font-weight: 600;
   padding: 2px 6px; background: var(--bg-sunken);
   border-radius: 4px; letter-spacing: 0.02em;
   color: var(--ink-2);
 }
 
-.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+/* Dots colorés (remplacent les emojis 🟢 🔴 🟡) */
+.dot {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  margin-right: 6px; vertical-align: middle;
+}
 .dot.up { background: var(--up); }
 .dot.down { background: var(--down); }
-.dot.ocre { background: var(--ocre); }
+.dot.ocre, .dot.warn { background: var(--warn); }
+.dot.neutral { background: var(--ink-3); }
 
 .label-xs {
-  font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em;
   color: var(--ink-3); font-weight: 500;
 }
 
-/* Section header underline */
 .section-title {
-  font-size: 18px; font-weight: 600; margin: 0 0 12px 0;
-  padding-bottom: 8px; border-bottom: 1px solid var(--border);
+  font-size: 17px; font-weight: 600; margin: 16px 0 10px 0;
+  padding-bottom: 6px; border-bottom: 1px solid var(--border);
+  letter-spacing: -0.01em;
+}
+
+.muted { color: var(--ink-3); }
+
+/* Stars (remplace emojis ★★★☆☆) */
+.stars { color: var(--accent); letter-spacing: 2px; font-size: 13px; }
+.stars .off { color: var(--ink-4); }
+
+/* Logo sidebar — carré deep-green avec "B" blanc (remplace 📊) */
+.brvm-logo {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 16px; font-weight: 700; letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.brvm-logo .mark {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border-radius: 6px;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
+  color: #fff; font-weight: 700; font-size: 14px;
 }

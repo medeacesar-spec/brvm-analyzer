@@ -486,11 +486,20 @@ if "calibration_review_checked" not in st.session_state:
 
 
 # ─── SIDEBAR ───
+# Logo : carré dégradé deep-green → terracotta avec "B" blanc
+# (remplace l'emoji 📊 selon le principe v3 : zéro emoji dans l'UI)
 st.sidebar.markdown(
-    "<div style='text-align:center;padding:0.5rem 0 0.5rem;'>"
-    "<span style='font-size:1.35rem;font-weight:700;color:var(--ink);letter-spacing:-0.02em;'>"
-    "<span style='color:var(--terracotta);'>📊</span> BRVM</span><br>"
-    "<span style='font-size:0.78rem;color:var(--ink-3);letter-spacing:0.04em;text-transform:uppercase;font-weight:500;'>Analyzer</span></div>",
+    "<div style='display:flex;align-items:center;gap:10px;padding:0.4rem 0 0.6rem;'>"
+    "<div style='width:32px;height:32px;border-radius:7px;"
+    "background:linear-gradient(135deg,#1F5D3A 0%,#B8532A 100%);"
+    "color:#fff;font-weight:700;font-size:15px;"
+    "display:flex;align-items:center;justify-content:center;"
+    "letter-spacing:-0.02em;flex-shrink:0;'>B</div>"
+    "<div style='display:flex;flex-direction:column;line-height:1.1;'>"
+    "<span style='font-size:15px;font-weight:700;color:var(--ink);letter-spacing:-0.01em;'>BRVM</span>"
+    "<span style='font-size:10.5px;color:var(--ink-3);letter-spacing:0.08em;"
+    "text-transform:uppercase;font-weight:500;'>Analyzer</span>"
+    "</div></div>",
     unsafe_allow_html=True,
 )
 
@@ -511,10 +520,10 @@ _idx_err = st.session_state.get("indices_error")
 _sync_err = st.session_state.get("daily_sync_error")
 if (_idx_err or _sync_err) and is_admin():
     if _idx_err:
-        st.sidebar.error(f"⚠️ Indices : {_idx_err}")
+        st.sidebar.error(f"Indices : {_idx_err}")
     if _sync_err:
-        st.sidebar.error(f"⚠️ Sync : {_sync_err}")
-    if st.sidebar.button("🔄 Retenter", key="retry_all_btn"):
+        st.sidebar.error(f"Sync : {_sync_err}")
+    if st.sidebar.button("Retenter", key="retry_all_btn"):
         try:
             _scrape_brvm_indices()
             st.session_state.indices_error = None
@@ -528,40 +537,29 @@ if (_idx_err or _sync_err) and is_admin():
             st.session_state.daily_sync_error = f"{type(_e).__name__}: {_e}"
         st.rerun()
 
-# Refresh buttons — admin connecté uniquement (pas en mode local implicite)
+# Actions admin (connecté uniquement, pas en mode local implicite).
+# Les boutons "Cotations" et "Complet" ont été retirés : la sync quotidienne
+# se fait automatiquement via GitHub Actions (16h UTC) + sync auto au démarrage.
+# Le bouton snapshot reste utile pour accélérer les pages sans attendre le cron.
 from utils.auth import is_logged_in as _is_logged_in
 if is_admin() and _is_logged_in():
-    col_r1, col_r2 = st.sidebar.columns(2)
-    if col_r1.button("🔄 Cotations"):
-        with st.spinner("Mise à jour..."):
-            _sync_daily_quotes()
-        st.rerun()
-    if col_r2.button("🔄 Complet"):
-        with st.spinner("Sync complet..."):
-            _sync_full_details()
-            _sync_incremental_prices()
-        st.rerun()
-
-    # Bouton snapshot quotidien : reconstruit les tables pré-calculées
-    # (scoring, performance, historique signaux) → pages < 1 s ensuite.
-    if st.sidebar.button("📸 Regénérer snapshots", use_container_width=True,
-                          help="Précalcule les agrégats pour accélérer les pages Signaux/Performance/Historique"):
+    if st.sidebar.button("Regénérer snapshots", use_container_width=True,
+                          help="Précalcule les agrégats pour accélérer Signaux / Performance / Historique"):
         from scripts.build_daily_snapshot import build_all
-        with st.spinner("Construction des snapshots (~30 s)…"):
+        with st.spinner("Construction des snapshots…"):
             res = build_all()
         if res.get("status") == "ok":
             st.sidebar.success(
-                f"✅ Snapshots en {res['duration_sec']}s — "
-                f"{res.get('scoring',0)} scoring, {res.get('ticker_perf',0)} perf, "
-                f"{res.get('signal_perf',0)} signaux"
+                f"Snapshots en {res['duration_sec']}s "
+                f"({res.get('scoring',0)} scoring, {res.get('ticker_perf',0)} perf, "
+                f"{res.get('signal_perf',0)} signaux)"
             )
-            # Invalide le cache st.cache_data
             try:
                 st.cache_data.clear()
             except Exception:
                 pass
         else:
-            st.sidebar.error(f"❌ Échec : {res.get('error','inconnu')}")
+            st.sidebar.error(f"Échec : {res.get('error','inconnu')}")
         st.rerun()
 
 # Indicateur de fraîcheur des snapshots (visible pour tous)
@@ -573,13 +571,11 @@ try:
     _meta_conn.close()
     if _meta and _meta[0]:
         _dt_str = str(_meta[0])[:16].replace("T", " ")
-        st.sidebar.caption(f"📸 Snapshots : {_dt_str}")
+        st.sidebar.caption(f"Snapshots · {_dt_str}")
     else:
-        st.sidebar.caption("📸 Snapshots : jamais générés")
+        st.sidebar.caption("Snapshots · jamais générés")
 except Exception:
     pass
-
-st.sidebar.markdown("---")
 
 # Widget authentification (connexion Google OAuth ou mode dev)
 render_auth_widget()

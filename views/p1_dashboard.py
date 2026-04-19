@@ -404,12 +404,12 @@ def _render_pending_publications_alert():
 
         # Gaps detected — ignore action admin only
         if gaps is not None and not gaps.empty:
-            st.markdown("---")
-            st.markdown("#### 🔍 Écarts détectés par rapport au cycle de publication")
+            st.markdown("<div style='margin-top:14px'></div>", unsafe_allow_html=True)
+            st.markdown("#### Écarts détectés par rapport au cycle de publication")
             st.caption(
                 "Cycle UEMOA : rapport annuel au plus tard fin avril, trimestriels dans "
                 "les 45j suivant la fin de trimestre."
-                + (" **🚫 Ignorer** si le titre ne publie pas." if admin else "")
+                + (" Bouton **Ignorer** si le titre ne publie pas." if admin else "")
             )
 
             if admin:
@@ -475,56 +475,63 @@ def _render_pending_publications_alert():
 
 
 def render():
-    st.markdown('<div class="main-header">🏠 Dashboard Marché BRVM</div>', unsafe_allow_html=True)
-
+    # Hiérarchie v3 : Title + caption → KPI row → Tabs → contenu (pas de divider)
     quotes = _load_quotes_from_db()
     if quotes.empty:
-        st.warning("Données en cours de chargement... Patientez quelques secondes puis rafraichissez.")
+        st.title("Marché BRVM")
+        st.caption("Données en cours de chargement — patientez quelques secondes puis rafraîchissez.")
         return
 
-    # Determine the last trading date
     JOURS_FR = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
     MOIS_FR = ["janvier", "février", "mars", "avril", "mai", "juin",
-               "juillet", "aout", "septembre", "octobre", "novembre", "decembre"]
+               "juillet", "aout", "septembre", "octobre", "novembre", "décembre"]
 
-    last_trading_date = quotes.get("_last_trading_date", pd.Series()).iloc[0] if "_last_trading_date" in quotes.columns and len(quotes) > 0 else None
+    last_trading_date = (
+        quotes.get("_last_trading_date", pd.Series()).iloc[0]
+        if "_last_trading_date" in quotes.columns and len(quotes) > 0 else None
+    )
+    date_caption = "Bourse régionale des valeurs mobilières · 48 titres suivis"
     if last_trading_date:
         try:
             dt = pd.to_datetime(last_trading_date)
-            date_str = f"{JOURS_FR[dt.weekday()]} {dt.day} {MOIS_FR[dt.month-1]} {dt.year}"
-            st.caption(f"Données du **{date_str}** (dernier jour de cotation)")
+            date_caption = (
+                f"Dernier jour coté · {JOURS_FR[dt.weekday()]} "
+                f"{dt.day} {MOIS_FR[dt.month-1]} {dt.year}"
+            )
         except Exception:
             pass
 
-    # --- Alerte publications non intégrées ---
+    st.title("Marché BRVM")
+    st.caption(date_caption)
+
+    # Alerte publications non intégrées (conditionnelle, ne s'affiche que si besoin)
     _render_pending_publications_alert()
 
-    # --- KPIs ---
-    col1, col2, col3, col4 = st.columns(4)
+    # KPI row — densité v3 (st.metric compact via CSS)
     positive = quotes[quotes["variation"] > 0.01] if "variation" in quotes.columns else pd.DataFrame()
     negative = quotes[quotes["variation"] < -0.01] if "variation" in quotes.columns else pd.DataFrame()
-
-    col1.metric("Titres en hausse", f"{len(positive)}")
-    col2.metric("Titres en baisse", f"{len(negative)}")
-    col3.metric("Titres stables", f"{len(quotes) - len(positive) - len(negative)}")
     total_mcap = quotes["market_cap"].sum() if "market_cap" in quotes.columns else 0
-    col4.metric("Capitalisation", f"{total_mcap/1e3:,.0f} Mds" if total_mcap > 0 else "N/A")
 
-    st.markdown("---")
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Hausses", f"{len(positive)}")
+    col2.metric("Baisses", f"{len(negative)}")
+    col3.metric("Stables", f"{len(quotes) - len(positive) - len(negative)}")
+    col4.metric(
+        "Capitalisation",
+        f"{total_mcap/1e3:,.0f} Mds" if total_mcap > 0 else "—",
+    )
 
-    # --- Top 5 sur 3 horizons ---
+    # Tabs Jour / Semaine / Mois — labels épurés, date en suffixe du jour
     perf = _compute_period_performance(quotes)
-
-    # Build tab labels with actual dates
-    day_label = "📅 Dernier jour"
+    day_label = "Jour"
     if last_trading_date:
         try:
             dt = pd.to_datetime(last_trading_date)
-            day_label = f"📅 {JOURS_FR[dt.weekday()]} {dt.day}/{dt.month:02d}"
+            day_label = f"Jour · {dt.day}/{dt.month:02d}"
         except Exception:
             pass
 
-    tab_day, tab_week, tab_month = st.tabs([day_label, "📆 Dernière semaine", "🗓️ Dernier mois"])
+    tab_day, tab_week, tab_month = st.tabs([day_label, "Semaine", "Mois"])
     with tab_day:
         _render_top5(perf.get("day", pd.DataFrame()), "du jour")
     with tab_week:
@@ -540,10 +547,8 @@ def render():
         else:
             st.info("Prix historiques en cours de chargement...")
 
-    st.markdown("---")
-
-    # --- Tableau complet (repliable) ---
-    with st.expander(f"📋 Toutes les cotations ({len(quotes)} titres)", expanded=False):
+    # --- Tableau complet (repliable, pas de divider — densité v3) ---
+    with st.expander(f"Toutes les cotations · {len(quotes)} titres", expanded=False):
         sectors = ["Tous"] + sorted(quotes["sector"].dropna().unique().tolist())
         selected_sector = st.selectbox("Filtrer par secteur", sectors)
         display_df = quotes[quotes["sector"] == selected_sector] if selected_sector != "Tous" else quotes
@@ -584,11 +589,10 @@ def render():
             for _, row in fmt_df.iterrows()
             if row.get("ticker")
         ]
-        ticker_quick_picker(picker_options, key="dash_goto", label="🔍 Ouvrir l'analyse d'un titre")
+        ticker_quick_picker(picker_options, key="dash_goto", label="Ouvrir l'analyse d'un titre")
 
-    # --- Indices ---
-    st.markdown("---")
-    st.subheader("📊 Indices BRVM")
+    # --- Indices (sans divider — la hiérarchie est portée par le h2) ---
+    st.subheader("Indices BRVM")
     indices = _load_indices_from_db()
     if not indices.empty:
         has_category = "category" in indices.columns

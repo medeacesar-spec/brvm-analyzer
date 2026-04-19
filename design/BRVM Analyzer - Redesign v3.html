@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<title>BRVM Analyzer — Redesign v3 (Streamlit-native)</title>
+<meta name="viewport" content="width=1360" />
+<link rel="stylesheet" href="styles/v3.css" />
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" src="components/mock.jsx"></script>
+<script type="text/babel" src="components/afters.jsx"></script>
+<script type="text/babel" src="components/shell.jsx"></script>
+<script type="text/babel" src="components/sections.jsx"></script>
+
+<script type="text/babel">
+const { createRoot } = ReactDOM;
+
+const PALETTE = [
+  { name: "Fond",        hex: "#F7F5F0", txt: "dark" },
+  { name: "Surface",     hex: "#FFFFFF", txt: "dark" },
+  { name: "Bordure",     hex: "#E1DAC9", txt: "dark" },
+  { name: "Texte",       hex: "#1A1A1A", txt: "light" },
+  { name: "Primary",     hex: "#1F5D3A", txt: "light" },
+  { name: "Accent",      hex: "#B8532A", txt: "light" },
+  { name: "Baisse",      hex: "#B42318", txt: "light" },
+];
+
+function Principles() {
+  const items = [
+    { n: "01", t: "Streamlit natif", d: "st.metric, st.tabs, st.dataframe, st.columns — pas de hack HTML sauf pour Tag/Dot/KPI accent." },
+    { n: "02", t: "Zéro emoji dans l'UI", d: "Remplacés par des Dots colorés, Tags sémantiques, et SVG Stars. Les emojis restent OK dans les données sources uniquement." },
+    { n: "03", t: "Palette fixe — 7 couleurs", d: "Deep green + terracotta + 2 neutres + 3 sémantiques (up/down/warn). Plus jamais de violet, rose, cyan, orange fluo." },
+    { n: "04", t: "Densité × 1.3", d: "block-container padding réduit, st.metric compact, tabs sans gap vertical, tableaux avec row-height 32px." },
+    { n: "05", t: "Contraste AAA", d: "Texte sur fond toujours ≥ 7:1. Secondaire min 4.5:1. Plus de gris clair sur cream." },
+    { n: "06", t: "1 police système", d: "-apple-system, Segoe UI, Roboto — zéro Google Font. Tabular nums activé pour alignement des chiffres." },
+    { n: "07", t: "Dataviz monochrome", d: "Charts en deep green + 1 accent ocre, rouge uniquement pour négatif. Fini le radar arc-en-ciel." },
+    { n: "08", t: "Hiérarchie ancrée", d: "Chaque page : Title + caption → KPI row → tabs → contenu. Jamais plus de 3 niveaux avant le contenu." },
+  ];
+  return (
+    <section className="principles">
+      <h3>8 principes du redesign</h3>
+      <div className="principles-grid">
+        {items.map((it) => (
+          <div key={it.n} className="principle">
+            <div className="principle-num">{it.n}</div>
+            <div className="principle-title">{it.t}</div>
+            <p className="principle-desc">{it.d}</p>
+          </div>
+        ))}
+      </div>
+      <div className="palette-strip">
+        {PALETTE.map((p) => (
+          <div key={p.name} className={"palette-swatch " + p.txt} style={{ background: p.hex }}>
+            <div>{p.name}</div>
+            <span className="hex">{p.hex}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function TOC() {
+  const pages = [
+    ["01", "Dashboard Marché"],
+    ["02", "Analyse d'un Titre"],
+    ["03", "Screening"],
+    ["04", "Comparateur"],
+    ["05", "Signaux"],
+    ["06", "Portefeuille"],
+    ["07", "Assistant Investisseur"],
+    ["08", "Performance des titres"],
+    ["09", "Historique Signaux"],
+    ["10", "Infos Générales Marché"],
+    ["11", "Fichiers à livrer à Claude Code"],
+    ["12", "Checklist d'implémentation"],
+  ];
+  return (
+    <nav className="toc">
+      <div className="toc-title">Table des matières — 12 sections</div>
+      <div className="toc-grid">
+        {pages.map(([n, t]) => (
+          <a key={n} className="toc-item" href={`#s-${n}`}>
+            <span className="toc-num">{n}</span>
+            <span>{t}</span>
+          </a>
+        ))}
+      </div>
+    </nav>
+  );
+}
+
+function S11_Delivery() {
+  return (
+    <Section num="11" title="Fichiers à livrer à Claude Code" sub="3 fichiers · zéro dépendance · < 15 Ko">
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 16 }}>
+        {[
+          { f: "streamlit_theme/style.css", l: "~8 Ko", d: "Injecte le thème sur tous les composants Streamlit natifs. À charger une fois via load_theme()." },
+          { f: "streamlit_theme/ui_helpers.py", l: "~4 Ko", d: "Helpers Python : kpi_card(), tag(), dot(), stars(), progress_bar(), load_theme()." },
+          { f: ".streamlit/config.toml", l: "~500 o", d: "Palette Streamlit native (primaryColor, backgroundColor, textColor, font)." },
+        ].map((it) => (
+          <div key={it.f} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: 16 }}>
+            <div style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--accent)", marginBottom: 4 }}>{it.f}</div>
+            <div style={{ fontSize: 11, color: "var(--text-3)", marginBottom: 6 }}>{it.l}</div>
+            <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.5 }}>{it.d}</div>
+          </div>
+        ))}
+      </div>
+
+      <Code lang="python" filename="streamlit_theme/ui_helpers.py (extrait)">{`"""UI helpers BRVM Analyzer v3 — à utiliser partout."""
+from pathlib import Path
+import streamlit as st
+
+PALETTE = {
+    "primary": "#1F5D3A", "accent": "#B8532A",
+    "up": "#1F5D3A",      "down": "#B42318",  "warn": "#B5730E",
+    "text": "#1A1A1A",    "text_3": "#7A756C",
+}
+
+def load_theme():
+    """À appeler UNE FOIS au début de chaque page (ou dans main.py)."""
+    css = (Path(__file__).parent / "style.css").read_text()
+    st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
+
+def kpi_card(label, value, delta=None, suffix="", accent=None, compact=False):
+    """Remplace st.metric avec un peu plus de contrôle (accent latéral)."""
+    cls = "st-metric" + (f" {accent}" if accent else "")
+    delta_html = ""
+    if delta is not None:
+        kind = "up" if delta > 0 else "down" if delta < 0 else "flat"
+        arrow = "▲" if kind == "up" else "▼" if kind == "down" else "—"
+        sign = "+" if delta > 0 else ""
+        delta_html = f'<div class="delta {kind}">{arrow} {sign}{delta}{suffix}</div>'
+    st.markdown(f"""
+        <div class="{cls}">
+            <div class="label">{label}</div>
+            <div class="value{' sm' if compact else ''}">{value}</div>
+            {delta_html}
+        </div>
+    """, unsafe_allow_html=True)
+
+def tag(label, kind="neutral"):
+    """kind: buy / sell / hold / neutral"""
+    # Auto-map si on passe le label en français
+    auto = {"acheter": "buy", "vendre": "sell", "conserver": "hold"}
+    if kind == "neutral" and label.lower() in auto:
+        kind = auto[label.lower()]
+    st.markdown(f'<span class="tag {kind}">{label}</span>', unsafe_allow_html=True)
+
+def dot(kind="neutral", inline=True):
+    """kind: up / down / warn / neutral — à intercaler dans un markdown."""
+    html = f'<span class="dot {kind}"></span>'
+    if inline: return html
+    st.markdown(html, unsafe_allow_html=True)
+
+def stars(value, out_of=5):
+    filled = "★" * int(value)
+    empty  = "★" * (out_of - int(value))
+    st.markdown(
+        f'<span class="stars">{filled}<span class="off">{empty}</span></span>',
+        unsafe_allow_html=True,
+    )
+
+def progress_bar(done, total, label=None):
+    pct = int(100 * done / total)
+    lbl = f'<div style="font-size:11px;color:var(--text-3);margin-bottom:4px">{label}</div>' if label else ""
+    st.markdown(f"""
+        {lbl}
+        <div class="progress"><div class="fill" style="width:{pct}%"></div></div>
+    """, unsafe_allow_html=True)
+`}</Code>
+
+      <Code lang="python" filename=".streamlit/config.toml">{`[theme]
+base = "light"
+primaryColor       = "#1F5D3A"
+backgroundColor    = "#F7F5F0"
+secondaryBackgroundColor = "#FFFFFF"
+textColor          = "#1A1A1A"
+font               = "sans serif"
+
+[server]
+headless = true
+`}</Code>
+
+      <Notes>
+        <b>Ordre d'intégration recommandé</b> :<br/>
+        1. Poser les 3 fichiers. <code>load_theme()</code> tout en haut de <code>main.py</code>.<br/>
+        2. Retirer <b>tous les emojis</b> des <code>st.title()</code>, <code>st.header()</code>, <code>st.tabs()</code>, labels de boutons.<br/>
+        3. Remplacer les blocs <code>st.markdown("# 📊 …")</code> par <code>st.markdown("# …")</code> + <code>st.caption(…)</code>.<br/>
+        4. Pour chaque page : appliquer le pattern "Header → KPI row → Tabs → Contenu" décrit dans les sections 01-10.<br/>
+        5. Remplacer les radios multicolores dans les charts Plotly par <code>color_discrete_sequence=["#1F5D3A", "#7A756C", "#B8532A"]</code>.
+      </Notes>
+    </Section>
+  );
+}
+
+function S12_Checklist() {
+  const checks = [
+    ["Emojis supprimés de tous les st.title/header/tabs/buttons", true],
+    ["load_theme() appelé dans main.py avant tout st.* rendering", true],
+    [".streamlit/config.toml déposé à la racine du projet", true],
+    ["st.metric remplacé par kpi_card() partout (pour contrôle de l'accent)", true],
+    ["Tous les tableaux utilisent st.dataframe avec column_config (pas st.table)", true],
+    ["Plotly/Altair charts : color_discrete_sequence forcée sur la palette primary+accent", true],
+    ["Radar Plotly du Comparateur remplacé par heatmap ou bar chart horizontal", true],
+    ["Gauges de la Recommandation remplacées par 3 st.metric", true],
+    ["OCR EasyOCR/pytesseract : fallback silencieux (pas d'erreur jaune)", true],
+    ["Sidebar : logo SVG inline au lieu de l'emoji 📊 BRVM", true],
+    ["Dataviz : volume en barres monochromes avec opacity 0.4 (pas de multicolore)", true],
+    ["Tous les délimiteurs horizontaux (st.divider) retirés : trop d'espace", true],
+  ];
+  return (
+    <Section num="12" title="Checklist d'implémentation" sub="À cocher avec Claude Code">
+      <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: 20 }}>
+        {checks.map(([label, _], i) => (
+          <div key={i} style={{
+            display: "grid", gridTemplateColumns: "24px 1fr 60px",
+            gap: 10, alignItems: "center",
+            padding: "8px 0",
+            borderBottom: i < checks.length - 1 ? "1px solid var(--border)" : "none"
+          }}>
+            <div style={{
+              width: 18, height: 18, borderRadius: 3,
+              border: "1.5px solid var(--border-strong)",
+              background: "var(--surface)"
+            }} />
+            <div style={{ fontSize: 13, color: "var(--text)" }}>{label}</div>
+            <div style={{
+              fontFamily: "var(--mono)", fontSize: 10,
+              color: "var(--text-3)", textAlign: "right"
+            }}>§ {String(i + 1).padStart(2, "0")}</div>
+          </div>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+function App() {
+  return (
+    <div className="doc">
+      <header className="doc-header">
+        <div>
+          <h1 className="doc-title">BRVM Analyzer — Redesign v3</h1>
+          <p className="doc-sub">Streamlit-native · avant / après pour les 10 pages · livraison Claude Code</p>
+        </div>
+        <div className="doc-meta">
+          <b>Version</b> v3.0 &nbsp;·&nbsp; <b>Pages</b> 10<br/>
+          <b>Contraintes</b> zéro dépendance, natif Streamlit<br/>
+          <b>Palette</b> Africain moderne · deep green + terracotta
+        </div>
+      </header>
+
+      <Principles />
+      <TOC />
+
+      <S1_Dashboard />
+      <S2_Analyse />
+      <S3_Screening />
+      <S4_Comparateur />
+      <S5_Signaux />
+      <S6_Portefeuille />
+      <S7_Assistant />
+      <S8_Performance />
+      <S9_Historique />
+      <S10_Infos />
+      <S11_Delivery />
+      <S12_Checklist />
+    </div>
+  );
+}
+
+createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
