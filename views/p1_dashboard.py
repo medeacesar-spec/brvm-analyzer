@@ -14,34 +14,28 @@ from data.storage import (
     ignore_publication, delete_publication, mark_publication_integrated,
     ignore_gap,
 )
+from data.db import read_sql_df
 from utils.nav import ticker_analyze_button, ticker_quick_picker
 from utils.auth import is_admin
 
 
 def _load_quotes_from_db() -> pd.DataFrame:
     conn = get_connection()
-    df = pd.read_sql_query(
-        """SELECT ticker, company_name as name, sector, price as last,
+    df = read_sql_df("""SELECT ticker, company_name as name, sector, price as last,
            variation, market_cap, beta, rsi, dps, updated_at
-           FROM market_data WHERE price > 0 ORDER BY ticker""",
-        conn,
-    )
+           FROM market_data WHERE price > 0 ORDER BY ticker""")
 
     # Compute variation from price_cache if market_data.variation is 0
     if not df.empty and (df["variation"].fillna(0).abs().sum() < 0.01):
         # Get last 2 trading days from price_cache
-        dates = pd.read_sql_query(
-            "SELECT DISTINCT date FROM price_cache ORDER BY date DESC LIMIT 2", conn
-        )
+        dates = read_sql_df("SELECT DISTINCT date FROM price_cache ORDER BY date DESC LIMIT 2")
         if len(dates) >= 2:
             last_date = dates.iloc[0]["date"]
             prev_date = dates.iloc[1]["date"]
-            prices = pd.read_sql_query(
-                """SELECT p1.ticker, p1.close as last_close, p2.close as prev_close
+            prices = read_sql_df("""SELECT p1.ticker, p1.close as last_close, p2.close as prev_close
                    FROM price_cache p1
                    JOIN price_cache p2 ON p1.ticker = p2.ticker AND p2.date = ?
-                   WHERE p1.date = ?""",
-                conn, params=(prev_date, last_date),
+                   WHERE p1.date = ?""", params=(prev_date, last_date),
             )
             if not prices.empty:
                 prices["var_pct"] = ((prices["last_close"] - prices["prev_close"]) / prices["prev_close"] * 100).round(2)
@@ -55,17 +49,14 @@ def _load_quotes_from_db() -> pd.DataFrame:
 
     # Compute market_cap from price * shares (from fundamentals) if market_cap is 0
     if not df.empty and (df["market_cap"].fillna(0).abs().sum() < 1):
-        shares_df = pd.read_sql_query(
-            """SELECT f.ticker, f.shares FROM fundamentals f
+        shares_df = read_sql_df("""SELECT f.ticker, f.shares FROM fundamentals f
                INNER JOIN (
                    SELECT ticker, MAX(fiscal_year) as max_year
                    FROM fundamentals
                    WHERE shares IS NOT NULL AND shares > 0
                    GROUP BY ticker
                ) latest ON f.ticker = latest.ticker AND f.fiscal_year = latest.max_year
-               WHERE f.shares IS NOT NULL AND f.shares > 0""",
-            conn,
-        )
+               WHERE f.shares IS NOT NULL AND f.shares > 0""")
         if not shares_df.empty:
             shares_map = dict(zip(shares_df["ticker"], shares_df["shares"]))
             df["market_cap"] = df.apply(
@@ -79,13 +70,10 @@ def _load_quotes_from_db() -> pd.DataFrame:
 def _load_indices_from_db() -> pd.DataFrame:
     conn = get_connection()
     try:
-        df = pd.read_sql_query(
-            "SELECT name, value, variation, prev_close, ytd_variation, category FROM indices_cache",
-            conn,
-        )
+        df = read_sql_df("SELECT name, value, variation, prev_close, ytd_variation, category FROM indices_cache")
     except Exception:
         try:
-            df = pd.read_sql_query("SELECT name, value, variation FROM indices_cache", conn)
+            df = read_sql_df("SELECT name, value, variation FROM indices_cache")
         except Exception:
             df = pd.DataFrame()
     conn.close()

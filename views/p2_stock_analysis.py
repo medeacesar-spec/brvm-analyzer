@@ -16,6 +16,7 @@ from data.storage import (
     get_qualitative_notes, save_qualitative_note, delete_qualitative_note,
     save_signal_snapshots, save_recommendation_snapshot,
 )
+from data.db import read_sql_df
 from data.scraper import fetch_historical_prices, fetch_historical_prices_page
 from analysis.fundamental import (
     compute_ratios, format_ratio,
@@ -787,11 +788,9 @@ def _render_profile(ticker: str, fundamentals: dict):
 
     # --- Financial history ---
     conn = get_connection()
-    fund = pd.read_sql_query(
-        """SELECT fiscal_year, revenue, net_income, dps, eps, per
+    fund = read_sql_df("""SELECT fiscal_year, revenue, net_income, dps, eps, per
            FROM fundamentals WHERE ticker = ?
-           ORDER BY fiscal_year DESC LIMIT 5""",
-        conn, params=(ticker,),
+           ORDER BY fiscal_year DESC LIMIT 5""", params=(ticker,),
     )
     conn.close()
 

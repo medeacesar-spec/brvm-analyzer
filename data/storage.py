@@ -13,7 +13,7 @@ from typing import Optional
 import pandas as pd
 
 from config import DB_PATH
-from data.db import get_connection, current_user_id  # noqa: F401 — réexportés
+from data.db import get_connection, current_user_id, read_sql_df  # noqa: F401 — réexportés
 
 
 def _resolve_user(user_id: Optional[str]) -> str:
@@ -635,13 +635,10 @@ def _best_year_subquery() -> str:
 def get_all_fundamentals() -> pd.DataFrame:
     """Récupère toutes les données fondamentales (meilleure année par titre)."""
     conn = get_connection()
-    df = pd.read_sql_query(
-        f"""SELECT f.* FROM fundamentals f
+    df = read_sql_df(f"""SELECT f.* FROM fundamentals f
            INNER JOIN ({_best_year_subquery()}) latest
            ON f.ticker = latest.ticker AND f.fiscal_year = latest.max_year
-           ORDER BY f.ticker""",
-        conn,
-    )
+           ORDER BY f.ticker""")
     conn.close()
     return df
 
@@ -757,10 +754,7 @@ def cache_prices(ticker: str, df: pd.DataFrame):
 def get_cached_prices(ticker: str) -> pd.DataFrame:
     """Récupère les prix en cache pour un ticker."""
     conn = get_connection()
-    df = pd.read_sql_query(
-        "SELECT date, open, high, low, close, volume FROM price_cache WHERE ticker=? ORDER BY date",
-        conn,
-        params=(ticker,),
+    df = read_sql_df("SELECT date, open, high, low, close, volume FROM price_cache WHERE ticker=? ORDER BY date", params=(ticker,),
         parse_dates=["date"],
     )
     conn.close()
@@ -789,9 +783,7 @@ def save_position(ticker: str, company_name: str, quantity: float, avg_price: fl
 def get_portfolio(user_id: Optional[str] = None) -> pd.DataFrame:
     uid = _resolve_user(user_id)
     conn = get_connection()
-    df = pd.read_sql_query(
-        "SELECT * FROM portfolio WHERE user_id = ? ORDER BY ticker",
-        conn, params=(uid,),
+    df = read_sql_df("SELECT * FROM portfolio WHERE user_id = ? ORDER BY ticker", params=(uid,),
     )
     conn.close()
     return df
@@ -935,11 +927,10 @@ def get_market_data(ticker: str = None) -> pd.DataFrame:
     """Recupere les donnees de marche. Si ticker=None, retourne tout."""
     conn = get_connection()
     if ticker:
-        df = pd.read_sql_query(
-            "SELECT * FROM market_data WHERE ticker=?", conn, params=(ticker,)
+        df = read_sql_df("SELECT * FROM market_data WHERE ticker=?", params=(ticker,)
         )
     else:
-        df = pd.read_sql_query("SELECT * FROM market_data ORDER BY ticker", conn)
+        df = read_sql_df("SELECT * FROM market_data ORDER BY ticker")
     conn.close()
     return df
 
@@ -951,7 +942,7 @@ def get_all_stocks_for_analysis() -> pd.DataFrame:
     """
     conn = get_connection()
     best_year = _best_year_subquery()
-    df = pd.read_sql_query(f"""
+    df = read_sql_df(f"""
         SELECT
             COALESCE(f.ticker, m.ticker) as ticker,
             COALESCE(f.company_name, m.company_name) as company_name,
@@ -995,7 +986,7 @@ def get_all_stocks_for_analysis() -> pd.DataFrame:
         ON f.ticker = latest.ticker AND f.fiscal_year = latest.max_year
         WHERE f.ticker NOT IN (SELECT ticker FROM market_data)
         ORDER BY ticker
-    """, conn)
+    """)
 
     # Fallback : pour les champs bilan/cashflow manquants, chercher la dernière
     # année antérieure qui les a. Recalcule aussi l'historique N-3..N0 à la volée
@@ -1080,7 +1071,7 @@ def get_publications(ticker: str = None, only_new: bool = False) -> pd.DataFrame
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
     query += " ORDER BY created_at DESC"
-    df = pd.read_sql_query(query, conn, params=params)
+    df = read_sql_df(query, params=params)
     conn.close()
     return df
 
@@ -1122,8 +1113,7 @@ def get_pending_publications(recent_days: Optional[int] = 7) -> pd.DataFrame:
         params["cutoff"] = cutoff
 
     try:
-        df = pd.read_sql_query(
-            f"""
+        df = read_sql_df(f"""
             WITH fund_max AS (
                 SELECT ticker, MAX(fiscal_year) AS latest_year
                 FROM fundamentals
@@ -1154,9 +1144,7 @@ def get_pending_publications(recent_days: Optional[int] = 7) -> pd.DataFrame:
               )
             {date_filter_sql}
             ORDER BY p.pub_date DESC, p.created_at DESC
-            """,
-            conn, params=params,
-        )
+            """, params=params,)
     except Exception:
         df = pd.DataFrame()
     conn.close()
@@ -1195,12 +1183,12 @@ def get_data_gaps() -> pd.DataFrame:
         expected_quarter_year = year - 1
 
     conn = get_connection()
-    tickers_df = pd.read_sql_query("""
+    tickers_df = read_sql_df("""
         SELECT md.ticker, md.company_name, md.sector
         FROM market_data md
         WHERE md.price > 0
         ORDER BY md.ticker
-    """, conn)
+    """)
 
     if tickers_df.empty:
         conn.close()
@@ -1394,9 +1382,7 @@ def restore_gap(ticker: str, gap_type: str, fiscal_year: int = None) -> bool:
 
 def list_ignored_gaps() -> pd.DataFrame:
     conn = get_connection()
-    df = pd.read_sql_query(
-        "SELECT * FROM ignored_gaps ORDER BY created_at DESC", conn,
-    )
+    df = read_sql_df("SELECT * FROM ignored_gaps ORDER BY created_at DESC")
     conn.close()
     return df
 
@@ -1425,14 +1411,10 @@ def save_quarterly_data(data: dict) -> int:
 def get_quarterly_data(ticker: str, fiscal_year: int = None) -> pd.DataFrame:
     conn = get_connection()
     if fiscal_year:
-        df = pd.read_sql_query(
-            "SELECT * FROM quarterly_data WHERE ticker=? AND fiscal_year=? ORDER BY quarter",
-            conn, params=(ticker, fiscal_year),
+        df = read_sql_df("SELECT * FROM quarterly_data WHERE ticker=? AND fiscal_year=? ORDER BY quarter", params=(ticker, fiscal_year),
         )
     else:
-        df = pd.read_sql_query(
-            "SELECT * FROM quarterly_data WHERE ticker=? ORDER BY fiscal_year DESC, quarter",
-            conn, params=(ticker,),
+        df = read_sql_df("SELECT * FROM quarterly_data WHERE ticker=? ORDER BY fiscal_year DESC, quarter", params=(ticker,),
         )
     conn.close()
     return df
@@ -1449,8 +1431,7 @@ def get_publication_calendar() -> pd.DataFrame:
     """
     conn = get_connection()
     # Get all tracked tickers (deduplicate by ticker, prefer non-null names)
-    tickers = pd.read_sql_query(
-        """SELECT ticker,
+    tickers = read_sql_df("""SELECT ticker,
                   MAX(company_name) AS company_name,
                   MAX(sector) AS sector
            FROM (
@@ -1459,9 +1440,7 @@ def get_publication_calendar() -> pd.DataFrame:
                SELECT ticker, company_name, sector FROM market_data
            )
            GROUP BY ticker
-           ORDER BY ticker""",
-        conn,
-    )
+           ORDER BY ticker""")
     conn.close()
 
     if tickers.empty:
@@ -1532,11 +1511,9 @@ def save_qualitative_note(ticker: str, category: str, content: str,
 def get_qualitative_notes(ticker: str, user_id: Optional[str] = None) -> pd.DataFrame:
     uid = _resolve_user(user_id)
     conn = get_connection()
-    df = pd.read_sql_query(
-        """SELECT * FROM qualitative_notes
+    df = read_sql_df("""SELECT * FROM qualitative_notes
            WHERE ticker = ? AND user_id = ?
-           ORDER BY created_at DESC""",
-        conn, params=(ticker, uid),
+           ORDER BY created_at DESC""", params=(ticker, uid),
     )
     conn.close()
     return df
@@ -1578,15 +1555,10 @@ def save_report_link(data: dict) -> bool:
 def get_report_links(ticker: str = None) -> pd.DataFrame:
     conn = get_connection()
     if ticker:
-        df = pd.read_sql_query(
-            "SELECT * FROM report_links WHERE ticker=? ORDER BY fiscal_year DESC",
-            conn, params=(ticker,),
+        df = read_sql_df("SELECT * FROM report_links WHERE ticker=? ORDER BY fiscal_year DESC", params=(ticker,),
         )
     else:
-        df = pd.read_sql_query(
-            "SELECT * FROM report_links ORDER BY fiscal_year DESC, ticker",
-            conn,
-        )
+        df = read_sql_df("SELECT * FROM report_links ORDER BY fiscal_year DESC, ticker")
     conn.close()
     return df
 
@@ -1694,7 +1666,7 @@ def get_all_company_profiles() -> pd.DataFrame:
     """Recupere tous les profils."""
     conn = get_connection()
     try:
-        df = pd.read_sql_query("SELECT * FROM company_profiles ORDER BY ticker", conn)
+        df = read_sql_df("SELECT * FROM company_profiles ORDER BY ticker")
     except Exception:
         df = pd.DataFrame()
     conn.close()
@@ -1721,14 +1693,10 @@ def get_company_news(ticker: str = None, limit: int = 50) -> pd.DataFrame:
     """Recupere les actualites. Si ticker=None, toutes les actus."""
     conn = get_connection()
     if ticker:
-        df = pd.read_sql_query(
-            "SELECT * FROM company_news WHERE ticker = ? ORDER BY created_at DESC LIMIT ?",
-            conn, params=(ticker, limit),
+        df = read_sql_df("SELECT * FROM company_news WHERE ticker = ? ORDER BY created_at DESC LIMIT ?", params=(ticker, limit),
         )
     else:
-        df = pd.read_sql_query(
-            "SELECT * FROM company_news ORDER BY created_at DESC LIMIT ?",
-            conn, params=(limit,),
+        df = read_sql_df("SELECT * FROM company_news ORDER BY created_at DESC LIMIT ?", params=(limit,),
         )
     conn.close()
     return df
@@ -1960,7 +1928,7 @@ def get_signal_history(
     where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     query = f"""SELECT * FROM signal_history {where_clause}
                 ORDER BY last_seen_date DESC, ticker"""
-    df = pd.read_sql_query(query, conn, params=params)
+    df = read_sql_df(query, params=params)
     conn.close()
     return df
 

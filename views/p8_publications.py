@@ -14,6 +14,7 @@ from data.storage import (
     save_company_news, save_company_profile,
     get_connection, get_publication_calendar,
 )
+from data.db import read_sql_df
 
 
 def _sync_all_profiles():
@@ -143,10 +144,7 @@ def _render_company_overview():
 
     # Get market data for all tickers
     conn = get_connection()
-    md = pd.read_sql_query(
-        "SELECT ticker, price, market_cap, shares, float_pct FROM market_data WHERE price > 0",
-        conn,
-    )
+    md = read_sql_df("SELECT ticker, price, market_cap, shares, float_pct FROM market_data WHERE price > 0")
     conn.close()
     md_map = {row["ticker"]: row.to_dict() for _, row in md.iterrows()} if not md.empty else {}
 

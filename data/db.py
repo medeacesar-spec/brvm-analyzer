@@ -123,21 +123,42 @@ def _replace_placeholders(query: str) -> str:
 
 
 class _PostgresCursor:
-    """Wrapper cursor psycopg → API compatible sqlite3.Cursor."""
+    """Wrapper cursor psycopg → API compatible sqlite3.Cursor.
+    Délègue les attributs manquants au cursor sous-jacent (pour pandas, etc.)."""
 
     def __init__(self, cursor, had_ignore: bool = False):
         self._cur = cursor
         self._had_ignore = had_ignore
 
     def fetchone(self):
-        row = self._cur.fetchone()
-        return row  # psycopg dict_row → dict, compatible avec row["col"] et row[0]
+        return self._cur.fetchone()
 
     def fetchall(self):
         return self._cur.fetchall()
 
+    def fetchmany(self, size=None):
+        if size is None:
+            return self._cur.fetchmany()
+        return self._cur.fetchmany(size)
+
+    def execute(self, query, params=None):
+        # Support pour pandas qui appelle cursor.execute() directement
+        from data.db import _translate_query, _PostgresWrapper
+        translated = _translate_query(query)
+        self._cur.execute(translated, params or ())
+        return self
+
+    def executemany(self, query, params_list):
+        from data.db import _translate_query
+        translated = _translate_query(query)
+        return self._cur.executemany(translated, params_list)
+
     def __iter__(self):
         return iter(self._cur)
+
+    @property
+    def description(self):
+        return self._cur.description
 
     @property
     def rowcount(self):
@@ -145,11 +166,18 @@ class _PostgresCursor:
 
     @property
     def lastrowid(self):
-        # Postgres n'a pas de lastrowid natif ; nécessite RETURNING id.
         return None
+
+    @property
+    def arraysize(self):
+        return getattr(self._cur, "arraysize", 1)
 
     def close(self):
         self._cur.close()
+
+    def __getattr__(self, name):
+        # Fallback : déléguer au cursor sous-jacent pour tout attribut manquant
+        return getattr(self._cur, name)
 
 
 class _PostgresWrapper:
@@ -270,6 +298,35 @@ def current_user_id() -> str:
     except Exception:
         pass
     return "local"
+
+
+def read_sql_df(query: str, params=None, parse_dates=None):
+    """Exécute une SELECT et renvoie un DataFrame — compatible SQLite + Postgres.
+    Remplace `pd.read_sql_query(sql, conn)` qui ne supporte pas nos wrappers Postgres."""
+    import pandas as pd
+    conn = get_connection()
+    try:
+        cur = conn.execute(query, params or ())
+        rows = cur.fetchall()
+        # Récupérer les noms de colonnes
+        description = None
+        if hasattr(cur, "description") and cur.description:
+            description = [d[0] for d in cur.description]
+        # Convertir rows en liste de tuples/dict pour pandas
+        if rows and isinstance(rows[0], dict):
+            df = pd.DataFrame(rows)
+        elif description:
+            df = pd.DataFrame(rows, columns=description)
+        else:
+            df = pd.DataFrame(rows)
+        # Parse dates
+        if parse_dates:
+            for col in parse_dates:
+                if col in df.columns:
+                    df[col] = pd.to_datetime(df[col], errors="coerce")
+        return df
+    finally:
+        conn.close()
 
 
 def db_info() -> dict:
