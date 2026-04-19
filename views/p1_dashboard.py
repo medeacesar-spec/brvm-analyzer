@@ -161,24 +161,31 @@ def _render_top5(df: pd.DataFrame, label: str):
             st.caption("Aucune baisse")
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def _cached_pending_publications():
+    try:
+        return get_pending_publications()
+    except Exception:
+        return None
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _cached_data_gaps():
+    try:
+        return get_data_gaps()
+    except Exception:
+        return None
+
+
 def _render_pending_publications_alert():
     """Affiche une bannière si des publications récentes (états financiers annuels ou
     données trimestrielles) n'ont pas encore été intégrées en base.
 
-    Source 1 : table `publications` (scraping BRVM/sika)
-    Source 2 : écart de cycle de publication déduit des données en DB
+    Résultats cachés 5 min (les deux requêtes font ensemble 240+ round-trips
+    Supabase dans la version non optimisée).
     """
-    # Source 1 : publications explicitement scrapées
-    try:
-        pending = get_pending_publications()
-    except Exception:
-        pending = None
-
-    # Source 2 : gaps de cycle détectés automatiquement
-    try:
-        gaps = get_data_gaps()
-    except Exception:
-        gaps = None
+    pending = _cached_pending_publications()
+    gaps = _cached_data_gaps()
 
     alerts = []
     if pending is not None and not pending.empty:

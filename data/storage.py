@@ -1361,103 +1361,120 @@ def get_data_gaps() -> pd.DataFrame:
         conn.close()
         return pd.DataFrame()
 
+    # ── Optim : 4 requêtes agrégées (au lieu de 48 × 4 = 192 round-trips) ──
+    # 1) Dernière année de fundamentals non-nulle par ticker
+    latest_fund = read_sql_df(
+        """SELECT ticker, MAX(fiscal_year) AS latest
+           FROM fundamentals
+           WHERE revenue IS NOT NULL AND revenue != 0
+           GROUP BY ticker"""
+    )
+    latest_map = dict(zip(latest_fund["ticker"], latest_fund["latest"])) if not latest_fund.empty else {}
+
+    # 2) Dernier trimestre en DB par ticker
+    qtr = read_sql_df(
+        """SELECT ticker, MAX(fiscal_year * 10 + quarter) AS latest_q
+           FROM quarterly_data
+           GROUP BY ticker"""
+    )
+    # Décodage fiscal_year * 10 + quarter → (year, q)
+    qtr_map = {}
+    if not qtr.empty:
+        for _, qr in qtr.iterrows():
+            code = qr["latest_q"] or 0
+            qtr_map[qr["ticker"]] = (code // 10, code % 10)
+
+    # 3) Publications annuelles : dernière année par ticker
+    pub_annual = read_sql_df(
+        """SELECT ticker, MAX(fiscal_year) AS latest_year
+           FROM publications
+           WHERE pub_type = 'annuel' AND fiscal_year IS NOT NULL
+           GROUP BY ticker"""
+    )
+    pub_annual_map = dict(zip(pub_annual["ticker"], pub_annual["latest_year"])) if not pub_annual.empty else {}
+
+    # 4) Publications trimestrielles récentes par ticker (la plus récente)
+    pub_trim = read_sql_df(
+        """SELECT p.ticker, p.title
+           FROM publications p
+           INNER JOIN (
+               SELECT ticker, MAX(pub_date) AS max_dt
+               FROM publications
+               WHERE pub_type IN ('trimestriel','semestriel')
+               GROUP BY ticker
+           ) mx ON p.ticker = mx.ticker AND p.pub_date = mx.max_dt
+           WHERE p.pub_type IN ('trimestriel','semestriel')"""
+    )
+    pub_trim_map = dict(zip(pub_trim["ticker"], pub_trim["title"])) if not pub_trim.empty else {}
+
+    # 5) Gaps ignorés (lecture en masse)
+    ignored = read_sql_df("SELECT ticker, gap_type, fiscal_year FROM ignored_gaps")
+    ignored_annual = {(r["ticker"], r["fiscal_year"]) for _, r in ignored.iterrows()
+                      if r.get("gap_type") == "annuel"}
+    ignored_annual_any = {r["ticker"] for _, r in ignored.iterrows()
+                          if r.get("gap_type") == "annuel" and (r.get("fiscal_year") is None)}
+    ignored_trim = {r["ticker"] for _, r in ignored.iterrows()
+                    if r.get("gap_type") == "trimestriel"}
+
     rows = []
     for _, tr in tickers_df.iterrows():
         ticker = tr["ticker"]
-        latest = conn.execute(
-            """SELECT MAX(fiscal_year) FROM fundamentals
-               WHERE ticker = ? AND revenue IS NOT NULL AND revenue != 0""",
-            (ticker,),
-        ).fetchone()[0]
-
-        qrow = conn.execute(
-            """SELECT fiscal_year, quarter FROM quarterly_data
-               WHERE ticker = ? ORDER BY fiscal_year DESC, quarter DESC LIMIT 1""",
-            (ticker,),
-        ).fetchone()
+        latest = latest_map.get(ticker)
 
         missing_annual = latest is None or latest < expected_annual
-        # Quarterly check : only flag if the ticker has EVER had quarterly data
-        # (avoids flagging all 48 tickers if quarterly_data is globally unused)
-        has_quarterly_history = qrow is not None
+        q_tuple = qtr_map.get(ticker)
+        has_quarterly_history = q_tuple is not None
         has_expected_quarter = False
-        if qrow:
-            q_year, q_q = qrow
+        if q_tuple:
+            q_year, q_q = q_tuple
             if q_year > expected_quarter_year or (
                 q_year == expected_quarter_year and q_q >= expected_quarter
             ):
                 has_expected_quarter = True
+        missing_quarter = (f"{expected_quarter_year} Q{expected_quarter}"
+                           if has_quarterly_history and not has_expected_quarter else None)
 
-        missing_quarter = None
-        if has_quarterly_history and not has_expected_quarter:
-            missing_quarter = f"{expected_quarter_year} Q{expected_quarter}"
-
-        # Cross-check with publications : if a published annual report exists
-        # for a fiscal_year > what we have in DB, flag it as a hard gap.
-        pub_gap = conn.execute(
-            """SELECT MAX(fiscal_year) FROM publications
-               WHERE ticker = ? AND pub_type = 'annuel'
-                 AND fiscal_year IS NOT NULL""",
-            (ticker,),
-        ).fetchone()[0]
+        pub_gap = pub_annual_map.get(ticker)
         published_but_missing_year = None
         if pub_gap and (latest is None or pub_gap > latest):
             published_but_missing_year = int(pub_gap)
-            missing_annual = True  # Override: we have proof a newer report exists
+            missing_annual = True
 
-        # Also check published quarterly beyond what we have
-        pub_q = conn.execute(
-            """SELECT title, fiscal_year FROM publications
-               WHERE ticker = ? AND pub_type IN ('trimestriel','semestriel')
-               ORDER BY pub_date DESC LIMIT 1""",
-            (ticker,),
-        ).fetchone()
+        pub_q_title = pub_trim_map.get(ticker)
 
-        if missing_annual or missing_quarter or published_but_missing_year or pub_q:
-            # Check if user ignored these gaps
-            if missing_annual:
-                r = conn.execute(
-                    """SELECT 1 FROM ignored_gaps
-                       WHERE ticker = ? AND gap_type = 'annuel'
-                         AND (fiscal_year IS NULL OR fiscal_year = ?)""",
-                    (ticker, expected_annual),
-                ).fetchone()
-                if r:
-                    missing_annual = False
-                    published_but_missing_year = None
-            if missing_quarter or pub_q:
-                r = conn.execute(
-                    """SELECT 1 FROM ignored_gaps
-                       WHERE ticker = ? AND gap_type = 'trimestriel'""",
-                    (ticker,),
-                ).fetchone()
-                if r:
-                    missing_quarter = None
-                    pub_q = None
+        # Filtre ignored
+        if missing_annual and (
+            ticker in ignored_annual_any or (ticker, expected_annual) in ignored_annual
+        ):
+            missing_annual = False
+            published_but_missing_year = None
+        if (missing_quarter or pub_q_title) and ticker in ignored_trim:
+            missing_quarter = None
+            pub_q_title = None
 
-            if not (missing_annual or missing_quarter or published_but_missing_year or pub_q):
-                continue
+        if not (missing_annual or missing_quarter or published_but_missing_year or pub_q_title):
+            continue
 
-            gap_type = []
-            if missing_annual:
-                gap_type.append("annuel")
-            if missing_quarter:
-                gap_type.append("trimestriel")
-            if pub_q:
-                gap_type.append("publication trimestrielle récente")
-                if not missing_quarter:
-                    missing_quarter = pub_q[0][:60]
-            rows.append({
-                "ticker": ticker,
-                "name": tr["company_name"],
-                "sector": tr["sector"],
-                "latest_year_in_db": latest,
-                "expected_latest": expected_annual,
-                "missing_annual": missing_annual,
-                "missing_quarter": missing_quarter,
-                "gap_type": ", ".join(gap_type) if gap_type else "",
-                "published_year": published_but_missing_year,
-            })
+        gap_type = []
+        if missing_annual:
+            gap_type.append("annuel")
+        if missing_quarter:
+            gap_type.append("trimestriel")
+        if pub_q_title:
+            gap_type.append("publication trimestrielle récente")
+            if not missing_quarter:
+                missing_quarter = pub_q_title[:60]
+        rows.append({
+            "ticker": ticker,
+            "name": tr["company_name"],
+            "sector": tr["sector"],
+            "latest_year_in_db": latest,
+            "expected_latest": expected_annual,
+            "missing_annual": missing_annual,
+            "missing_quarter": missing_quarter,
+            "gap_type": ", ".join(gap_type) if gap_type else "",
+            "published_year": published_but_missing_year,
+        })
 
     conn.close()
     return pd.DataFrame(rows)
