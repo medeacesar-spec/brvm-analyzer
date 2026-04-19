@@ -695,6 +695,111 @@ def _render_technical(ticker, price_df, result):
     sma_labels = SMA_LABELS.get(freq, SMA_LABELS["daily"])
     freq_label = "mensuelle" if freq == "monthly" else "journalière"
 
+    # ═══════════════════════════════════════════════════════════════════
+    # 4 KPI cards : Tendance CT · RSI · MACD · Volatilité 30j
+    # ═══════════════════════════════════════════════════════════════════
+    last_row = df.iloc[-1] if not df.empty else None
+    trend = result.get("trend", {})
+    trend_name = (trend.get("trend") or "N/A").capitalize()
+    trend_strength = (trend.get("strength") or "").capitalize()
+
+    # Calcul MM20 vs MM50 pour sous-texte tendance
+    mm_sub = "—"
+    if last_row is not None and "sma20" in df.columns and "sma50" in df.columns:
+        sma20 = last_row.get("sma20")
+        sma50 = last_row.get("sma50")
+        if pd.notna(sma20) and pd.notna(sma50):
+            if sma20 > sma50:
+                mm_sub = f"{sma_labels['short']} > {sma_labels['medium']}"
+            else:
+                mm_sub = f"{sma_labels['short']} < {sma_labels['medium']}"
+
+    # Valeurs RSI / MACD / Histogramme
+    rsi_val = float(last_row["rsi"]) if (last_row is not None and "rsi" in df.columns and pd.notna(last_row.get("rsi"))) else None
+    macd_val = float(last_row["macd"]) if (last_row is not None and "macd" in df.columns and pd.notna(last_row.get("macd"))) else None
+    macd_hist = float(last_row["macd_histogram"]) if (last_row is not None and "macd_histogram" in df.columns and pd.notna(last_row.get("macd_histogram"))) else None
+
+    # Volatilité 30 jours (std des rendements journaliers annualisée sur 30 points)
+    vol_30 = None
+    if len(df) >= 30 and "close" in df.columns:
+        try:
+            returns = df["close"].pct_change().dropna().tail(30)
+            if len(returns) >= 5:
+                vol_30 = returns.std() * (252 ** 0.5) * 100  # annualisée %
+        except Exception:
+            vol_30 = None
+
+    def _kpi_card(label, value, sub, arrow_tone="neutral"):
+        """Card compacte avec label + value + sub ligne (petit + coloré)."""
+        arrow = {"up": "▲", "down": "▼"}.get(arrow_tone, "")
+        sub_color = {"up": "var(--up)", "down": "var(--down)"}.get(arrow_tone, "var(--ink-3)")
+        sub_html = (
+            f"<div style='font-size:11.5px;margin-top:6px;color:{sub_color};font-weight:500;'>"
+            f"{arrow + ' ' if arrow else ''}{sub}</div>"
+            if sub else ""
+        )
+        return (
+            f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
+            f"border-radius:10px;padding:14px 16px;min-height:92px;'>"
+            f"<div class='label-xs' style='margin-bottom:6px;'>{label}</div>"
+            f"<div style='font-size:22px;font-weight:600;letter-spacing:-0.02em;"
+            f"color:var(--ink);font-variant-numeric:tabular-nums;line-height:1.15;'>"
+            f"{value}</div>"
+            f"{sub_html}"
+            f"</div>"
+        )
+
+    # Tone tendance
+    tr_tone = {"haussiere": "up", "baissiere": "down"}.get(trend.get("trend"), "neutral")
+    # RSI status
+    if rsi_val is None:
+        rsi_value_str, rsi_sub, rsi_tone = "—", "", "neutral"
+    elif rsi_val >= 70:
+        rsi_value_str, rsi_sub, rsi_tone = f"{rsi_val:.1f}", "Surachat", "down"
+    elif rsi_val <= 30:
+        rsi_value_str, rsi_sub, rsi_tone = f"{rsi_val:.1f}", "Survente", "up"
+    else:
+        rsi_value_str, rsi_sub, rsi_tone = f"{rsi_val:.1f}", "Neutre", "neutral"
+    # MACD status
+    if macd_val is None:
+        macd_value_str, macd_sub, macd_tone = "—", "", "neutral"
+    else:
+        sign = "+" if macd_val >= 0 else ""
+        macd_value_str = f"{sign}{macd_val:,.1f}"
+        if macd_hist is not None and macd_hist > 0:
+            macd_sub, macd_tone = "Hist. positif", "up"
+        elif macd_hist is not None and macd_hist < 0:
+            macd_sub, macd_tone = "Hist. négatif", "down"
+        else:
+            macd_sub, macd_tone = "", "neutral"
+    # Volatilité status (relatif à 15% arbitraire)
+    if vol_30 is None:
+        vol_value_str, vol_sub, vol_tone = "—", "", "neutral"
+    else:
+        vol_value_str = f"{vol_30:.1f}%"
+        if vol_30 > 25:
+            vol_sub, vol_tone = "Élevée", "down"
+        elif vol_30 < 10:
+            vol_sub, vol_tone = "Faible", "up"
+        else:
+            vol_sub, vol_tone = "Médiane 12-20%", "neutral"
+
+    k1, k2, k3, k4 = st.columns(4)
+    with k1:
+        st.markdown(
+            _kpi_card("Tendance CT", trend_name, mm_sub, arrow_tone=tr_tone),
+            unsafe_allow_html=True,
+        )
+    with k2:
+        st.markdown(_kpi_card("RSI (14)", rsi_value_str, rsi_sub, arrow_tone=rsi_tone),
+                    unsafe_allow_html=True)
+    with k3:
+        st.markdown(_kpi_card("MACD", macd_value_str, macd_sub, arrow_tone=macd_tone),
+                    unsafe_allow_html=True)
+    with k4:
+        st.markdown(_kpi_card("Volatilité 30j", vol_value_str, vol_sub, arrow_tone=vol_tone),
+                    unsafe_allow_html=True)
+
     # --- Period selector + chart options ---
     col_period, col_opt1, col_opt2, col_opt3 = st.columns([2, 1, 1, 1])
 
@@ -736,84 +841,109 @@ def _render_technical(ticker, price_df, result):
     )
     st.plotly_chart(fig, use_container_width=True)
 
-    # Tendance (densité v3, pas de divider)
-    trend = result.get("trend", {})
-    trend_name = trend.get("trend", "N/A")
-    trend_tone = {"haussiere": "up", "baissiere": "down"}.get(trend_name, "neutral")
-    section_heading("Tendance actuelle")
-    col_t1, col_t2, col_t3 = st.columns(3)
-    with col_t1:
-        st.markdown(
-            _tag_html(trend_name.capitalize(), trend_tone),
-            unsafe_allow_html=True,
-        )
-    col_t2.markdown(
-        f"<div style='font-size:13px;'><span class='muted'>Force</span> "
-        f"<b>{trend.get('strength', 'N/A').capitalize()}</b></div>",
-        unsafe_allow_html=True,
-    )
-    col_t3.markdown(
-        f"<div style='font-size:13px;'><span class='muted'>Détail</span> "
-        f"{trend.get('details', '—')}</div>",
-        unsafe_allow_html=True,
-    )
+    # ═══════════════════════════════════════════════════════════════════
+    # Niveaux clés (support/résistance + actuel) — tableau editorial
+    # ═══════════════════════════════════════════════════════════════════
+    supports = sorted(result.get("supports", []), reverse=True)[:2]
+    resistances = sorted(result.get("resistances", []))[:2]
+    current_price = 0
+    if not df_display.empty and "close" in df_display.columns:
+        current_price = float(df_display.iloc[-1]["close"])
 
-    # Supports / Résistances — dots colorés, pas d'emojis
-    supports = result.get("supports", [])
-    resistances = result.get("resistances", [])
-    col_sr1, col_sr2 = st.columns(2)
-    with col_sr1:
-        st.markdown(
-            '<div style="font-size:15px;font-weight:600;color:var(--ink);'
-            'letter-spacing:-0.01em;margin:14px 0 8px 0;">'
-            '<span class="dot up"></span>Supports</div>',
-            unsafe_allow_html=True,
-        )
-        for i, s in enumerate(supports[:3]):
-            st.markdown(
-                f"<div>Zone {i+1} <span class='muted'>·</span> "
-                f"<b style='font-variant-numeric:tabular-nums'>{s:,.0f} FCFA</b></div>",
-                unsafe_allow_html=True,
-            )
-        if not supports:
-            st.caption("Aucun support détecté")
-    with col_sr2:
-        st.markdown(
-            '<div style="font-size:15px;font-weight:600;color:var(--ink);'
-            'letter-spacing:-0.01em;margin:14px 0 8px 0;">'
-            '<span class="dot down"></span>Résistances</div>',
-            unsafe_allow_html=True,
-        )
-        for i, r in enumerate(resistances[:3]):
-            st.markdown(
-                f"<div>Zone {i+1} <span class='muted'>·</span> "
-                f"<b style='font-variant-numeric:tabular-nums'>{r:,.0f} FCFA</b></div>",
-                unsafe_allow_html=True,
-            )
-        if not resistances:
-            st.caption("Aucune résistance détectée")
+    col_lvl, col_sig = st.columns([1, 1])
+    with col_lvl:
+        section_heading("Niveaux clés")
 
-    # Signaux techniques — dots + stars au lieu d'emojis
-    section_heading("Signaux techniques", spacing="loose")
-    signals = result.get("signals", [])
-    if signals:
-        for sig in signals:
-            tone = {"achat": "up", "vente": "down", "info": "neutral"}.get(sig["type"], "neutral")
-            strength = "★" * sig["strength"] + "★" * (5 - sig["strength"])  # placeholder
-            stars_html = (
-                f"<span class='stars'>{'★' * sig['strength']}"
-                f"<span class='off'>{'★' * (5 - sig['strength'])}</span></span>"
+        def _ecart(px):
+            if not current_price or not px:
+                return "—", "var(--ink-3)"
+            diff = (px - current_price) / current_price * 100
+            sign = "+" if diff >= 0 else ""
+            color = "var(--up)" if diff < 0 else "var(--down)"  # inverse : sous = bon pour achat
+            return f"{sign}{diff:.1f}%", color
+
+        rows_lvl = []
+        # Résistances (haut en bas)
+        for i, r in enumerate(sorted(resistances, reverse=True)):
+            ec, col = _ecart(r)
+            rows_lvl.append(("Résistance", f"R{len(resistances)-i}", r, ec, col,
+                             "Plafond technique"))
+        # Actuel
+        rows_lvl.append(("Cours", "Actuel", current_price, "—", "var(--ink-3)",
+                         "Dernière séance"))
+        # Supports
+        for i, s in enumerate(supports):
+            ec, col = _ecart(s)
+            rows_lvl.append(("Support", f"S{i+1}", s, ec, col, "Zone de rebond"))
+
+        header_style = (
+            "font-size:10.5px;text-transform:uppercase;letter-spacing:0.08em;"
+            "color:var(--ink-3);font-weight:500;padding:8px 10px;"
+            "border-bottom:1px solid var(--border);background:var(--bg-sunken);"
+            "text-align:left;"
+        )
+        cell_style = "padding:9px 10px;border-bottom:1px solid var(--border);font-size:13px;"
+
+        rows_html = (
+            f"<tr>"
+            f"<th style='{header_style}'>Type</th>"
+            f"<th style='{header_style}'>Niveau</th>"
+            f"<th style='{header_style};text-align:right;'>Prix</th>"
+            f"<th style='{header_style};text-align:right;'>Écart</th>"
+            f"<th style='{header_style}'>Commentaire</th>"
+            f"</tr>"
+        )
+        for type_, niveau, price, ec_str, ec_color, comment in rows_lvl:
+            tone = "up" if type_ == "Support" else ("down" if type_ == "Résistance" else "neutral")
+            px_str = f"{price:,.0f}" if price else "—"
+            rows_html += (
+                f"<tr>"
+                f"<td style='{cell_style};color:var(--ink-3);'>{type_}</td>"
+                f"<td style='{cell_style};'><span class='dot {tone}'></span><b>{niveau}</b></td>"
+                f"<td style='{cell_style};text-align:right;font-variant-numeric:tabular-nums;'>{px_str}</td>"
+                f"<td style='{cell_style};text-align:right;color:{ec_color};"
+                f"font-weight:500;font-variant-numeric:tabular-nums;'>{ec_str}</td>"
+                f"<td style='{cell_style};color:var(--ink-3);'>{comment}</td>"
+                f"</tr>"
             )
+        if len(rows_lvl) <= 1:
+            # Pas de supports/résistances détectés
+            pass
+        st.markdown(
+            f"<div style='border:1px solid var(--border);border-radius:10px;"
+            f"overflow:hidden;background:var(--bg-elev);'>"
+            f"<table style='width:100%;border-collapse:collapse;'>{rows_html}</table></div>",
+            unsafe_allow_html=True,
+        )
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Signaux techniques — editorial list avec value a droite
+    # ═══════════════════════════════════════════════════════════════════
+    with col_sig:
+        section_heading("Signaux techniques")
+        signals = result.get("signals", [])
+        if signals:
+            inner = ""
+            for sig in signals:
+                tone = {"achat": "up", "vente": "down", "info": "neutral"}.get(sig.get("type"), "neutral")
+                inner += (
+                    f"<div style='display:flex;justify-content:space-between;align-items:flex-start;"
+                    f"gap:12px;padding:9px 12px;border-bottom:1px solid var(--border);"
+                    f"font-size:13px;'>"
+                    f"<div style='flex:1;min-width:0;'>"
+                    f"<span class='dot {tone}'></span><b>{sig.get('signal', '')}</b>"
+                    f"</div>"
+                    f"<div style='color:var(--ink-3);font-size:12.5px;text-align:right;"
+                    f"max-width:60%;'>{sig.get('details', '')}</div>"
+                    f"</div>"
+                )
             st.markdown(
-                f"<div style='padding:4px 0;'>"
-                f"<span class='dot {tone}'></span>"
-                f"<b>{sig['signal']}</b> {stars_html} "
-                f"<span class='muted'>· {sig['details']}</span>"
-                f"</div>",
+                f"<div style='border:1px solid var(--border);border-radius:10px;"
+                f"overflow:hidden;background:var(--bg-elev);'>{inner}</div>",
                 unsafe_allow_html=True,
             )
-    else:
-        st.caption("Aucun signal technique actif")
+        else:
+            st.caption("Aucun signal technique actif")
 
     # Explications RSI & MACD (repliable pour désencombrer)
     with st.expander("En savoir plus · RSI, MACD, Moyennes mobiles", expanded=False):
@@ -949,74 +1079,299 @@ def _render_indicator_explanations(df: pd.DataFrame, sma_labels: dict, freq: str
 
 
 def _render_recommendation(result, fundamentals):
-    """Onglet recommandation — 3 scores en metrics + synthèse.
-    Le verdict+stars est affiché dans le header de la page, pas besoin
-    de le répéter ici."""
+    """Onglet Recommandation v3 : verdict card avec composition + 3 score
+    cards descriptives + Points forts/Vigilance en tables + Plan d'action
+    zones de prix avec conviction."""
     reco = result["recommendation"]
 
     fund_s = result.get("fundamental_score") or 0
     tech_s = result.get("technical_score") or 0
     hybrid = result.get("hybrid_score") or 0
+    verdict = reco.get("verdict", "N/A")
+    verdict_tone = _verdict_tone(verdict)
 
-    # 3 scores en metrics
-    col_g1, col_g2, col_g3 = st.columns(3)
-    col_g1.metric("Score fondamental", f"{fund_s:.0f} / 50")
-    col_g2.metric("Score technique", f"{tech_s:.0f} / 50")
-    col_g3.metric("Score global", f"{hybrid:.0f} / 100")
+    # ═══════════════════════════════════════════════════════════════════
+    # Card "VERDICT DU MODÈLE" avec stacked bar composition
+    # ═══════════════════════════════════════════════════════════════════
+    # Composition : Fond (x/50) | Tech (x/50) | Manque (100-total)
+    missing = max(0, 100 - hybrid)
+    total = 100
+    fond_pct = fund_s / total * 100
+    tech_pct = tech_s / total * 100
+    miss_pct = missing / total * 100
 
-    # Points forts / vigilance — section_heading bold avec dot colorée
-    _dot_section_style = (
-        "font-size:15px;font-weight:600;color:var(--ink);"
-        "letter-spacing:-0.01em;margin:20px 0 10px 0;"
+    verdict_color = {
+        "up": "var(--up)", "down": "var(--down)", "ocre": "var(--ocre)",
+    }.get(verdict_tone, "var(--ink-2)")
+
+    horizon = "6-12 mois"
+
+    st.markdown(
+        f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
+        f"border-radius:10px;padding:18px 20px;'>"
+        f"<div style='display:flex;align-items:flex-start;gap:24px;'>"
+        # Colonne gauche : verdict + score + horizon
+        f"<div style='min-width:240px;'>"
+        f"<div class='label-xs' style='margin-bottom:4px;'>Verdict du modèle</div>"
+        f"<div style='font-size:26px;font-weight:600;letter-spacing:-0.02em;"
+        f"color:{verdict_color};text-transform:capitalize;'>{verdict.capitalize()}</div>"
+        f"<div style='font-size:12.5px;color:var(--ink-3);margin-top:6px;'>"
+        f"Score hybride <b style='color:var(--ink);'>{hybrid:.0f} / 100</b> "
+        f"<span class='muted'>·</span> horizon {horizon}"
+        f"</div>"
+        f"</div>"
+        # Colonne droite : composition
+        f"<div style='flex:1;'>"
+        f"<div class='label-xs' style='margin-bottom:8px;'>Composition du score hybride</div>"
+        # Stacked bar
+        f"<div style='display:flex;height:22px;border-radius:4px;overflow:hidden;"
+        f"border:1px solid var(--border);'>"
+        f"<div style='width:{fond_pct:.1f}%;background:var(--ocre-bg);"
+        f"display:flex;align-items:center;justify-content:center;"
+        f"font-size:11px;font-weight:500;color:#6a4f13;'>"
+        f"{'Fond. ' + str(int(fund_s)) if fond_pct >= 10 else ''}"
+        f"</div>"
+        f"<div style='width:{tech_pct:.1f}%;background:var(--primary-bg);"
+        f"display:flex;align-items:center;justify-content:center;"
+        f"font-size:11px;font-weight:500;color:var(--primary-2);'>"
+        f"{'Tech. ' + str(int(tech_s)) if tech_pct >= 10 else ''}"
+        f"</div>"
+        f"<div style='width:{miss_pct:.1f}%;background:var(--bg-sunken);"
+        f"display:flex;align-items:center;justify-content:center;"
+        f"font-size:11px;font-weight:500;color:var(--ink-3);'>"
+        f"{'Manque ' + str(int(missing)) if miss_pct >= 10 else ''}"
+        f"</div>"
+        f"</div>"
+        f"<div style='display:flex;gap:16px;margin-top:8px;font-size:11.5px;"
+        f"color:var(--ink-3);'>"
+        f"<span><span class='dot ocre'></span>Fondamental {fund_s:.0f}/50</span>"
+        f"<span><span class='dot up'></span>Technique {tech_s:.0f}/50</span>"
+        f"</div>"
+        f"</div>"
+        f"</div>"
+        f"</div>",
+        unsafe_allow_html=True,
     )
+
+    # ═══════════════════════════════════════════════════════════════════
+    # 3 cards : Score fondamental · Score technique · Conviction modèle
+    # ═══════════════════════════════════════════════════════════════════
+    bd = (fundamentals.get("fundamental_breakdown")
+          or result.get("ratios", {}).get("fundamental_breakdown") or {})
+    # fallback : utilise le quality/profile si présent
+    fund_profile = bd.get("profile") or f"Score brut {fund_s:.0f}/50"
+    # Profil technique
+    if tech_s >= 35:
+        tech_label, tech_sub, tech_arrow = "Fort", "Tendance haussière", "up"
+    elif tech_s >= 25:
+        tech_label, tech_sub, tech_arrow = "Correct", "Momentum modéré", "up"
+    elif tech_s >= 15:
+        tech_label, tech_sub, tech_arrow = "Neutre", "Pas de signal fort", "neutral"
+    else:
+        tech_label, tech_sub, tech_arrow = "Faible", "Tendance baissière", "down"
+    tech_profile = f"{tech_label} — {tech_sub}"
+    # Conviction : 5 dots selon hybrid_score
+    conviction_pts = 5 if hybrid >= 80 else 4 if hybrid >= 65 else 3 if hybrid >= 50 else 2 if hybrid >= 35 else 1
+    conviction_label = {
+        5: "Très forte", 4: "Forte", 3: "Moyenne", 2: "Faible", 1: "Très faible",
+    }[conviction_pts]
+    conv_sub = {
+        5: "Position de conviction",
+        4: "Accumulation progressive",
+        3: "Attendre un retracement",
+        2: "Surveiller avant d'entrer",
+        1: "Éviter pour l'instant",
+    }[conviction_pts]
+
+    def _score_card(label, value, max_value, profile, arrow_tone, show_dots=False):
+        if show_dots:
+            dots = "".join(
+                f'<span class="dot {"up" if i < value else "neutral"}" '
+                f'style="width:9px;height:9px;margin-right:3px;"></span>'
+                for i in range(max_value)
+            )
+            value_html = dots
+        else:
+            value_html = (
+                f"<span style='font-size:24px;font-weight:600;letter-spacing:-0.02em;"
+                f"color:var(--ink);font-variant-numeric:tabular-nums;'>"
+                f"{value:.0f}</span>"
+                f"<span style='color:var(--ink-3);font-size:14px;font-weight:400;'> / {max_value}</span>"
+            )
+        arrow = {"up": "▲", "down": "▼"}.get(arrow_tone, "")
+        sub_color = {"up": "var(--up)", "down": "var(--down)"}.get(arrow_tone, "var(--ink-3)")
+        return (
+            f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
+            f"border-radius:10px;padding:14px 16px;height:100%;'>"
+            f"<div class='label-xs' style='margin-bottom:6px;'>{label}</div>"
+            f"<div>{value_html}</div>"
+            f"<div style='font-size:12px;color:{sub_color};margin-top:6px;font-weight:500;'>"
+            f"{arrow + ' ' if arrow else ''}{profile}</div>"
+            f"</div>"
+        )
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        fund_tone = "up" if fund_s >= 35 else "down" if fund_s <= 15 else "neutral"
+        st.markdown(
+            _score_card("Score fondamental", fund_s, 50, fund_profile, fund_tone),
+            unsafe_allow_html=True,
+        )
+    with c2:
+        st.markdown(
+            _score_card("Score technique", tech_s, 50, tech_profile, tech_arrow),
+            unsafe_allow_html=True,
+        )
+    with c3:
+        st.markdown(
+            _score_card("Conviction modèle", conviction_pts, 5, conv_sub,
+                        "up" if conviction_pts >= 4 else "neutral", show_dots=True),
+            unsafe_allow_html=True,
+        )
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Points forts / Points de vigilance — en tables éditoriales
+    # ═══════════════════════════════════════════════════════════════════
+    def _pts_card(label, items, tone):
+        """Card avec titre dot + items. Chaque item = label principal
+        + détail à droite (si ' — ' dans la string)."""
+        rows = ""
+        if items:
+            for item in items:
+                # Tente de splitter "Label — détail" / "Label (valeur)"
+                main, side = item, ""
+                if " — " in item:
+                    main, side = item.split(" — ", 1)
+                elif " (" in item and item.endswith(")"):
+                    idx = item.rindex(" (")
+                    main, side = item[:idx], item[idx + 2 : -1]
+                rows += (
+                    f"<div style='display:flex;justify-content:space-between;"
+                    f"gap:12px;padding:8px 0;border-bottom:1px solid var(--border);'>"
+                    f"<span style='color:var(--ink);font-size:13px;'>{main}</span>"
+                    f"<span style='color:var(--ink-3);font-size:12.5px;text-align:right;"
+                    f"font-variant-numeric:tabular-nums;'>{side}</span>"
+                    f"</div>"
+                )
+        else:
+            rows = "<div style='padding:10px 0;color:var(--ink-3);font-size:13px;'>Aucun élément</div>"
+        return (
+            f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
+            f"border-radius:10px;padding:14px 16px;'>"
+            f"<div style='font-size:14px;font-weight:600;color:var(--ink);"
+            f"margin-bottom:6px;'><span class='dot {tone}'></span>{label}</div>"
+            f"{rows}"
+            f"</div>"
+        )
+
     col_s, col_w = st.columns(2)
     with col_s:
         st.markdown(
-            f'<div style="{_dot_section_style}">'
-            '<span class="dot up"></span>Points forts</div>',
+            _pts_card("Points forts", reco.get("strengths", []), "up"),
             unsafe_allow_html=True,
         )
-        for s in reco.get("strengths", []):
-            st.markdown(
-                f"<div style='padding:3px 0;font-size:13px;'>"
-                f"<span class='dot up'></span>{s}</div>",
-                unsafe_allow_html=True,
-            )
-        if not reco.get("strengths"):
-            st.caption("Aucun point fort identifié")
     with col_w:
         st.markdown(
-            f'<div style="{_dot_section_style}">'
-            '<span class="dot warn"></span>Points de vigilance</div>',
+            _pts_card("Points de vigilance", reco.get("warnings", []), "warn"),
             unsafe_allow_html=True,
         )
-        for w in reco.get("warnings", []):
-            st.markdown(
-                f"<div style='padding:3px 0;font-size:13px;'>"
-                f"<span class='dot warn'></span>{w}</div>",
-                unsafe_allow_html=True,
-            )
-        if not reco.get("warnings"):
-            st.caption("Aucun point de vigilance")
 
-    # Zones d'entrée — même style que points forts/vigilance (dots + 13px)
-    section_heading("Zones d'entrée suggérées", spacing="loose")
+    # ═══════════════════════════════════════════════════════════════════
+    # Plan d'action — Zones de prix avec conviction
+    # ═══════════════════════════════════════════════════════════════════
+    section_heading("Plan d'action · zones de prix", spacing="loose")
     entry_zones = reco.get("entry_zones", [])
+    current_price = fundamentals.get("price") or 0
+
     if entry_zones:
+        header_style = (
+            "font-size:10.5px;text-transform:uppercase;letter-spacing:0.08em;"
+            "color:var(--ink-3);font-weight:500;padding:8px 10px;"
+            "border-bottom:1px solid var(--border);background:var(--bg-sunken);"
+            "text-align:left;"
+        )
+        cell_style = "padding:10px;border-bottom:1px solid var(--border);font-size:13px;"
+
+        rows_html = (
+            f"<tr>"
+            f"<th style='{header_style}'>Niveau</th>"
+            f"<th style='{header_style};text-align:right;'>Prix cible</th>"
+            f"<th style='{header_style};text-align:right;'>Écart vs cours</th>"
+            f"<th style='{header_style}'>Risk / Reward</th>"
+            f"<th style='{header_style}'>Conviction</th>"
+            f"<th style='{header_style}'>Commentaire</th>"
+            f"</tr>"
+        )
         for zone in entry_zones:
-            st.markdown(
-                f"<div style='padding:3px 0;font-size:13px;'>"
-                f"<span class='dot up'></span>"
-                f"<b>{zone['label']}</b> "
-                f"<span class='muted'>·</span> "
-                f"<span style='font-variant-numeric:tabular-nums'>{zone['zone']}</span> "
-                f"<span class='muted'>·</span> "
-                f"Risque/Rendement : {zone['risk_reward']}"
-                f"</div>",
-                unsafe_allow_html=True,
+            # Extract numeric price from zone (ex: "1,945 FCFA" → 1945)
+            zone_str = str(zone.get("zone", ""))
+            try:
+                px = float("".join(c for c in zone_str if c.isdigit() or c == "."))
+            except Exception:
+                px = 0
+
+            if current_price and px:
+                diff = (px - current_price) / current_price * 100
+                sign = "+" if diff >= 0 else ""
+                ecart_str = f"{sign}{diff:.1f}%"
+                ecart_color = "var(--up)" if diff < 0 else "var(--down)"
+            else:
+                ecart_str, ecart_color = "—", "var(--ink-3)"
+
+            rr = zone.get("risk_reward", "Neutre")
+            rr_tone = {"Favorable": "up", "Très favorable": "up",
+                       "Défavorable": "down", "Neutre": "neutral"}.get(rr, "neutral")
+
+            # Conviction = inférée depuis risk_reward
+            conviction_n = 5 if "Très favorable" in rr else 4 if "Favorable" in rr else 2 if "Défavorable" in rr else 3
+            dots = "".join(
+                f'<span style="display:inline-block;width:6px;height:6px;'
+                f'background:{"var(--primary)" if i < conviction_n else "var(--ink-4)"};'
+                f'border-radius:50%;margin-right:2px;"></span>'
+                for i in range(5)
             )
+
+            label = zone.get("label", "")
+            comment = label  # fallback description
+
+            rows_html += (
+                f"<tr>"
+                f"<td style='{cell_style};font-weight:500;'>{label}</td>"
+                f"<td style='{cell_style};text-align:right;font-variant-numeric:tabular-nums;'>"
+                f"{zone_str}</td>"
+                f"<td style='{cell_style};text-align:right;color:{ecart_color};"
+                f"font-weight:500;font-variant-numeric:tabular-nums;'>{ecart_str}</td>"
+                f"<td style='{cell_style};'>"
+                + _tag_html(rr, rr_tone) +
+                f"</td>"
+                f"<td style='{cell_style};'>{dots}</td>"
+                f"<td style='{cell_style};color:var(--ink-3);'>{comment}</td>"
+                f"</tr>"
+            )
+
+        st.markdown(
+            f"<div style='border:1px solid var(--border);border-radius:10px;"
+            f"overflow:hidden;background:var(--bg-elev);'>"
+            f"<table style='width:100%;border-collapse:collapse;'>{rows_html}</table></div>",
+            unsafe_allow_html=True,
+        )
     else:
         st.caption("Pas assez de données pour déterminer les zones d'entrée")
+
+    # Synthèse narrative
+    synth = (
+        f"Le verdict **{verdict}** reflète un fondamental "
+        f"{'solide' if fund_s >= 35 else 'moyen' if fund_s >= 20 else 'faible'} "
+        f"{'combiné à' if (fund_s >= 20 and tech_s >= 20) else 'confronté à'} "
+        f"une tendance technique "
+        f"{'favorable' if tech_s >= 30 else 'neutre' if tech_s >= 20 else 'défavorable'}. "
+    )
+    st.markdown(
+        f"<div style='margin-top:16px;padding:12px 16px;background:var(--bg-sunken);"
+        f"border-radius:10px;font-size:12.5px;color:var(--ink-2);line-height:1.5;'>"
+        f"{synth}</div>",
+        unsafe_allow_html=True,
+    )
 
 
 def _render_input_form(ticker, tickers_data):
@@ -1085,140 +1440,215 @@ def _render_input_form(ticker, tickers_data):
 
 
 def _render_profile(ticker: str, fundamentals: dict):
-    """Onglet profil qualitatif de l'entreprise."""
+    """Onglet Profil v3 : en-tête entreprise + 2 colonnes éditoriales.
+    Gauche (2/3) : Présentation + Historique financier table compacte.
+    Droite (1/3) : Actionnariat + Dirigeants + Contact en cards."""
     profile = get_company_profile(ticker)
 
     if not profile:
         st.info("Profil non disponible. Lancez `scripts/scrape_profiles.py` pour charger les données.")
         return
 
-    # --- Présentation ---
-    if profile.get("description"):
-        desc = profile["description"]
-        if isinstance(desc, str):
-            for prefix in ["La société :", "La société :", "La société:", "La société:"]:
-                if desc.startswith(prefix):
-                    desc = desc[len(prefix):].strip()
-            section_heading("Présentation", spacing="tight")
-            st.markdown(desc)
+    # ─── En-tête tab : nom entreprise (h2) + "Profil entreprise — TICKER"
+    company = fundamentals.get("company_name") or ticker
+    st.markdown(
+        f"<div style='margin-top:6px;'>"
+        f"<div style='font-size:22px;font-weight:600;color:var(--ink);"
+        f"letter-spacing:-0.02em;'>{company}</div>"
+        f"<div style='color:var(--ink-3);font-size:13px;margin-top:2px;"
+        f"padding-bottom:12px;border-bottom:1px solid var(--border);'>"
+        f"Profil entreprise · {ticker}</div>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
 
-    # Helper : rend une carte éditoriale (label-xs uppercase + contenu structuré)
+    # Helper : card key/value éditoriale
     def _info_card(label: str, items: list) -> str:
-        """items = [(key_label, value)] — rendus en lignes key/value serrées."""
         rows_html = ""
-        for key, val in items:
-            if not val:
-                continue
+        visible = [(k, v) for k, v in items if v]
+        for i, (key, val) in enumerate(visible):
+            sep = "border-bottom:1px solid var(--border);" if i < len(visible) - 1 else ""
             rows_html += (
                 f"<div style='display:flex;justify-content:space-between;gap:12px;"
-                f"padding:6px 0;border-bottom:1px solid var(--border);'>"
+                f"padding:8px 0;{sep}'>"
                 f"<span style='color:var(--ink-3);font-size:12.5px;'>{key}</span>"
                 f"<span style='color:var(--ink);font-size:12.5px;font-weight:500;"
-                f"text-align:right;'>{val}</span>"
+                f"text-align:right;font-variant-numeric:tabular-nums;'>{val}</span>"
                 f"</div>"
             )
         if not rows_html:
             rows_html = ("<div style='color:var(--ink-3);font-size:12.5px;"
-                         "padding:8px 0;'>Non disponible</div>")
-        # Dernière row sans border-bottom
-        rows_html = rows_html.rsplit(
-            "border-bottom:1px solid var(--border);", 1
-        )[0] + "".join(rows_html.rsplit("border-bottom:1px solid var(--border);", 1)[1:])
+                         "padding:4px 0;'>Non disponible</div>")
         return (
             f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
-            f"border-radius:10px;padding:12px 16px;'>"
-            f"<div style='font-size:10.5px;text-transform:uppercase;letter-spacing:0.08em;"
-            f"color:var(--ink-3);font-weight:500;margin-bottom:8px;'>{label}</div>"
+            f"border-radius:10px;padding:14px 16px;margin-bottom:12px;'>"
+            f"<div style='font-size:14px;font-weight:600;color:var(--ink);"
+            f"margin-bottom:8px;'>{label}</div>"
             f"{rows_html}"
             f"</div>"
         )
 
-    # --- Dirigeants & Actionnariat (2 cards bordées) ---
-    conn = get_connection()
-    md = conn.execute(
-        "SELECT shares, float_pct, market_cap FROM market_data WHERE ticker = ?",
-        (ticker,)
-    ).fetchone()
-    conn.close()
+    # ─── 2 colonnes : Présentation + Historique (2/3) · Actionnariat + Contact (1/3)
+    col_left, col_right = st.columns([2, 1])
 
-    col1, col2 = st.columns(2)
-    with col1:
+    with col_left:
+        # Présentation
+        if profile.get("description"):
+            desc = profile["description"]
+            if isinstance(desc, str):
+                for prefix in ["La société :", "La société :", "La société:", "La société:"]:
+                    if desc.startswith(prefix):
+                        desc = desc[len(prefix):].strip()
+                section_heading("Présentation", spacing="tight")
+                st.markdown(
+                    f"<div style='font-size:13px;line-height:1.55;color:var(--ink-2);"
+                    f"margin-bottom:18px;'>{desc}</div>",
+                    unsafe_allow_html=True,
+                )
+
+        # Historique financier — table compacte (5 dernières années)
+        fund = read_sql_df(
+            "SELECT fiscal_year, revenue, net_income, dps, eps, per FROM fundamentals "
+            "WHERE ticker = ? ORDER BY fiscal_year DESC LIMIT 5",
+            params=(ticker,),
+        )
+        if not fund.empty:
+            section_heading("Historique financier", spacing="tight")
+
+            def _money(v):
+                if v is None or pd.isna(v) or not v:
+                    return "—"
+                av = abs(v)
+                if av >= 1e9:
+                    return f"{v/1e9:,.1f} Md"
+                if av >= 1e6:
+                    return f"{v/1e6:,.0f} M"
+                return f"{v:,.0f}"
+
+            def _int(v):
+                if v is None or pd.isna(v) or not v:
+                    return "—"
+                return f"{v:,.0f}"
+
+            def _dec(v):
+                if v is None or pd.isna(v) or not v:
+                    return "—"
+                return f"{v:.1f}"
+
+            header = (
+                "font-size:10.5px;text-transform:uppercase;letter-spacing:0.08em;"
+                "color:var(--ink-3);font-weight:500;padding:8px 10px;"
+                "border-bottom:1px solid var(--border);background:var(--bg-sunken);"
+                "text-align:right;"
+            )
+            cell = (
+                "padding:9px 10px;font-size:13px;border-bottom:1px solid var(--border);"
+                "text-align:right;font-variant-numeric:tabular-nums;"
+            )
+            rows_html = (
+                f"<tr>"
+                f"<th style='{header};text-align:left;'>Année</th>"
+                f"<th style='{header}'>CA</th>"
+                f"<th style='{header}'>Résultat net</th>"
+                f"<th style='{header}'>DPS</th>"
+                f"<th style='{header}'>BNPA</th>"
+                f"<th style='{header}'>PER</th>"
+                f"</tr>"
+            )
+            # Tri ascendant par année (plus récente en bas, comme dans la capture user)
+            for _, row in fund.sort_values("fiscal_year", ascending=False).iterrows():
+                rows_html += (
+                    f"<tr>"
+                    f"<td style='{cell};text-align:left;font-weight:500;'>{int(row['fiscal_year'])}</td>"
+                    f"<td style='{cell}'>{_money(row['revenue'])}</td>"
+                    f"<td style='{cell}'>{_money(row['net_income'])}</td>"
+                    f"<td style='{cell}'>{_int(row['dps'])}</td>"
+                    f"<td style='{cell}'>{_int(row['eps'])}</td>"
+                    f"<td style='{cell}'>{_dec(row['per'])}</td>"
+                    f"</tr>"
+                )
+            st.markdown(
+                f"<div style='border:1px solid var(--border);border-radius:10px;"
+                f"overflow:hidden;background:var(--bg-elev);'>"
+                f"<table style='width:100%;border-collapse:collapse;'>{rows_html}</table>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+    with col_right:
+        # Actionnariat (Nb titres, Flottant, Secteur, Actionnaire)
+        conn = get_connection()
+        md = conn.execute(
+            "SELECT shares, float_pct FROM market_data WHERE ticker = ?",
+            (ticker,),
+        ).fetchone()
+        conn.close()
+        shares = md["shares"] if (md and md["shares"] and md["shares"] > 0) else None
+        float_pct = md["float_pct"] if (md and md["float_pct"] and md["float_pct"] > 0) else None
+
+        actionnariat_items = [
+            ("Nombre de titres", f"{shares:,.0f}" if shares else None),
+            ("Flottant", f"{float_pct:.1f}%" if float_pct else None),
+            ("Secteur", fundamentals.get("sector") or None),
+        ]
+        # Actionnaire si dispo
+        if profile.get("major_shareholder"):
+            pct = profile.get("major_shareholder_pct")
+            pct_str = f" · {pct:.1f}%" if pct else ""
+            actionnariat_items.append(
+                ("Actionnaire principal", f"{profile['major_shareholder']}{pct_str}")
+            )
+        st.markdown(_info_card("Actionnariat", actionnariat_items), unsafe_allow_html=True)
+
+        # Dirigeants (compact)
         dirigeants_items = [
-            ("Président du Conseil", profile.get("president")),
+            ("PCA", profile.get("president")),
             ("Directeur Général", profile.get("dg")),
             ("DG Adjoint", profile.get("dga")),
         ]
-        st.markdown(_info_card("Dirigeants", dirigeants_items), unsafe_allow_html=True)
+        if any(v for _, v in dirigeants_items):
+            st.markdown(_info_card("Dirigeants", dirigeants_items), unsafe_allow_html=True)
 
-    with col2:
-        pct = profile.get("major_shareholder_pct")
-        pct_str = f" · {pct:.1f}%" if pct else ""
-        shareholder = (
-            f"{profile['major_shareholder']}{pct_str}"
-            if profile.get("major_shareholder") else None
-        )
-        actionnariat_items = [
-            ("Actionnaire principal", shareholder),
-            ("Nombre de titres",
-             f"{md['shares']:,.0f}" if (md and md["shares"] and md["shares"] > 0) else None),
-            ("Flottant",
-             f"{md['float_pct']:.1f}%" if (md and md["float_pct"] and md["float_pct"] > 0) else None),
-            ("Capitalisation",
-             f"{md['market_cap']/1e3:,.1f} Md FCFA" if (md and md["market_cap"] and md["market_cap"] > 0) else None),
-        ]
-        st.markdown(_info_card("Actionnariat & Marché", actionnariat_items), unsafe_allow_html=True)
+        # Contact — address multi-ligne, séparateur
+        addr = profile.get("address") or ""
+        phone = profile.get("phone") or ""
+        fax = profile.get("fax") or ""
+        if addr or phone or fax:
+            # Pour l'adresse : on split sur les virgules pour un rendu multi-lignes
+            addr_html = (
+                "<br>".join(line.strip() for line in addr.split(",") if line.strip())
+                if addr else ""
+            )
+            contact_body = ""
+            if addr_html:
+                contact_body += (
+                    f"<div style='font-size:12.5px;color:var(--ink-2);line-height:1.55;"
+                    f"padding:4px 0;'>{addr_html}</div>"
+                )
+            if phone:
+                contact_body += (
+                    f"<div style='font-size:12.5px;color:var(--ink-2);padding:4px 0;"
+                    f"border-top:1px solid var(--border);margin-top:6px;'>"
+                    f"<span style='color:var(--ink-3);'>Tél.</span> "
+                    f"<span style='font-variant-numeric:tabular-nums;'>{phone}</span></div>"
+                )
+            if fax:
+                contact_body += (
+                    f"<div style='font-size:12.5px;color:var(--ink-2);padding:4px 0;'>"
+                    f"<span style='color:var(--ink-3);'>Fax</span> "
+                    f"<span style='font-variant-numeric:tabular-nums;'>{fax}</span></div>"
+                )
+            st.markdown(
+                f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
+                f"border-radius:10px;padding:14px 16px;margin-bottom:12px;'>"
+                f"<div style='font-size:14px;font-weight:600;color:var(--ink);"
+                f"margin-bottom:8px;'>Contact</div>"
+                f"{contact_body}"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
 
-    # --- Contact (card bordée si au moins une info) ---
-    contact_items = [
-        ("Adresse", profile.get("address")),
-        ("Téléphone", profile.get("phone")),
-        ("Fax", profile.get("fax")),
-    ]
-    if any(v for _, v in contact_items):
-        st.markdown(
-            f"<div style='margin-top:12px;'>"
-            + _info_card("Contact", contact_items)
-            + "</div>",
-            unsafe_allow_html=True,
-        )
-
-    # --- Financial history ---
-    conn = get_connection()
-    fund = read_sql_df("""SELECT fiscal_year, revenue, net_income, dps, eps, per
-           FROM fundamentals WHERE ticker = ?
-           ORDER BY fiscal_year DESC LIMIT 5""", params=(ticker,),
-    )
-    conn.close()
-
-    if not fund.empty:
-        section_heading("Historique financier", spacing="loose")
-        display = fund.copy()
-        display["fiscal_year"] = display["fiscal_year"].astype(int)
-        display["revenue"] = display["revenue"].apply(
-            lambda x: f"{x/1e9:,.1f} Mds" if pd.notna(x) and x > 0 else "—"
-        )
-        display["net_income"] = display["net_income"].apply(
-            lambda x: f"{x/1e9:,.1f} Mds" if pd.notna(x) and abs(x) > 0 else "—"
-        )
-        display["dps"] = display["dps"].apply(
-            lambda x: f"{x:,.0f}" if pd.notna(x) and x > 0 else "—"
-        )
-        display["eps"] = display["eps"].apply(
-            lambda x: f"{x:,.0f}" if pd.notna(x) and abs(x) > 0 else "—"
-        )
-        display["per"] = display["per"].apply(
-            lambda x: f"{x:.1f}" if pd.notna(x) and x > 0 else "—"
-        )
-        st.dataframe(
-            display.rename(columns={
-                "fiscal_year": "Année", "revenue": "Chiffre d'affaires",
-                "net_income": "Résultat net", "dps": "DPS",
-                "eps": "BNPA", "per": "PER",
-            }),
-            use_container_width=True, hide_index=True,
-        )
-
-    # --- Actualités récentes (densité v3, pas de divider) ---
+    # ─── Actualités récentes (pleine largeur) ───
     news = get_company_news(ticker, limit=8)
     if not news.empty:
         section_heading("Actualités récentes", spacing="loose")
