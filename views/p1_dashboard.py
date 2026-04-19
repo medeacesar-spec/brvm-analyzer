@@ -148,42 +148,88 @@ def _render_top5(df: pd.DataFrame, label: str):
 
     col_up, col_dn = st.columns(2)
 
-    def _render_list(rows: pd.DataFrame, heading: str, empty_msg: str):
+    def _render_list(rows: pd.DataFrame, title: str, tone: str, empty_msg: str,
+                     arrow: str, key_prefix: str):
+        """Rend une card bordée avec titre dot + liste compact des variations.
+        tone : "up" ou "down" pour la couleur du dot et du tag variation."""
+        count = len(rows)
+        header_color = "var(--up)" if tone == "up" else "var(--down)"
+        # Titre de section bold avec flèche + compteur en sub-ligne
         st.markdown(
-            f'<div class="label-xs">{heading}</div>'
-            f'<div style="font-size:11px;color:var(--ink-3);margin-bottom:8px;">'
-            f'Top {min(5, max(1, len(rows)))} plus fortes variations</div>',
+            f"<div style='display:flex;align-items:baseline;gap:10px;"
+            f"margin-bottom:10px;'>"
+            f"<div style='font-size:17px;font-weight:600;color:var(--ink);"
+            f"letter-spacing:-0.01em;'>"
+            f"<span style='color:{header_color};font-size:18px;'>{arrow}</span> "
+            f"{title}</div>"
+            f"<div style='color:var(--ink-3);font-size:12px;'>Top {count if count else 0}</div>"
+            f"</div>",
             unsafe_allow_html=True,
         )
         if rows.empty:
-            st.caption(empty_msg)
+            st.markdown(
+                f"<div style='padding:20px 14px;background:var(--bg-elev);"
+                f"border:1px solid var(--border);border-radius:10px;"
+                f"color:var(--ink-3);font-size:13px;text-align:center;'>"
+                f"{empty_msg}</div>",
+                unsafe_allow_html=True,
+            )
             return
-        for _, r in rows.iterrows():
-            a, b, c, d = st.columns([3, 1, 1, 0.5])
-            a.markdown(
-                f"<div style='padding:6px 0;'><b>{r['name']}</b> "
-                f"{ticker_chip(r['ticker'])}</div>",
-                unsafe_allow_html=True,
+
+        inner = ""
+        for i, r in rows.iterrows():
+            # Variation + couleur
+            var = r["variation"]
+            var_color = header_color
+            sign = "+" if var >= 0 else ""
+            # Chaque ligne : nom (gauche, plus gros), prix + var (droite)
+            inner += (
+                f"<div style='display:flex;align-items:center;justify-content:space-between;"
+                f"gap:12px;padding:10px 14px;border-bottom:1px solid var(--border);'>"
+                # Gauche : nom + ticker chip
+                f"<div style='min-width:0;flex:1;'>"
+                f"<div style='font-size:14px;font-weight:600;color:var(--ink);"
+                f"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>"
+                f"{r['name']}</div>"
+                f"<div style='margin-top:2px;'>{ticker_chip(r['ticker'])}</div>"
+                f"</div>"
+                # Droite : prix + variation
+                f"<div style='text-align:right;flex-shrink:0;'>"
+                f"<div style='font-size:15px;font-weight:600;color:var(--ink);"
+                f"font-variant-numeric:tabular-nums;letter-spacing:-0.01em;'>"
+                f"{r['price']:,.0f}</div>"
+                f"<div style='font-size:13px;font-weight:600;color:{var_color};"
+                f"font-variant-numeric:tabular-nums;margin-top:2px;'>"
+                f"{sign}{var:.2f}%</div>"
+                f"</div>"
+                f"</div>"
             )
-            b.markdown(
-                f"<div style='text-align:right;font-variant-numeric:tabular-nums;padding:6px 0;'>"
-                f"{r['price']:,.0f}</div>",
-                unsafe_allow_html=True,
-            )
-            c.markdown(
-                f"<div style='text-align:right;padding:6px 0;'>{delta(r['variation'])}</div>",
-                unsafe_allow_html=True,
-            )
-            with d:
-                ticker_analyze_button(
-                    r["ticker"], label="🔍",
-                    key=f"dash_{heading[:2]}_{label}_{r['ticker']}",
-                )
+        # Card bordée
+        st.markdown(
+            f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
+            f"border-radius:10px;overflow:hidden;'>{inner}</div>",
+            unsafe_allow_html=True,
+        )
+
+        # Boutons "ouvrir l'analyse" SOUS la card (petit + discret)
+        if count:
+            btn_cols = st.columns(count)
+            for i, (_, r) in enumerate(rows.iterrows()):
+                with btn_cols[i]:
+                    ticker_analyze_button(
+                        r["ticker"],
+                        key=f"dash_{key_prefix}_{label}_{r['ticker']}",
+                        use_container_width=True,
+                    )
 
     with col_up:
-        _render_list(positive, f"↗ HAUSSES {label.upper()}", "Aucune hausse")
+        _render_list(positive, "Hausses", tone="up", arrow="↗",
+                     empty_msg="Aucune hausse sur la période",
+                     key_prefix="up")
     with col_dn:
-        _render_list(negative, f"↘ BAISSES {label.upper()}", "Aucune baisse")
+        _render_list(negative, "Baisses", tone="down", arrow="↘",
+                     empty_msg="Aucune baisse sur la période",
+                     key_prefix="dn")
 
 
 @st.cache_data(ttl=300, show_spinner=False)
