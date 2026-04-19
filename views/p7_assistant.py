@@ -20,28 +20,18 @@ from utils.nav import ticker_analyze_button
 
 
 def render():
-    st.markdown('<div class="main-header">🤖 Assistant Investisseur</div>', unsafe_allow_html=True)
-    st.markdown(
-        '<div class="sub-header">Repondez aux questions ci-dessous pour obtenir des recommandations personnalisees</div>',
-        unsafe_allow_html=True,
-    )
+    from utils.ui_helpers import section_heading
 
-    # Check if we have data (fundamentals OR market data)
+    # Data availability check
     df_fund = get_all_fundamentals()
     all_stocks = get_all_stocks_for_analysis()
-
     if df_fund.empty and all_stocks.empty:
         st.warning("Aucune donnée disponible. Lancez l'enrichissement ou importez des fichiers Excel.")
         return
-
-    # Use all_stocks if fundamentals are limited
     if len(all_stocks) > len(df_fund):
         df_fund = all_stocks
 
-    # Load existing profile if any
     existing_profile = get_investor_profile()
-
-    # ─── STEP MANAGEMENT ───
     if "assistant_step" not in st.session_state:
         st.session_state.assistant_step = 1
     if "assistant_profile" not in st.session_state:
@@ -49,72 +39,128 @@ def render():
 
     step = st.session_state.assistant_step
     profile = st.session_state.assistant_profile
+    total_steps = 5
+    step_shown = min(step, total_steps)
 
-    # Progress bar
-    total_steps = 6  # 5 questions + results
-    st.progress(min(step / total_steps, 1.0), text=f"Etape {min(step, 5)}/5")
-
-    # Reset button
-    if step > 1:
-        if st.button("🔄 Recommencer"):
-            st.session_state.assistant_step = 1
-            st.session_state.assistant_profile = {}
-            st.rerun()
-
-    st.markdown("---")
-
-    # ─── STEP 1: RISK PROFILE ───
-    if step == 1:
-        st.subheader("1️⃣ Quel est votre profil de risque ?")
+    # ═══════════════════════════════════════════════════════════════════
+    # Header : title + subtitle + "Étape X / 5" (aligné à droite)
+    # ═══════════════════════════════════════════════════════════════════
+    col_h, col_step = st.columns([5, 1])
+    with col_h:
+        st.title("Assistant Investisseur")
+        st.caption(f"{total_steps} étapes · recommandations personnalisées")
+    with col_step:
         st.markdown(
-            "Cela détermine le type de titres qui vous seront recommandés "
-            "et le niveau de risque acceptable."
+            f"<div style='text-align:right;padding-top:20px;color:var(--ink-3);"
+            f"font-size:12.5px;'>Étape {step_shown} / {total_steps}</div>",
+            unsafe_allow_html=True,
         )
 
-        col1, col2, col3 = st.columns(3)
+    # Progress bar (fine, primary color)
+    pct = step_shown / total_steps
+    st.markdown(
+        f"<div style='height:3px;background:var(--bg-sunken);border-radius:999px;"
+        f"margin:4px 0 18px 0;overflow:hidden;'>"
+        f"<div style='width:{pct*100:.0f}%;height:100%;background:var(--primary);'></div>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
 
-        with col1:
-            st.markdown("### 🛡️ Prudent")
-            st.markdown(
-                "- Priorité à la **sécurité du capital**\n"
-                "- Recherche de **dividendes reguliers**\n"
-                "- Faible tolérance aux pertes\n"
-                "- Titres solides à faible volatilité"
+    # Reset button (discrète, droite)
+    if step > 1 and step <= total_steps:
+        col_r1, col_r2 = st.columns([5, 1])
+        with col_r2:
+            if st.button("Recommencer", key="assistant_reset",
+                           use_container_width=True):
+                st.session_state.assistant_step = 1
+                st.session_state.assistant_profile = {}
+                st.rerun()
+
+    # ─── STEP 1 : RISK PROFILE — 3 cards éditoriales ──────────────────
+    if step == 1:
+        st.markdown(
+            "<div style='font-size:17px;font-weight:600;color:var(--ink);"
+            "letter-spacing:-0.01em;margin-bottom:4px;'>"
+            "Quel est votre profil de risque ?</div>"
+            "<div style='font-size:13px;color:var(--ink-3);margin-bottom:18px;'>"
+            "Cela détermine le type de titres recommandés et le niveau de risque acceptable."
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+        current_choice = profile.get("risk_profile")
+
+        def _profile_card(key_val, title, subtitle, tags, selected, btn_key):
+            selected_border = "var(--primary)" if selected else "var(--border)"
+            selected_bg = "var(--primary-bg)" if selected else "var(--bg-elev)"
+            # Tags en ligne
+            tags_html = "".join(
+                f"<span style='display:inline-block;background:var(--bg-sunken);"
+                f"color:var(--ink-2);padding:3px 8px;border-radius:4px;"
+                f"font-size:10.5px;font-weight:500;letter-spacing:0.02em;"
+                f"text-transform:uppercase;margin:2px 4px 2px 0;'>{t}</span>"
+                for t in tags
             )
-            if st.button("Choisir Prudent", key="risk_prudent", use_container_width=True):
+            st.markdown(
+                f"<div style='background:{selected_bg};border:2px solid {selected_border};"
+                f"border-radius:10px;padding:18px 20px;min-height:190px;'>"
+                f"<div style='font-size:18px;font-weight:600;color:var(--ink);"
+                f"letter-spacing:-0.01em;margin-bottom:4px;'>{title}</div>"
+                f"<div style='font-size:13px;color:var(--ink-3);margin-bottom:14px;'>{subtitle}</div>"
+                f"<div style='margin-bottom:14px;'>{tags_html}</div>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            _profile_card(
+                "prudent", "Prudent",
+                "Sécurité du capital, dividendes réguliers",
+                ["Faible volatilité", "Yield > 5%", "Banques / util."],
+                selected=(current_choice == "prudent"),
+                btn_key="risk_prudent",
+            )
+            label = "✓ Sélectionné" if current_choice == "prudent" else "Choisir"
+            btype = "primary" if current_choice == "prudent" else "secondary"
+            if st.button(label, key="risk_prudent", type=btype, use_container_width=True):
                 profile["risk_profile"] = "prudent"
                 st.session_state.assistant_step = 2
                 st.rerun()
 
         with col2:
-            st.markdown("### ⚖️ Equilibre")
-            st.markdown(
-                "- **Compromis** rendement / risque\n"
-                "- Mix dividendes + **croissance modérée**\n"
-                "- Tolérance moyenne aux fluctuations\n"
-                "- Diversification sectorielle"
+            _profile_card(
+                "equilibre", "Équilibré",
+                "Mix dividendes + croissance modérée",
+                ["Yield 3-6%", "Diversification", "Horizon 3-5 ans"],
+                selected=(current_choice == "equilibre"),
+                btn_key="risk_balanced",
             )
-            if st.button("Choisir Equilibre", key="risk_balanced", use_container_width=True):
+            label = "✓ Sélectionné" if current_choice == "equilibre" else "Choisir"
+            btype = "primary" if current_choice == "equilibre" else "secondary"
+            if st.button(label, key="risk_balanced", type=btype, use_container_width=True):
                 profile["risk_profile"] = "equilibre"
                 st.session_state.assistant_step = 2
                 st.rerun()
 
         with col3:
-            st.markdown("### 🚀 Dynamique")
-            st.markdown(
-                "- Recherche de **forte croissance**\n"
-                "- Accepte une **volatilité élevée**\n"
-                "- Horizon long terme\n"
-                "- Titres à fort potentiel d'appréciation"
+            _profile_card(
+                "dynamique", "Dynamique",
+                "Forte croissance, volatilité acceptée",
+                ["Momentum", "Horizon long", "Small caps"],
+                selected=(current_choice == "dynamique"),
+                btn_key="risk_dynamic",
             )
-            if st.button("Choisir Dynamique", key="risk_dynamic", use_container_width=True):
+            label = "✓ Sélectionné" if current_choice == "dynamique" else "Choisir"
+            btype = "primary" if current_choice == "dynamique" else "secondary"
+            if st.button(label, key="risk_dynamic", type=btype, use_container_width=True):
                 profile["risk_profile"] = "dynamique"
                 st.session_state.assistant_step = 2
                 st.rerun()
 
     # ─── STEP 2: INVESTMENT HORIZON ───
     elif step == 2:
-        st.subheader("2️⃣ Quel est votre horizon d'investissement ?")
+        st.markdown("<div style='font-size:17px;font-weight:600;color:var(--ink);letter-spacing:-0.01em;margin-bottom:14px;'>Quel est votre horizon d'investissement ?</div>", unsafe_allow_html=True)
         _show_profile_badge(profile)
 
         col1, col2, col3 = st.columns(3)
@@ -145,7 +191,7 @@ def render():
 
     # ─── STEP 3: BUDGET ───
     elif step == 3:
-        st.subheader("3️⃣ Quel montant souhaitez-vous investir ?")
+        st.markdown("<div style='font-size:17px;font-weight:600;color:var(--ink);letter-spacing:-0.01em;margin-bottom:14px;'>Quel montant souhaitez-vous investir ?</div>", unsafe_allow_html=True)
         _show_profile_badge(profile)
 
         budget = st.number_input(
@@ -165,7 +211,7 @@ def render():
 
     # ─── STEP 4: SECTOR PREFERENCES ───
     elif step == 4:
-        st.subheader("4️⃣ Quels secteurs vous interessent ?")
+        st.markdown("<div style='font-size:17px;font-weight:600;color:var(--ink);letter-spacing:-0.01em;margin-bottom:14px;'>Quels secteurs vous intéressent ?</div>", unsafe_allow_html=True)
         _show_profile_badge(profile)
 
         st.markdown("Sélectionnez les secteurs dans lesquels vous souhaitez investir. "
@@ -211,13 +257,13 @@ def render():
 
     # ─── STEP 5: OBJECTIVE ───
     elif step == 5:
-        st.subheader("5️⃣ Quel est votre objectif principal ?")
+        st.markdown("<div style='font-size:17px;font-weight:600;color:var(--ink);letter-spacing:-0.01em;margin-bottom:14px;'>Quel est votre objectif principal ?</div>", unsafe_allow_html=True)
         _show_profile_badge(profile)
 
         col1, col2, col3 = st.columns(3)
 
         with col1:
-            st.markdown("### 💰 Rendement")
+            st.markdown("<div style='font-size:16px;font-weight:600;color:var(--ink);margin-bottom:4px;'>Rendement</div>", unsafe_allow_html=True)
             st.markdown(
                 "Maximiser les **dividendes**\n\n"
                 "- Dividend Yield élevé\n"
@@ -241,7 +287,7 @@ def render():
                 _finalize(profile, df_fund)
 
         with col3:
-            st.markdown("### 🎯 Mixte")
+            st.markdown("<div style='font-size:16px;font-weight:600;color:var(--ink);margin-bottom:4px;'>Mixte</div>", unsafe_allow_html=True)
             st.markdown(
                 "**Equilibre** dividendes + croissance\n\n"
                 "- Score hybride global\n"
@@ -282,7 +328,7 @@ def _show_profile_badge(profile):
 
 def _show_results(profile, df_fund):
     """Affiche les résultats et recommandations personnalisées."""
-    st.subheader("🎯 Vos recommandations personnalisees")
+    section_heading("Vos recommandations personnalisées", spacing="loose")
     _show_profile_badge(profile)
     st.markdown("---")
 
@@ -361,7 +407,7 @@ def _show_results(profile, df_fund):
             st.markdown("---")
 
     # ─── ALLOCATION SUMMARY ───
-    st.subheader("📊 Allocation recommandée")
+    section_heading("Allocation recommandée", spacing="loose")
 
     col_alloc, col_pie = st.columns([1, 1])
 

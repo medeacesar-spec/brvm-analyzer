@@ -68,97 +68,120 @@ def _load_all_stocks_dict() -> dict:
 
 
 def render():
-    from utils.ui_helpers import section_heading
-    st.title("Portefeuille")
-    st.caption("Gestion des positions, allocation et performance")
-
     portfolio = get_portfolio()
 
-    # --- Import from screenshot (si OCR dispo sur l'instance) ---
-    if _ocr_available():
-        with st.expander("Importer depuis un screenshot SGI", expanded=False):
-            st.markdown(
-                "Uploadez une capture d'écran de votre portefeuille SGI "
-                "(**max 1 Mo**, format PNG/JPG). L'application analyse l'image "
-                "et extrait automatiquement vos positions. La photo est "
-                "supprimée dès que l'OCR a tourné."
-            )
-
-            # Nonce dans la clé pour pouvoir reset le file_uploader après extraction
-            _uploader_nonce = st.session_state.get("sgi_uploader_nonce", 0)
-            screenshot = st.file_uploader(
-                "Screenshot du portefeuille SGI (max 1 Mo)",
-                type=["png", "jpg", "jpeg"],
-                key=f"sgi_screenshot_{_uploader_nonce}",
-            )
-
-            if screenshot is not None:
-                # Limite de taille : 1 Mo
-                MAX_BYTES = 1 * 1024 * 1024
-                size = getattr(screenshot, "size", None) or len(screenshot.getvalue())
-                if size > MAX_BYTES:
-                    st.error(
-                        f"⚠️ Image trop lourde ({size/1024:.0f} Ko). "
-                        "Limite : 1 Mo. Réduisez la résolution du screenshot."
-                    )
-                else:
-                    with st.spinner("Analyse de l'image (OCR)…"):
-                        extracted = _extract_portfolio_from_image(screenshot)
-                    # Photo éliminée dès l'OCR fini : on reset le file_uploader
-                    # en incrémentant le nonce (la clé change → widget vidé).
-                    st.session_state["sgi_uploader_nonce"] = _uploader_nonce + 1
-                    if extracted:
-                        st.success(f"✅ {len(extracted)} position(s) détectée(s)")
-                        _render_extracted_positions(extracted, load_tickers())
-                    else:
-                        st.warning(
-                            "L'extraction automatique n'a pas détecté de positions. "
-                            "Saisissez manuellement :"
-                        )
-                        _render_batch_input(load_tickers())
-                    # On ne conserve pas l'image en session_state : une fois
-                    # l'OCR fait, le fichier original disparaît de la mémoire.
-
-    # --- Add position ---
-    with st.expander("Ajouter une position", expanded=portfolio.empty):
-        tickers_data = load_tickers()
-        options = [f"{t['ticker']} - {t['name']}" for t in tickers_data]
-
-        with st.form("add_position"):
-            col1, col2, col3, col4 = st.columns(4)
-            selection = col1.selectbox("Titre", options)
-            quantity = col2.number_input("Quantité", min_value=1, value=10)
-            avg_price = col3.number_input("Prix moyen d'achat (FCFA)", min_value=1, value=1000)
-            purchase_date = col4.date_input("Date d'achat")
-
-            notes = st.text_input("Notes (optionnel)")
-            submitted = st.form_submit_button("Ajouter", type="primary")
-
-            if submitted:
-                ticker = selection.split(" - ")[0]
-                name = selection.split(" - ")[1] if " - " in selection else ""
-                save_position(ticker, name, quantity, avg_price, str(purchase_date), notes)
-                st.success("Position ajoutée")
-                st.rerun()
-
-    # --- Cash disponible (persistant en DB) ---
-    # Load from DB once per session; subsequent widget edits update both DB and session state
+    # Load cash from DB once per session
     if "portfolio_cash" not in st.session_state:
         st.session_state.portfolio_cash = get_portfolio_cash()
 
-    with st.expander("Cash disponible", expanded=False):
-        cash = st.number_input(
-            f"Liquidités disponibles ({CURRENCY})",
-            min_value=0.0, value=float(st.session_state.portfolio_cash),
-            step=100000.0, format="%.0f", key="cash_input",
-        )
-        if cash != st.session_state.portfolio_cash:
-            st.session_state.portfolio_cash = cash
-            set_portfolio_cash(cash)
-            st.caption("Cash enregistré")
+    # ═══════════════════════════════════════════════════════════════════
+    # Header row : Title + subtitle (gauche) · Actions (droite)
+    # ═══════════════════════════════════════════════════════════════════
+    n_pos = len(portfolio)
+    # Date range : min(purchase_date) → aujourd'hui
+    from datetime import datetime as _dtm
+    today_str = _dtm.now().strftime("%d/%m/%Y")
+    if n_pos > 0 and "purchase_date" in portfolio.columns:
+        try:
+            _min_d = pd.to_datetime(portfolio["purchase_date"]).min()
+            subtitle = (
+                f"{n_pos} position{'s' if n_pos > 1 else ''} · "
+                f"relevé du {_min_d.strftime('%d/%m/%Y')} au {today_str}"
+            )
+        except Exception:
+            subtitle = f"{n_pos} position{'s' if n_pos > 1 else ''} · relevé au {today_str}"
+    else:
+        subtitle = "Aucune position · commencez par ajouter votre première"
+
+    col_head, col_actions = st.columns([4, 2])
+    with col_head:
+        st.title("Portefeuille")
+        st.caption(subtitle)
+    with col_actions:
+        st.markdown("<div style='padding-top:8px;'></div>", unsafe_allow_html=True)
+        col_a1, col_a2 = st.columns(2)
+        with col_a1:
+            show_import = st.button("Importer relevé", use_container_width=True,
+                                      key="pf_btn_import")
+        with col_a2:
+            show_add = st.button("Ajouter position", type="primary",
+                                   use_container_width=True, key="pf_btn_add")
+
+    # ─── Panneau Ajouter (s'ouvre quand bouton cliqué ou portfolio vide) ──
+    if show_add or st.session_state.get("pf_add_open"):
+        st.session_state["pf_add_open"] = True
+        with st.container():
+            st.markdown(
+                "<div style='background:var(--bg-elev);border:1px solid var(--border);"
+                "border-radius:10px;padding:14px 16px;margin:10px 0;'>",
+                unsafe_allow_html=True,
+            )
+            tickers_data = load_tickers()
+            options = [f"{t['ticker']} - {t['name']}" for t in tickers_data]
+            with st.form("add_position"):
+                col1, col2, col3, col4 = st.columns(4)
+                selection = col1.selectbox("Titre", options)
+                quantity = col2.number_input("Quantité", min_value=1, value=10)
+                avg_price = col3.number_input(f"PRU ({CURRENCY})", min_value=1, value=1000)
+                purchase_date = col4.date_input("Date d'achat")
+                notes = st.text_input("Notes (optionnel)")
+                col_s, col_c = st.columns(2)
+                submitted = col_s.form_submit_button("Enregistrer", type="primary",
+                                                       use_container_width=True)
+                if col_c.form_submit_button("Annuler", use_container_width=True):
+                    st.session_state["pf_add_open"] = False
+                    st.rerun()
+                if submitted:
+                    ticker = selection.split(" - ")[0]
+                    name = selection.split(" - ")[1] if " - " in selection else ""
+                    save_position(ticker, name, quantity, avg_price, str(purchase_date), notes)
+                    st.session_state["pf_add_open"] = False
+                    st.rerun()
+            st.markdown("</div>", unsafe_allow_html=True)
+
+    # ─── Panneau Import OCR (si bouton cliqué + OCR disponible) ──
+    if show_import or st.session_state.get("pf_import_open"):
+        st.session_state["pf_import_open"] = True
+        if _ocr_available():
+            st.markdown(
+                "<div style='background:var(--bg-elev);border:1px solid var(--border);"
+                "border-radius:10px;padding:14px 16px;margin:10px 0;'>"
+                "<div style='font-size:14px;font-weight:600;margin-bottom:8px;'>Importer depuis un screenshot SGI</div>"
+                "<div style='font-size:12.5px;color:var(--ink-3);margin-bottom:10px;'>"
+                "Max 1 Mo. Format PNG/JPG. La photo est supprimée après OCR."
+                "</div>",
+                unsafe_allow_html=True,
+            )
+            _uploader_nonce = st.session_state.get("sgi_uploader_nonce", 0)
+            screenshot = st.file_uploader(
+                "Screenshot", type=["png", "jpg", "jpeg"],
+                key=f"sgi_screenshot_{_uploader_nonce}",
+                label_visibility="collapsed",
+            )
+            if screenshot is not None:
+                MAX_BYTES = 1 * 1024 * 1024
+                size = getattr(screenshot, "size", None) or len(screenshot.getvalue())
+                if size > MAX_BYTES:
+                    st.error(f"Image trop lourde ({size/1024:.0f} Ko). Max : 1 Mo.")
+                else:
+                    with st.spinner("Analyse OCR…"):
+                        extracted = _extract_portfolio_from_image(screenshot)
+                    st.session_state["sgi_uploader_nonce"] = _uploader_nonce + 1
+                    if extracted:
+                        st.success(f"{len(extracted)} position(s) détectée(s)")
+                        _render_extracted_positions(extracted, load_tickers())
+                    else:
+                        st.warning("Aucune position détectée. Saisie manuelle :")
+                        _render_batch_input(load_tickers())
+            if st.button("Fermer", key="pf_import_close"):
+                st.session_state["pf_import_open"] = False
+                st.rerun()
+            st.markdown("</div>", unsafe_allow_html=True)
+        else:
+            st.info("OCR non disponible sur cette instance.")
 
     if portfolio.empty:
-        st.info("Aucune position en portefeuille. Ajoutez votre première position ci-dessus.")
+        st.info("Aucune position en portefeuille. Cliquez sur **Ajouter position** en haut.")
         return
 
     # --- Portfolio summary (pas de divider — la hiérarchie suffit) ---
@@ -195,71 +218,200 @@ def render():
     portfolio["pnl"] = portfolio["current_value"] - portfolio["invested"]
     portfolio["pnl_pct"] = portfolio["pnl"] / portfolio["invested"] * 100
 
-    # --- KPIs ---
+    # ═══════════════════════════════════════════════════════════════════
+    # 4 KPI cards : Valeur totale / P&L cumulé / Yield pondéré / Positions
+    # ═══════════════════════════════════════════════════════════════════
     cash = st.session_state.portfolio_cash
     total_invested = portfolio["invested"].sum()
     total_value = portfolio["current_value"].sum()
     total_pnl = total_value - total_invested
     total_pnl_pct = (total_pnl / total_invested * 100) if total_invested > 0 else 0
-    total_portfolio = total_value + cash  # Valeur totale = actions + cash
+    total_portfolio = total_value + cash
 
-    col1, col2, col3, col4, col5 = st.columns(5)
-    col1.metric("Investissement total", f"{total_invested:,.0f} {CURRENCY}")
-    col2.metric("Valeur titres", f"{total_value:,.0f} {CURRENCY}")
-    col3.metric("P&L", f"{total_pnl:,.0f} {CURRENCY}", delta=f"{total_pnl_pct:.1f}%")
-    col4.metric("Cash disponible", f"{cash:,.0f} {CURRENCY}")
-    col5.metric("Valeur totale", f"{total_portfolio:,.0f} {CURRENCY}")
-
-    # --- Projected dividends (batch via all_stocks dict, 1 requete) ---
     _stocks_dict = _load_all_stocks_dict()
     total_div = 0
     for _, pos in portfolio.iterrows():
         fund = _stocks_dict.get(pos["ticker"])
         if fund and fund.get("dps"):
             total_div += fund["dps"] * pos["quantity"]
+    yield_weighted = (total_div / total_value * 100) if total_value > 0 else 0
 
-    if total_div > 0:
-        div_yield_pf = (total_div / total_value * 100) if total_value > 0 else 0
-        st.markdown(
-            f"<div style='background:var(--primary-bg);border:1px solid var(--primary);"
-            f"border-radius:10px;padding:10px 14px;margin-top:10px;font-size:13px;"
-            f"color:var(--primary-2);'>"
-            f"Dividendes projetés : <b style='font-variant-numeric:tabular-nums;'>"
-            f"{total_div:,.0f} {CURRENCY}</b> "
-            f"<span style='color:var(--ink-3);'>· rendement portefeuille </span>"
-            f"<b>{div_yield_pf:.1f}%</b></div>",
-            unsafe_allow_html=True,
+    # Nombre de secteurs
+    tickers_data = load_tickers()
+    ticker_to_sector = {t["ticker"]: t["sector"] for t in tickers_data}
+    portfolio["sector"] = portfolio["ticker"].map(ticker_to_sector).fillna("Autre")
+    n_sectors = portfolio["sector"].nunique()
+
+    # Yield marché de référence (approx 4.1% pour BRVM)
+    MARKET_YIELD_REF = 4.1
+
+    def _kpi_card(label, value, sub, tone="neutral"):
+        arrow = {"up": "▲", "down": "▼"}.get(tone, "")
+        sub_color = {"up": "var(--up)", "down": "var(--down)"}.get(tone, "var(--ink-3)")
+        return (
+            f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
+            f"border-radius:10px;padding:14px 16px;min-height:92px;'>"
+            f"<div class='label-xs' style='margin-bottom:6px;'>{label}</div>"
+            f"<div style='font-size:22px;font-weight:600;letter-spacing:-0.02em;"
+            f"color:var(--ink);font-variant-numeric:tabular-nums;line-height:1.15;'>{value}</div>"
+            f"<div style='font-size:11.5px;color:{sub_color};margin-top:6px;font-weight:500;'>"
+            f"{arrow + ' ' if arrow else '— '}{sub}</div>"
+            f"</div>"
         )
 
-    # Positions
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.markdown(_kpi_card("Valeur totale", f"{total_portfolio:,.0f}", CURRENCY),
+                     unsafe_allow_html=True)
+    with c2:
+        pnl_sign = "−" if total_pnl < 0 else "+"
+        pnl_str = f"{pnl_sign}{abs(total_pnl):,.0f}"
+        pnl_sub = f"{'−' if total_pnl_pct < 0 else '+'}{abs(total_pnl_pct):.2f}%"
+        pnl_tone = "up" if total_pnl >= 0 else "down"
+        st.markdown(_kpi_card("P&L cumulé", pnl_str, pnl_sub, pnl_tone),
+                     unsafe_allow_html=True)
+    with c3:
+        yield_tone = "up" if yield_weighted >= MARKET_YIELD_REF else "down"
+        yield_sub = f"vs {MARKET_YIELD_REF:.1f}% marché"
+        st.markdown(_kpi_card("Yield pondéré", f"{yield_weighted:.2f}%", yield_sub, yield_tone),
+                     unsafe_allow_html=True)
+    with c4:
+        st.markdown(_kpi_card("Positions", str(len(portfolio)),
+                                f"{n_sectors} secteur{'s' if n_sectors > 1 else ''}"),
+                     unsafe_allow_html=True)
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Tableau Positions editorial
+    # ═══════════════════════════════════════════════════════════════════
     section_heading("Positions", spacing="loose")
 
+    header_style = (
+        "font-size:10.5px;text-transform:uppercase;letter-spacing:0.08em;"
+        "color:var(--ink-3);font-weight:500;padding:9px 10px;"
+        "border-bottom:1px solid var(--border);background:var(--bg-sunken);"
+    )
+    cell_style = "padding:10px;font-size:13px;border-bottom:1px solid var(--border);"
+    num_style = cell_style + "text-align:right;font-variant-numeric:tabular-nums;"
+
+    rows_html = (
+        f"<tr>"
+        f"<th style='{header_style};text-align:left;'>Ticker</th>"
+        f"<th style='{header_style};text-align:left;'>Nom</th>"
+        f"<th style='{header_style};text-align:right;'>Qté</th>"
+        f"<th style='{header_style};text-align:right;'>PRU</th>"
+        f"<th style='{header_style};text-align:right;'>Cours</th>"
+        f"<th style='{header_style};text-align:right;'>P&L</th>"
+        f"<th style='{header_style};text-align:right;'>Poids</th>"
+        f"<th style='{header_style};text-align:right;'>Yield</th>"
+        f"</tr>"
+    )
     for _, pos in portfolio.iterrows():
-        col1, col2, col3, col4, col5, col6, col7, col8 = st.columns([2, 1, 1, 1, 1, 1, 0.5, 0.5])
-        col1.write(f"**{pos['company_name']}** · {pos['ticker']}")
-        col2.write(f"{pos['quantity']:.0f} titres")
-        col3.write(f"PRU {pos['avg_price']:,.0f}")
-        col4.write(f"Investi {pos['invested']:,.0f}")
-        if pd.notna(pos.get("current_price")):
-            col5.write(f"Actuel {pos['current_price']:,.0f}")
-            from utils.ui_helpers import delta as _delta
-            col6.markdown(
-                f"<span style='font-variant-numeric:tabular-nums'>"
-                f"{pos['pnl']:+,.0f}</span> "
-                + _delta(pos['pnl_pct'], with_arrow=False),
-                unsafe_allow_html=True,
-            )
+        poids_pct = (pos["current_value"] / total_value * 100) if total_value else 0
+        fund = _stocks_dict.get(pos["ticker"]) or {}
+        dps = fund.get("dps") or 0
+        yield_pos = (dps / pos["current_price"] * 100) if pos.get("current_price") else 0
+        pnl = pos.get("pnl")
+        if pd.notna(pos.get("current_price")) and pnl is not None:
+            pnl_sign = "−" if pnl < 0 else "+"
+            pnl_str = f"{pnl_sign}{abs(pnl):,.0f}"
+            pnl_color = "var(--up)" if pnl >= 0 else "var(--down)"
         else:
-            col5.write("Prix N/A")
-            col6.write("—")
-        with col7:
-            ticker_analyze_button(
-                pos["ticker"],
-                key=f"pf_goto_{pos['id']}", help_text=f"Analyser {pos['ticker']}",
-            )
-        if col8.button("Suppr.", key=f"del_{pos['id']}", help="Supprimer la position"):
-            delete_position(pos["id"])
-            st.rerun()
+            pnl_str = "—"
+            pnl_color = "var(--ink-3)"
+
+        rows_html += (
+            f"<tr>"
+            f"<td style='{cell_style}'><span class='ticker'>{pos['ticker']}</span></td>"
+            f"<td style='{cell_style};font-weight:500;'>{pos['company_name']}</td>"
+            f"<td style='{num_style}'>{pos['quantity']:,.0f}</td>"
+            f"<td style='{num_style}'>{pos['avg_price']:,.0f}</td>"
+            f"<td style='{num_style}'>"
+            f"{f'{pos[chr(34)+chr(34)+chr(34)+chr(34)]}'}"  # placeholder to avoid key issues
+            f"</td>"
+            f"<td style='{num_style};color:{pnl_color};font-weight:600;'>{pnl_str}</td>"
+            f"<td style='{num_style}'>{poids_pct:.1f}%</td>"
+            f"<td style='{num_style}'>{yield_pos:.2f}%</td>"
+            f"</tr>"
+        )
+
+    # Fix: build the cours cell separately since f-string chr hack is messy
+    # Rebuild rows cleanly :
+    rows_html = (
+        f"<tr>"
+        f"<th style='{header_style};text-align:left;'>Ticker</th>"
+        f"<th style='{header_style};text-align:left;'>Nom</th>"
+        f"<th style='{header_style};text-align:right;'>Qté</th>"
+        f"<th style='{header_style};text-align:right;'>PRU</th>"
+        f"<th style='{header_style};text-align:right;'>Cours</th>"
+        f"<th style='{header_style};text-align:right;'>P&L</th>"
+        f"<th style='{header_style};text-align:right;'>Poids</th>"
+        f"<th style='{header_style};text-align:right;'>Yield</th>"
+        f"</tr>"
+    )
+    for _, pos in portfolio.iterrows():
+        poids_pct = (pos["current_value"] / total_value * 100) if total_value else 0
+        fund = _stocks_dict.get(pos["ticker"]) or {}
+        dps = fund.get("dps") or 0
+        cur_price = pos.get("current_price")
+        yield_pos = (dps / cur_price * 100) if cur_price else 0
+        pnl = pos.get("pnl")
+        cur_str = f"{cur_price:,.0f}" if pd.notna(cur_price) else "—"
+        if pd.notna(cur_price) and pnl is not None:
+            pnl_sign = "−" if pnl < 0 else "+"
+            pnl_str = f"{pnl_sign}{abs(pnl):,.0f}"
+            pnl_color = "var(--up)" if pnl >= 0 else "var(--down)"
+        else:
+            pnl_str = "—"
+            pnl_color = "var(--ink-3)"
+
+        rows_html += (
+            f"<tr>"
+            f"<td style='{cell_style}'><span class='ticker'>{pos['ticker']}</span></td>"
+            f"<td style='{cell_style};font-weight:500;'>{pos['company_name']}</td>"
+            f"<td style='{num_style}'>{pos['quantity']:,.0f}</td>"
+            f"<td style='{num_style}'>{pos['avg_price']:,.0f}</td>"
+            f"<td style='{num_style}'>{cur_str}</td>"
+            f"<td style='{num_style};color:{pnl_color};font-weight:600;'>{pnl_str}</td>"
+            f"<td style='{num_style}'>{poids_pct:.1f}%</td>"
+            f"<td style='{num_style}'>{yield_pos:.2f}%</td>"
+            f"</tr>"
+        )
+
+    st.markdown(
+        f"<div style='border:1px solid var(--border);border-radius:10px;"
+        f"overflow:hidden;background:var(--bg-elev);margin-bottom:16px;'>"
+        f"<table style='width:100%;border-collapse:collapse;'>{rows_html}</table></div>",
+        unsafe_allow_html=True,
+    )
+
+    # Actions par ligne : Ouvrir + Supprimer sous le tableau (pour chaque pos)
+    with st.expander("Actions par position", expanded=False):
+        for _, pos in portfolio.iterrows():
+            cols = st.columns([3, 1, 1])
+            cols[0].markdown(f"**{pos['company_name']}** · {pos['ticker']}")
+            with cols[1]:
+                ticker_analyze_button(
+                    pos["ticker"],
+                    key=f"pf_goto_{pos['id']}",
+                    help_text=f"Analyser {pos['ticker']}",
+                    use_container_width=True,
+                )
+            if cols[2].button("Supprimer", key=f"del_{pos['id']}",
+                                use_container_width=True):
+                delete_position(pos["id"])
+                st.rerun()
+
+    # Cash field (always accessible, compact)
+    with st.expander(f"Cash disponible · {cash:,.0f} {CURRENCY}", expanded=False):
+        new_cash = st.number_input(
+            f"Liquidités disponibles ({CURRENCY})",
+            min_value=0.0, value=float(cash),
+            step=100000.0, format="%.0f", key="cash_input",
+        )
+        if new_cash != st.session_state.portfolio_cash:
+            st.session_state.portfolio_cash = new_cash
+            set_portfolio_cash(new_cash)
+            st.caption("Cash enregistré")
 
     # Allocation
     col_pie1, col_pie2 = st.columns(2)
