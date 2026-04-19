@@ -162,7 +162,10 @@ def require_login(feature_name: str = "cette fonctionnalité") -> bool:
 # ─────────────────────────────────────────────────────────────
 
 def _render_login_buttons(container=st.sidebar):
-    """Affiche les boutons de connexion (OAuth et/ou dev)."""
+    """Affiche le bouton de connexion OAuth.
+    Le mode développement a été retiré pour alléger la sidebar ; il reste
+    activable programmatiquement via st.session_state["dev_user_email"]
+    si besoin en dev local (non exposé dans l'UI)."""
     if oauth_enabled():
         if container.button("🔐 Se connecter avec Google",
                             use_container_width=True, key="login_google_btn"):
@@ -172,30 +175,9 @@ def _render_login_buttons(container=st.sidebar):
                 st.error(f"Erreur de connexion : {e}")
     else:
         container.caption(
-            "⚠️ OAuth Google non configuré. Utiliser le mode développement ci-dessous."
+            "⚠️ OAuth Google non configuré. Mode local actif — toutes "
+            "les fonctions admin sont disponibles sans login."
         )
-
-    # Mode dev — affichage direct (pas d'expander pour éviter les conflits CSS)
-    container.markdown("##### 🛠️ Mode développement")
-    container.caption("Simuler un utilisateur sans Google OAuth.")
-    email = container.text_input(
-        "Email simulé",
-        value=st.session_state.get("dev_user_email", ""),
-        key="dev_email_input",
-        placeholder="alice@example.com",
-    )
-    dev_admin = container.checkbox(
-        "👑 Admin (import PDFs, synchro, etc.)",
-        value=False, key="dev_admin_checkbox",
-    )
-    if container.button("✅ Entrer en mode dev", key="dev_login_btn",
-                        use_container_width=True):
-        if email and "@" in email:
-            st.session_state["dev_user_email"] = email.strip().lower()
-            st.session_state["dev_is_admin"] = dev_admin
-            st.rerun()
-        else:
-            container.warning("Entrez une adresse email valide.")
 
 
 def render_auth_widget():
