@@ -4,7 +4,7 @@
 import streamlit as st
 
 
-PAGE_STOCK_ANALYSIS = "🔍 Analyse d'un Titre"
+PAGE_STOCK_ANALYSIS = "Analyse d'un titre"
 
 
 def goto_ticker(ticker: str) -> None:
@@ -18,15 +18,16 @@ def goto_ticker(ticker: str) -> None:
 
 def ticker_analyze_button(
     ticker: str,
-    label: str = "🔍",
+    label: str = None,
     key: str = None,
     help_text: str = None,
     use_container_width: bool = False,
 ) -> bool:
     """Rend un bouton qui, au clic, ouvre la page Analyse sur ce titre."""
     key = key or f"goto_{ticker}"
+    btn_label = label if label is not None else ticker
     if st.button(
-        label,
+        btn_label,
         key=key,
         help=help_text or f"Analyser {ticker}",
         use_container_width=use_container_width,
@@ -36,7 +37,7 @@ def ticker_analyze_button(
     return False
 
 
-def ticker_quick_picker(options: list, key: str = "quick_ticker", label: str = "🔍 Analyser un titre") -> None:
+def ticker_quick_picker(options: list, key: str = "quick_ticker", label: str = "Analyser un titre") -> None:
     """Affiche un selectbox + bouton 'Analyser' pour un gros tableau.
     `options` doit être une liste de (ticker, display_label)."""
     if not options:
