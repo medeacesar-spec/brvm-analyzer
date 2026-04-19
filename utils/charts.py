@@ -302,20 +302,17 @@ def pie_chart(labels: list, values: list, title: str = "") -> go.Figure:
 
 
 def flag_badge(flag: str, label: str) -> str:
-    """Retourne du HTML pour un badge de drapeau coloré."""
-    color_map = {
-        "OK": "#05CD99",
-        "Vigilance": "#FFB547",
-        "Risque": "#EE5D50",
-    }
-    bg_map = {
-        "OK": "rgba(5,205,153,0.12)",
-        "Vigilance": "rgba(255,181,71,0.12)",
-        "Risque": "rgba(238,93,80,0.12)",
-    }
-    color = color_map.get(flag, "#8F9BBA")
-    bg = bg_map.get(flag, "rgba(143,155,186,0.1)")
-    return f'<span style="background:{bg};color:{color};padding:3px 10px;border-radius:8px;font-size:0.85em;font-weight:600;">{flag}</span> {label}'
+    """Badge de drapeau — redirige vers le kit design v2 officiel.
+    flag ∈ {"OK","Vigilance","Risque"} → flag_dot(status) + label."""
+    from utils.ui_helpers import flag_dot
+    status_map = {"OK": "ok", "Vigilance": "warn", "Risque": "risk"}
+    status = status_map.get(flag)
+    if status is None:
+        return f"<span style='color:var(--ink-3)'>{flag}</span> {label}"
+    # flag_dot renvoie déjà "<dot></dot>OK" — on remplace le mot par le label custom
+    # en gardant la pastille colorée.
+    tone_map = {"ok": "up", "warn": "ocre", "risk": "down"}
+    return f'<span class="dot {tone_map[status]}"></span>{flag} — {label}'
 
 
 def stars_display(count, max_stars: int = 5) -> str:

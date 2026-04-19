@@ -39,15 +39,36 @@
 /* App background */
 .stApp { background: var(--bg); }
 
-/* Sidebar */
+/* Sidebar : fond clair, on évite le sélecteur `*` qui casse les icônes et
+   composants Streamlit internes (radio, boutons, inputs ont leur propre logique). */
 section[data-testid="stSidebar"] {
   background: var(--bg-elev);
   border-right: 1px solid var(--border);
 }
-section[data-testid="stSidebar"] * { color: var(--ink-2); }
+section[data-testid="stSidebar"] .stMarkdown,
+section[data-testid="stSidebar"] .stMarkdown p,
+section[data-testid="stSidebar"] .stMarkdown span,
+section[data-testid="stSidebar"] .stMarkdown small,
+section[data-testid="stSidebar"] label,
+section[data-testid="stSidebar"] .stCaption,
+section[data-testid="stSidebar"] .stCaption p,
+section[data-testid="stSidebar"] [data-testid="stMetricLabel"] {
+  color: var(--ink-2) !important;
+}
 section[data-testid="stSidebar"] h1,
 section[data-testid="stSidebar"] h2,
-section[data-testid="stSidebar"] h3 { color: var(--ink); }
+section[data-testid="stSidebar"] h3,
+section[data-testid="stSidebar"] [data-testid="stMetricValue"] {
+  color: var(--ink) !important;
+}
+/* Radio de navigation : un peu plus d'espace + survol crème */
+section[data-testid="stSidebar"] .stRadio label {
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+section[data-testid="stSidebar"] .stRadio label:hover {
+  background: var(--bg-hover);
+}
 
 /* Main container */
 .main .block-container {
@@ -55,16 +76,18 @@ section[data-testid="stSidebar"] h3 { color: var(--ink); }
   max-width: 1400px;
 }
 
-/* Typography system */
-html, body, [class*="css"] {
+/* Typography system — on cible uniquement html/body pour éviter de casser
+   les classes internes Emotion de Streamlit (elles sont toutes préfixées "css-xxx"). */
+html, body {
   font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
                "Helvetica Neue", Helvetica, Arial, sans-serif;
   color: var(--ink);
   font-feature-settings: "tnum";
 }
-h1 { font-size: 28px !important; font-weight: 600 !important; letter-spacing: -0.01em; }
-h2 { font-size: 20px !important; font-weight: 600 !important; }
-h3 { font-size: 16px !important; font-weight: 600 !important; }
+/* Titres dans le contenu principal uniquement (pas dans la sidebar ni les widgets) */
+.main h1 { font-size: 28px !important; font-weight: 600 !important; letter-spacing: -0.01em; }
+.main h2 { font-size: 20px !important; font-weight: 600 !important; }
+.main h3 { font-size: 16px !important; font-weight: 600 !important; }
 
 /* Buttons — st.button, st.download_button, st.form_submit_button */
 .stButton > button, .stDownloadButton > button, .stFormSubmitButton > button {
@@ -182,9 +205,31 @@ h3 { font-size: 16px !important; font-weight: 600 !important; }
 /* Radio & checkbox — more compact */
 .stRadio > label { font-size: 12px !important; color: var(--ink-3); }
 
-/* Alerts */
-.stAlert { border-radius: 12px; border: 1px solid var(--border); }
-[data-testid="stAlert"][kind="info"] { background: var(--deep-green-bg); border-color: var(--deep-green); }
+/* Alerts — palette v2 pour les 4 variantes Streamlit */
+.stAlert {
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+[data-testid="stAlert"][kind="info"] {
+  background: var(--bg-sunken);
+  border-color: var(--border-strong);
+  color: var(--ink);
+}
+[data-testid="stAlert"][kind="success"] {
+  background: var(--deep-green-bg);
+  border-color: var(--deep-green);
+  color: var(--deep-green);
+}
+[data-testid="stAlert"][kind="warning"] {
+  background: var(--ocre-bg);
+  border-color: var(--ocre);
+  color: #6a4f13;
+}
+[data-testid="stAlert"][kind="error"] {
+  background: var(--down-soft);
+  border-color: var(--down);
+  color: var(--down);
+}
 
 /* Progress */
 .stProgress > div > div { background: var(--terracotta) !important; }

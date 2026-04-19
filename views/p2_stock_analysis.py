@@ -26,8 +26,21 @@ from analysis.technical import compute_all_indicators, detect_trend, detect_supp
 from analysis.scoring import compute_hybrid_score
 from utils.charts import candlestick_chart, gauge_chart, flag_badge, stars_display
 from utils.auth import is_admin
+from utils.ui_helpers import delta as _delta_html, tag as _tag_html, ticker as _ticker_html
 
 import json as _json
+
+
+def _verdict_tone(verdict: str) -> str:
+    """Map verdict BRVM → tone du kit design v2."""
+    v = (verdict or "").upper()
+    if "ACHAT" in v:
+        return "up"
+    if "VENTE" in v:
+        return "down"
+    if "CONSERVER" in v:
+        return "ocre"
+    return "neutral"
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -201,7 +214,7 @@ def render():
     c3.metric("Secteur", fundamentals.get("sector", ""))
     c4.metric("Exercice", str(fundamentals.get("fiscal_year", "")))
     c5.markdown(f"### {stars_display(reco['stars'])}")
-    c5.markdown(f"<span style='color:{reco['verdict_color']};font-weight:bold;font-size:1.2em;'>{reco['verdict']}</span>", unsafe_allow_html=True)
+    c5.markdown(_tag_html(reco['verdict'], _verdict_tone(reco['verdict'])), unsafe_allow_html=True)
 
     # --- Tabs ---
     tab1, tab2, tab3, tab4 = st.tabs(["📊 Fondamental", "📈 Technique", "🎯 Recommandation", "🏢 Profil"])
@@ -398,15 +411,14 @@ def _render_fundamental(fundamentals, ratios):
             c1.write(f"**{label}**")
             for col, val in zip([c2, c3, c4, c5], values):
                 if val is None:
-                    col.write("—")
+                    col.markdown("<span class='muted'>—</span>", unsafe_allow_html=True)
                 elif fmt == "pct":
-                    color = "#28a745" if val >= 0 else "#dc3545"
+                    col.markdown(_delta_html(val * 100, with_arrow=False), unsafe_allow_html=True)
+                else:
                     col.markdown(
-                        f"<span style='color:{color}'>{val:+.1%}</span>",
+                        f"<span style='font-variant-numeric:tabular-nums'>{val:,.0f}</span>",
                         unsafe_allow_html=True,
                     )
-                else:
-                    col.write(f"{val:,.0f}")
 
 
 def _render_technical(ticker, price_df, result):
@@ -554,20 +566,21 @@ def _render_indicator_explanations(df: pd.DataFrame, sma_labels: dict, freq: str
             if rsi_val is not None and not pd.isna(rsi_val):
                 if rsi_val > 70:
                     interp = "Le titre est en **surachat**. Attention à un possible retournement baissier."
-                    color = "#EE5D50"
+                    tone = "down"
                 elif rsi_val < 30:
                     interp = "Le titre est en **survente**. Opportunité d'achat potentielle si les fondamentaux sont solides."
-                    color = "#05CD99"
-                elif rsi_val > 60:
-                    interp = "Momentum haussier, mais pas encore en surachat."
-                    color = "#FFB547"
-                elif rsi_val < 40:
-                    interp = "Momentum baissier, mais pas encore en survente."
-                    color = "#FFB547"
+                    tone = "up"
+                elif rsi_val > 60 or rsi_val < 40:
+                    interp = ("Momentum haussier, mais pas encore en surachat." if rsi_val > 60
+                              else "Momentum baissier, mais pas encore en survente.")
+                    tone = "ocre"
                 else:
                     interp = "Zone neutre — pas de signal directionnel fort."
-                    color = "#8F9BBA"
-                st.markdown(f"**RSI actuel : <span style='color:{color};font-weight:700'>{rsi_val:.1f}</span>**", unsafe_allow_html=True)
+                    tone = "neutral"
+                st.markdown(
+                    "**RSI actuel :** " + _tag_html(f"{rsi_val:.1f}", tone),
+                    unsafe_allow_html=True,
+                )
                 st.markdown(f"*{interp}*")
 
         with col_macd:
@@ -591,17 +604,20 @@ def _render_indicator_explanations(df: pd.DataFrame, sma_labels: dict, freq: str
             if macd_val is not None and not pd.isna(macd_val):
                 if macd_val > 0 and macd_hist is not None and macd_hist > 0:
                     interp = "MACD positif avec histogramme croissant — **momentum haussier**."
-                    color = "#05CD99"
+                    tone = "up"
                 elif macd_val > 0:
                     interp = "MACD positif mais histogramme en baisse — le momentum ralentit."
-                    color = "#FFB547"
+                    tone = "ocre"
                 elif macd_hist is not None and macd_hist > 0:
                     interp = "MACD négatif mais histogramme en hausse — possible retournement haussier."
-                    color = "#FFB547"
+                    tone = "ocre"
                 else:
                     interp = "MACD négatif avec histogramme baissier — **momentum baissier**."
-                    color = "#EE5D50"
-                st.markdown(f"**MACD actuel : <span style='color:{color};font-weight:700'>{macd_val:,.0f}</span>**", unsafe_allow_html=True)
+                    tone = "down"
+                st.markdown(
+                    "**MACD actuel :** " + _tag_html(f"{macd_val:,.0f}", tone),
+                    unsafe_allow_html=True,
+                )
                 st.markdown(f"*{interp}*")
 
         # Moyennes mobiles explanation
