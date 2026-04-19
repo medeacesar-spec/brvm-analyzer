@@ -80,6 +80,7 @@ def compute_signal_calibration() -> dict:
         }
     """
     from data.storage import get_signal_history, compute_signal_performance
+    from data.db import read_sql_df
 
     result = {
         "enabled": False,
@@ -99,8 +100,24 @@ def compute_signal_calibration() -> dict:
 
     result["enabled"] = result["days_available"] >= MIN_DAYS_HISTORY
 
-    # Compute performance for all rows
-    df = compute_signal_performance(df)
+    # Optim : lire la performance depuis signal_performance_snapshot (rempli
+    # quotidiennement par le cron) au lieu de recalculer via
+    # compute_signal_performance (N+1 = 756 round-trips Supabase = 60+ sec).
+    try:
+        snap = read_sql_df(
+            "SELECT event_id, current_price, perf_1m, perf_3m, perf_6m, "
+            "perf_1a, perf_since_start FROM signal_performance_snapshot"
+        )
+    except Exception:
+        snap = pd.DataFrame()
+
+    if not snap.empty and "id" in df.columns:
+        df = df.merge(snap, how="left", left_on="id", right_on="event_id")
+        if "event_id" in df.columns:
+            df = df.drop(columns=["event_id"])
+    else:
+        # Fallback : calcul live (lent) si le snapshot n'existe pas encore
+        df = compute_signal_performance(df)
 
     # --- Signals ---
     sig_df = df[df["entry_type"] == "signal"].copy()

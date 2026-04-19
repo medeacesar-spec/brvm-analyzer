@@ -534,7 +534,11 @@ def render():
             f"Poids dans [{WEIGHT_MIN}, {WEIGHT_MAX}] : multiplié à la force brute du signal."
         )
 
-        cal = get_calibration(force_refresh=True)
+        # force_refresh=False : on respecte le cache module (30 min). Le calcul
+        # complet est couteux (appelle compute_signal_performance = N+1 queries).
+        # Le snapshot quotidien GitHub Actions ne touche pas ce cache, mais celui-ci
+        # se regenerera tout seul au bout de 30 min, ou sur clic "Lancer la revue".
+        cal = get_calibration(force_refresh=False)
 
         # Status header
         days_available = cal.get("days_available", 0)
