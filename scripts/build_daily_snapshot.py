@@ -1,0 +1,304 @@
+"""
+Build daily snapshot : précalcul des agrégats lourds pour des pages
+ultra-rapides (<1 s).
+
+Remplit 3 tables :
+  - scoring_snapshot           : 1 ligne/ticker avec hybrid_score, verdict, signals
+  - ticker_performance_snapshot: 1 ligne/ticker avec perf 3M/6M/1A/2A/3A/Max
+  - signal_performance_snapshot: 1 ligne/event avec horizons 1M/3M/6M/1A
+
+Exécution :
+  - Manuelle admin : bouton "🔄 Regénérer snapshots" dans la sidebar
+  - Automatique    : GitHub Actions quotidien à 17h WAT (après clôture BRVM)
+
+Idempotent : peut tourner N fois, l'état final est toujours cohérent.
+"""
+
+import json
+import sys
+import time
+import traceback
+from datetime import datetime, timedelta
+from pathlib import Path
+
+# Permet de lancer le script depuis n'importe où
+_ROOT = Path(__file__).resolve().parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
+import pandas as pd
+
+from config import load_tickers
+from data.db import get_connection, read_sql_df
+from data.storage import (
+    init_db,
+    get_all_stocks_for_analysis,
+    get_all_cached_prices,
+    get_signal_history,
+    compute_signal_performance,
+)
+from analysis.scoring import compute_hybrid_score, compute_consolidated_verdict
+
+
+# ─────────────────────────────────────────────────────────────
+# 1. Scoring snapshot (remplace p5 Signaux live compute)
+# ─────────────────────────────────────────────────────────────
+
+def build_scoring_snapshot(conn, all_stocks: pd.DataFrame, all_prices: dict) -> int:
+    """Pour chaque ticker : calcule hybrid_score + consolidated verdict,
+    stocke signals_json dans scoring_snapshot."""
+    if all_stocks.empty:
+        print("  [scoring] all_stocks vide — skip")
+        return 0
+
+    import math as _m
+    count = 0
+    conn.execute("DELETE FROM scoring_snapshot")
+
+    for _, row in all_stocks.iterrows():
+        ticker = row["ticker"]
+        fund = {k: (None if isinstance(v, float) and _m.isnan(v) else v)
+                for k, v in row.to_dict().items()}
+        price_df = all_prices.get(ticker, pd.DataFrame())
+
+        try:
+            result = compute_hybrid_score(fund, price_df)
+            consolidated = compute_consolidated_verdict(result)
+        except Exception as e:
+            print(f"  [scoring] {ticker} : erreur compute_hybrid_score → {e}")
+            continue
+
+        reco = result.get("recommendation", {}) or {}
+        trend = (result.get("trend", {}) or {}).get("trend", "")
+        signals = result.get("signals", []) or []
+        nb_signals = sum(1 for s in signals if s.get("type") in ("achat", "vente"))
+
+        conn.execute(
+            """INSERT INTO scoring_snapshot
+               (ticker, company_name, sector, price,
+                hybrid_score, fundamental_score, technical_score,
+                verdict, stars, trend, nb_signals,
+                signals_json, consolidated_json, computed_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)""",
+            (
+                ticker,
+                fund.get("company_name") or ticker,
+                fund.get("sector", ""),
+                fund.get("price") or 0,
+                result.get("hybrid_score"),
+                result.get("fundamental_score"),
+                result.get("technical_score"),
+                reco.get("verdict"),
+                reco.get("stars"),
+                trend,
+                nb_signals,
+                json.dumps(signals, default=str),
+                json.dumps(consolidated, default=str),
+            ),
+        )
+        count += 1
+
+    conn.commit()
+    print(f"  [scoring] {count} tickers écrits")
+    return count
+
+
+# ─────────────────────────────────────────────────────────────
+# 2. Ticker performance snapshot (remplace p9 Performance)
+# ─────────────────────────────────────────────────────────────
+
+PERIODS = {
+    "perf_1m":  timedelta(days=30),
+    "perf_3m":  timedelta(days=91),
+    "perf_6m":  timedelta(days=182),
+    "perf_1a":  timedelta(days=365),
+    "perf_2a":  timedelta(days=730),
+    "perf_3a":  timedelta(days=1095),
+    "perf_max": None,
+}
+
+
+def _perf_from_cutoff(df: pd.DataFrame, cutoff) -> float:
+    """% de variation depuis cutoff jusqu'au dernier close."""
+    if df.empty or "close" not in df.columns:
+        return None
+    df_sorted = df.sort_values("date")
+    df_period = df_sorted[df_sorted["date"] >= pd.Timestamp(cutoff)] if cutoff else df_sorted
+    if len(df_period) < 2:
+        return None
+    start = df_period.iloc[0]["close"]
+    end = df_period.iloc[-1]["close"]
+    if not start or start == 0:
+        return None
+    return (end - start) / start
+
+
+def build_ticker_performance(conn, all_prices: dict) -> int:
+    """Pour chaque ticker : calcule perf 1M/3M/6M/1A/2A/3A/Max."""
+    tickers_meta = {t["ticker"]: t for t in load_tickers()}
+    today = datetime.now().date()
+    count = 0
+    conn.execute("DELETE FROM ticker_performance_snapshot")
+
+    for ticker, df in all_prices.items():
+        if df.empty or "close" not in df.columns:
+            continue
+        meta = tickers_meta.get(ticker, {})
+        df_sorted = df.sort_values("date")
+        last_row = df_sorted.iloc[-1]
+        last_price = last_row["close"]
+        last_date = last_row["date"]
+
+        row = {
+            "ticker": ticker,
+            "company_name": meta.get("name", ticker),
+            "sector": meta.get("sector", ""),
+            "last_price": float(last_price) if last_price else None,
+            "last_date": str(last_date)[:10] if last_date is not None else None,
+        }
+        for col, delta in PERIODS.items():
+            cutoff = (today - delta) if delta else None
+            row[col] = _perf_from_cutoff(df, cutoff)
+
+        conn.execute(
+            """INSERT INTO ticker_performance_snapshot
+               (ticker, company_name, sector, last_price, last_date,
+                perf_1m, perf_3m, perf_6m, perf_1a, perf_2a, perf_3a, perf_max,
+                computed_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)""",
+            (
+                row["ticker"], row["company_name"], row["sector"],
+                row["last_price"], row["last_date"],
+                row["perf_1m"], row["perf_3m"], row["perf_6m"],
+                row["perf_1a"], row["perf_2a"], row["perf_3a"], row["perf_max"],
+            ),
+        )
+        count += 1
+
+    conn.commit()
+    print(f"  [ticker_perf] {count} tickers écrits")
+    return count
+
+
+# ─────────────────────────────────────────────────────────────
+# 3. Signal performance snapshot (remplace p10 Historique)
+# ─────────────────────────────────────────────────────────────
+
+def build_signal_performance(conn) -> int:
+    """Calcule les horizons 1M/3M/6M/1A pour chaque événement signal_history."""
+    df = get_signal_history()
+    if df.empty:
+        print("  [signal_perf] signal_history vide — skip")
+        return 0
+
+    # Délègue au calcul existant (même logique que compute_signal_performance)
+    df_perf = compute_signal_performance(df)
+
+    count = 0
+    conn.execute("DELETE FROM signal_performance_snapshot")
+    for _, row in df_perf.iterrows():
+        event_id = row.get("id")
+        if event_id is None or pd.isna(event_id):
+            continue
+
+        first_seen = row.get("first_seen_date")
+        last_seen = row.get("last_seen_date")
+        duration = None
+        try:
+            if first_seen and last_seen:
+                d1 = datetime.strptime(str(first_seen)[:10], "%Y-%m-%d")
+                d2 = datetime.strptime(str(last_seen)[:10], "%Y-%m-%d")
+                duration = max(0, (d2 - d1).days)
+        except Exception:
+            duration = None
+
+        def _f(v):
+            if v is None or pd.isna(v):
+                return None
+            return float(v)
+
+        conn.execute(
+            """INSERT INTO signal_performance_snapshot
+               (event_id, current_price, perf_1m, perf_3m, perf_6m, perf_1a,
+                perf_since_start, duration_days, computed_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)""",
+            (
+                int(event_id),
+                _f(row.get("current_price")),
+                _f(row.get("perf_1m")),
+                _f(row.get("perf_3m")),
+                _f(row.get("perf_6m")),
+                _f(row.get("perf_1a")),
+                _f(row.get("perf_since_start")),
+                duration,
+            ),
+        )
+        count += 1
+
+    conn.commit()
+    print(f"  [signal_perf] {count} événements écrits")
+    return count
+
+
+# ─────────────────────────────────────────────────────────────
+# Orchestrator
+# ─────────────────────────────────────────────────────────────
+
+def set_meta(conn, key: str, value: str):
+    """Upsert snapshot_meta."""
+    conn.execute(
+        """INSERT INTO snapshot_meta (key, value, updated_at)
+           VALUES (?, ?, CURRENT_TIMESTAMP)
+           ON CONFLICT(key) DO UPDATE SET
+             value=excluded.value, updated_at=CURRENT_TIMESTAMP""",
+        (key, value),
+    )
+    conn.commit()
+
+
+def build_all() -> dict:
+    """Construit tous les snapshots. Retourne un résumé."""
+    t0 = time.time()
+    print(f"[{datetime.now().isoformat(timespec='seconds')}] build_daily_snapshot — start")
+
+    init_db()
+    conn = get_connection()
+
+    result = {"started_at": datetime.now().isoformat(timespec="seconds")}
+
+    try:
+        # Préchargement batch (réutilisé par les 3 builders)
+        print("  [load] all_stocks + all_prices …")
+        all_stocks = get_all_stocks_for_analysis()
+        all_prices = get_all_cached_prices()
+        print(f"  [load] {len(all_stocks)} stocks, {len(all_prices)} tickers avec prix")
+
+        result["scoring"] = build_scoring_snapshot(conn, all_stocks, all_prices)
+        result["ticker_perf"] = build_ticker_performance(conn, all_prices)
+        result["signal_perf"] = build_signal_performance(conn)
+
+        duration = round(time.time() - t0, 1)
+        set_meta(conn, "last_build_at", datetime.now().isoformat(timespec="seconds"))
+        set_meta(conn, "last_build_duration_sec", str(duration))
+        set_meta(conn, "last_build_status", "ok")
+        result["duration_sec"] = duration
+        result["status"] = "ok"
+        print(f"[done] snapshots construits en {duration}s")
+    except Exception as e:
+        traceback.print_exc()
+        try:
+            set_meta(conn, "last_build_status", f"error: {type(e).__name__}: {e}")
+        except Exception:
+            pass
+        result["status"] = "error"
+        result["error"] = f"{type(e).__name__}: {e}"
+    finally:
+        conn.close()
+
+    return result
+
+
+if __name__ == "__main__":
+    out = build_all()
+    print(json.dumps(out, indent=2))
+    sys.exit(0 if out.get("status") == "ok" else 1)

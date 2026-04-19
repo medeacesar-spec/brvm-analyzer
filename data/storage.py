@@ -279,6 +279,62 @@ def init_db():
         );
         CREATE INDEX IF NOT EXISTS idx_cal_reviews_date
             ON calibration_reviews(review_date DESC);
+
+        -- ── SNAPSHOTS QUOTIDIENS (pré-calculés par le cron GitHub Actions) ──
+        -- Évitent les N+1 et le compute live sur les pages Signaux, Performance,
+        -- Historique. Les pages deviennent des SELECT triviaux (<1 s).
+
+        CREATE TABLE IF NOT EXISTS scoring_snapshot (
+            ticker TEXT PRIMARY KEY,
+            company_name TEXT,
+            sector TEXT,
+            price REAL,
+            hybrid_score REAL,
+            fundamental_score REAL,
+            technical_score REAL,
+            verdict TEXT,
+            stars INTEGER,
+            trend TEXT,
+            nb_signals INTEGER,
+            signals_json TEXT,
+            consolidated_json TEXT,
+            computed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS ticker_performance_snapshot (
+            ticker TEXT PRIMARY KEY,
+            company_name TEXT,
+            sector TEXT,
+            last_price REAL,
+            last_date TEXT,
+            perf_1m REAL,
+            perf_3m REAL,
+            perf_6m REAL,
+            perf_1a REAL,
+            perf_2a REAL,
+            perf_3a REAL,
+            perf_max REAL,
+            computed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS signal_performance_snapshot (
+            event_id INTEGER PRIMARY KEY,
+            current_price REAL,
+            perf_1m REAL,
+            perf_3m REAL,
+            perf_6m REAL,
+            perf_1a REAL,
+            perf_since_start REAL,
+            duration_days INTEGER,
+            computed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        -- Métadonnées du dernier build (pour afficher la fraîcheur dans l'UI)
+        CREATE TABLE IF NOT EXISTS snapshot_meta (
+            key TEXT PRIMARY KEY,
+            value TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
     """)
     # Ensure 'ignored' column exists on publications (for old DBs)
     cols = _table_columns(conn, "publications")

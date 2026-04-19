@@ -776,6 +776,43 @@ if is_admin() and _is_logged_in():
             _sync_incremental_prices()
         st.rerun()
 
+    # Bouton snapshot quotidien : reconstruit les tables pré-calculées
+    # (scoring, performance, historique signaux) → pages < 1 s ensuite.
+    if st.sidebar.button("📸 Regénérer snapshots", use_container_width=True,
+                          help="Précalcule les agrégats pour accélérer les pages Signaux/Performance/Historique"):
+        from scripts.build_daily_snapshot import build_all
+        with st.spinner("Construction des snapshots (~30 s)…"):
+            res = build_all()
+        if res.get("status") == "ok":
+            st.sidebar.success(
+                f"✅ Snapshots en {res['duration_sec']}s — "
+                f"{res.get('scoring',0)} scoring, {res.get('ticker_perf',0)} perf, "
+                f"{res.get('signal_perf',0)} signaux"
+            )
+            # Invalide le cache st.cache_data
+            try:
+                st.cache_data.clear()
+            except Exception:
+                pass
+        else:
+            st.sidebar.error(f"❌ Échec : {res.get('error','inconnu')}")
+        st.rerun()
+
+# Indicateur de fraîcheur des snapshots (visible pour tous)
+try:
+    _meta_conn = get_connection()
+    _meta = _meta_conn.execute(
+        "SELECT value FROM snapshot_meta WHERE key='last_build_at'"
+    ).fetchone()
+    _meta_conn.close()
+    if _meta and _meta[0]:
+        _dt_str = str(_meta[0])[:16].replace("T", " ")
+        st.sidebar.caption(f"📸 Snapshots : {_dt_str}")
+    else:
+        st.sidebar.caption("📸 Snapshots : jamais générés")
+except Exception:
+    pass
+
 st.sidebar.markdown("---")
 
 # Widget authentification (connexion Google OAuth ou mode dev)
