@@ -1253,38 +1253,44 @@ def _render_recommendation(result, fundamentals):
         ratios_src["price"] = fundamentals.get("price") or 0
     tgt = compute_target_price(ratios_src, sector=fundamentals.get("sector"))
     tp = tgt.get("target_price")
-    if tp:
-        cur = tgt.get("current_price") or 0
-        delta_abs = tgt.get("delta_abs") or 0
-        delta_pct = tgt.get("delta_pct") or 0
-        conf = tgt.get("confidence", "moyenne")
-        # Sens du delta : positif = upside (potentiel haussier)
-        if delta_pct > 0:
-            tone_color = "var(--up)"
-            arrow = "▲"
-            label_sens = "Potentiel haussier"
-        elif delta_pct < 0:
-            tone_color = "var(--down)"
-            arrow = "▼"
-            label_sens = "Surévalué vs modèle"
-        else:
-            tone_color = "var(--ink-3)"
-            arrow = "—"
-            label_sens = "Cours à la juste valeur"
+    cur = tgt.get("current_price") or 0
+    conf = tgt.get("confidence", "moyenne")
+    comps = tgt.get("components", [])
 
-        sign = "+" if delta_pct >= 0 else ""
-        components_html = " · ".join(
-            f"<span style='color:var(--ink-3);'>{c['method']}</span> "
-            f"<span style='color:var(--ink);font-weight:500;"
-            f"font-variant-numeric:tabular-nums;'>{c['price']:,.0f}</span>"
-            for c in tgt.get("components", [])
+    # Détaille les prix de chaque méthode en FCFA, avec formule
+    comps_rows = "".join(
+        f"<tr>"
+        f"<td style='padding:4px 14px 4px 0;color:var(--ink-3);font-size:11px;"
+        f"text-transform:uppercase;letter-spacing:0.05em;font-weight:600;"
+        f"white-space:nowrap;'>{c['method']}</td>"
+        f"<td style='padding:4px 14px 4px 0;color:var(--ink-2);font-size:12px;"
+        f"font-variant-numeric:tabular-nums;'>{c['formula']}</td>"
+        f"<td style='padding:4px 0;color:var(--ink);font-size:13px;font-weight:600;"
+        f"font-variant-numeric:tabular-nums;text-align:right;'>"
+        f"{c['price']:,.0f} FCFA</td>"
+        f"</tr>"
+        for c in comps
+    )
+
+    # ── Cas 1 : pas de données ──
+    if not tp:
+        st.markdown(
+            "<div style='background:var(--bg-elev);border:1px solid var(--border);"
+            "border-radius:10px;padding:14px 18px;margin-top:12px;"
+            "color:var(--ink-3);font-size:13px;'>"
+            "Prix cible indisponible — données EPS ou DPS manquantes."
+            "</div>",
+            unsafe_allow_html=True,
         )
-
+    # ── Cas 2 : confiance faible → PAS de moyenne trompeuse, on montre la fourchette ──
+    elif conf == "faible" and len(comps) >= 2:
+        prices_only = [c["price"] for c in comps]
+        lo, hi = min(prices_only), max(prices_only)
         st.markdown(
             f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
-            f"border-radius:10px;padding:16px 20px;margin-top:12px;"
-            f"display:flex;align-items:center;gap:32px;flex-wrap:wrap;'>"
-            # Prix actuel
+            f"border-left:4px solid var(--ocre);"
+            f"border-radius:10px;padding:16px 20px;margin-top:12px;'>"
+            f"<div style='display:flex;align-items:flex-start;gap:32px;flex-wrap:wrap;'>"
             f"<div>"
             f"<div class='label-xs' style='margin-bottom:3px;'>Prix actuel</div>"
             f"<div style='font-size:22px;font-weight:600;color:var(--ink);"
@@ -1292,7 +1298,53 @@ def _render_recommendation(result, fundamentals):
             f"{cur:,.0f} <span style='font-size:12px;color:var(--ink-3);"
             f"font-weight:400;'>FCFA</span></div>"
             f"</div>"
-            # Prix cible
+            f"<div>"
+            f"<div class='label-xs' style='margin-bottom:3px;'>Fourchette modèle</div>"
+            f"<div style='font-size:22px;font-weight:600;color:var(--ink);"
+            f"letter-spacing:-0.01em;font-variant-numeric:tabular-nums;'>"
+            f"{lo:,.0f} – {hi:,.0f} <span style='font-size:12px;color:var(--ink-3);"
+            f"font-weight:400;'>FCFA</span></div>"
+            f"</div>"
+            f"<div style='flex:1;min-width:240px;'>"
+            f"<div class='label-xs' style='margin-bottom:3px;'>Lecture</div>"
+            f"<div style='font-size:13px;color:var(--ink);'>"
+            f"Méthodes divergentes — pas de cible unique fiable.</div>"
+            f"<div style='font-size:11.5px;color:var(--ink-3);margin-top:4px;'>"
+            f"Confiance <b style='color:var(--ocre);'>faible</b>. "
+            f"EPS ou DPS probablement non représentatifs (division d'action, "
+            f"exercice exceptionnel, données manquantes). À vérifier dans Fondamentale."
+            f"</div>"
+            f"</div>"
+            f"</div>"
+            f"<table style='margin-top:12px;border-top:1px solid var(--border);"
+            f"padding-top:10px;width:100%;border-collapse:collapse;'>{comps_rows}</table>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+    # ── Cas 3 : confiance OK → affiche target + delta ──
+    else:
+        delta_abs = tgt.get("delta_abs") or 0
+        delta_pct = tgt.get("delta_pct") or 0
+        if delta_pct > 0:
+            tone_color, arrow, label_sens = "var(--up)", "▲", "Potentiel haussier"
+        elif delta_pct < 0:
+            tone_color, arrow, label_sens = "var(--down)", "▼", "Surévalué vs modèle"
+        else:
+            tone_color, arrow, label_sens = "var(--ink-3)", "—", "Cours à la juste valeur"
+        sign = "+" if delta_pct >= 0 else ""
+        conf_color = {"élevée": "var(--up)", "moyenne": "var(--ink-2)"}.get(conf, "var(--ink-3)")
+
+        st.markdown(
+            f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
+            f"border-radius:10px;padding:16px 20px;margin-top:12px;'>"
+            f"<div style='display:flex;align-items:flex-start;gap:32px;flex-wrap:wrap;'>"
+            f"<div>"
+            f"<div class='label-xs' style='margin-bottom:3px;'>Prix actuel</div>"
+            f"<div style='font-size:22px;font-weight:600;color:var(--ink);"
+            f"letter-spacing:-0.01em;font-variant-numeric:tabular-nums;'>"
+            f"{cur:,.0f} <span style='font-size:12px;color:var(--ink-3);"
+            f"font-weight:400;'>FCFA</span></div>"
+            f"</div>"
             f"<div>"
             f"<div class='label-xs' style='margin-bottom:3px;'>Prix cible (modèle)</div>"
             f"<div style='font-size:22px;font-weight:600;color:var(--ink);"
@@ -1300,7 +1352,6 @@ def _render_recommendation(result, fundamentals):
             f"{tp:,.0f} <span style='font-size:12px;color:var(--ink-3);"
             f"font-weight:400;'>FCFA</span></div>"
             f"</div>"
-            # Delta
             f"<div>"
             f"<div class='label-xs' style='margin-bottom:3px;'>Delta</div>"
             f"<div style='font-size:22px;font-weight:600;color:{tone_color};"
@@ -1309,25 +1360,18 @@ def _render_recommendation(result, fundamentals):
             f"<div style='font-size:11.5px;color:var(--ink-3);margin-top:2px;"
             f"font-variant-numeric:tabular-nums;'>{sign}{delta_abs:,.0f} FCFA</div>"
             f"</div>"
-            # Lecture + confiance
-            f"<div style='flex:1;min-width:200px;'>"
+            f"<div style='flex:1;min-width:220px;'>"
             f"<div class='label-xs' style='margin-bottom:3px;'>Lecture</div>"
             f"<div style='font-size:13px;color:var(--ink);'>{label_sens}</div>"
             f"<div style='font-size:11.5px;color:var(--ink-3);margin-top:4px;'>"
-            f"Confiance <b style='color:var(--ink-2);'>{conf}</b>"
-            f"{' · ' + components_html if components_html else ''}"
+            f"Confiance <b style='color:{conf_color};'>{conf}</b>"
             f"</div>"
             f"</div>"
+            f"</div>"
+            # Détail des méthodes
+            f"<table style='margin-top:12px;border-top:1px solid var(--border);"
+            f"padding-top:10px;width:100%;border-collapse:collapse;'>{comps_rows}</table>"
             f"</div>",
-            unsafe_allow_html=True,
-        )
-    else:
-        st.markdown(
-            "<div style='background:var(--bg-elev);border:1px solid var(--border);"
-            "border-radius:10px;padding:14px 18px;margin-top:12px;"
-            "color:var(--ink-3);font-size:13px;'>"
-            "Prix cible indisponible — données EPS ou DPS manquantes."
-            "</div>",
             unsafe_allow_html=True,
         )
 
