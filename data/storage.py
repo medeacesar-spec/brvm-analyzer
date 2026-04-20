@@ -1084,7 +1084,6 @@ def get_all_stocks_for_analysis() -> pd.DataFrame:
     Résultat mis en cache 5 min (st.cache_data) pour éviter de re-requêter
     Supabase à chaque navigation de page.
     """
-    conn = get_connection()
     best_year = _best_year_subquery()
     df = read_sql_df(f"""
         SELECT
@@ -1141,7 +1140,15 @@ def get_all_stocks_for_analysis() -> pd.DataFrame:
     HIST_SUFFIXES = ["n0", "n1", "n2", "n3"]
     # Ne garder que les colonnes qui existent réellement (évite UndefinedColumn
     # sur Postgres si une colonne a été ajoutée après la migration).
-    _existing_cols = set(_table_columns(conn, "fundamentals"))
+    # Conn fraîche pour éviter une conn idle fermée par le pooler Supabase.
+    _conn_cols = get_connection()
+    try:
+        _existing_cols = set(_table_columns(_conn_cols, "fundamentals"))
+    finally:
+        try:
+            _conn_cols.close()
+        except Exception:
+            pass
     _bs_available = tuple(f for f in BS_FIELDS if f in _existing_cols)
 
     if not df.empty:
@@ -1195,7 +1202,6 @@ def get_all_stocks_for_analysis() -> pd.DataFrame:
                 if pd.notna(hr.get("dps")) and hr.get("dps"):
                     df.at[i, f"dps_{suf}"] = hr["dps"]
 
-    conn.close()
     return df
 
 

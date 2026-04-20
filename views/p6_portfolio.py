@@ -409,23 +409,15 @@ def render():
                 delete_position(pos["id"])
                 st.rerun()
 
-    # Cash field (always accessible, compact)
-    with st.expander(f"Cash disponible · {cash:,.0f} {CURRENCY}", expanded=False):
-        new_cash = st.number_input(
-            f"Liquidités disponibles ({CURRENCY})",
-            min_value=0.0, value=float(cash),
-            step=100000.0, format="%.0f", key="cash_input",
-        )
-        if new_cash != st.session_state.portfolio_cash:
-            st.session_state.portfolio_cash = new_cash
-            set_portfolio_cash(new_cash)
-            st.caption("Cash enregistré")
-
     # Allocation
+    section_heading("Allocation", spacing="loose")
     col_pie1, col_pie2 = st.columns(2)
 
     with col_pie1:
-        section_heading("Allocation par titre")
+        st.markdown(
+            "<div class='label-xs' style='margin-bottom:6px;'>Par titre</div>",
+            unsafe_allow_html=True,
+        )
         labels = portfolio["company_name"].tolist()
         values = portfolio["current_value"].tolist()
         if cash > 0:
@@ -435,6 +427,10 @@ def render():
         st.plotly_chart(fig, use_container_width=True)
 
     with col_pie2:
+        st.markdown(
+            "<div class='label-xs' style='margin-bottom:6px;'>Par secteur</div>",
+            unsafe_allow_html=True,
+        )
         tickers_data = load_tickers()
         ticker_to_sector = {t["ticker"]: t["sector"] for t in tickers_data}
         portfolio["sector"] = portfolio["ticker"].map(ticker_to_sector).fillna("Autre")
@@ -457,70 +453,77 @@ def render():
 
 def _render_portfolio_analysis(portfolio, cash, total_value, total_portfolio, ticker_to_sector):
     """Analyse l'équilibre du portefeuille et identifie les points d'attention."""
-    from utils.ui_helpers import section_heading
-    section_heading("Analyse d'équilibre du portefeuille", spacing="loose")
+    from utils.ui_helpers import section_heading, kpi_card
+    section_heading("Analyse d'équilibre", spacing="loose")
 
     if total_portfolio <= 0:
         return
 
     diagnostics = []
-    recommendations = []
 
     # 1. Ratio cash / portefeuille total
     cash_pct = (cash / total_portfolio * 100) if total_portfolio > 0 else 0
-
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Ratio Cash", f"{cash_pct:.1f}%",
-                help="Part de liquidités dans le portefeuille total")
-
-    if cash_pct > 50:
-        diagnostics.append(("🔴", "Cash très élevé", f"{cash_pct:.0f}% du portefeuille est en liquidités. Capital sous-utilisé."))
-    elif cash_pct > 30:
-        diagnostics.append(("🟡", "Cash élevé", f"{cash_pct:.0f}% en liquidités. Opportunité d'investissement."))
-    elif cash_pct > 10:
-        diagnostics.append(("🟢", "Cash correct", f"{cash_pct:.0f}% en liquidités. Bonne réserve de sécurité."))
-    elif cash_pct > 0:
-        diagnostics.append(("🟡", "Cash faible", f"Seulement {cash_pct:.0f}% en liquidités. Peu de marge pour saisir des opportunités."))
-    else:
-        diagnostics.append(("🔴", "Pas de cash", "Aucune liquidité disponible. Risque si besoin de réagir rapidement."))
 
     # 2. Concentration sectorielle
     portfolio_sectors = portfolio.copy()
     portfolio_sectors["sector"] = portfolio_sectors["ticker"].map(ticker_to_sector).fillna("Autre")
     sector_alloc = portfolio_sectors.groupby("sector")["current_value"].sum()
     sector_pcts = (sector_alloc / total_value * 100).sort_values(ascending=False)
-
     nb_sectors = len(sector_pcts)
-    col2.metric("Nb secteurs", f"{nb_sectors}",
-                help="Nombre de secteurs représentés")
-
     top_sector = sector_pcts.index[0] if not sector_pcts.empty else ""
     top_sector_pct = sector_pcts.iloc[0] if not sector_pcts.empty else 0
-
-    if nb_sectors == 1:
-        diagnostics.append(("🔴", "Concentration mono-secteur", f"100% dans {top_sector}. Aucune diversification sectorielle."))
-    elif top_sector_pct > 70:
-        diagnostics.append(("🟡", "Forte concentration sectorielle", f"{top_sector_pct:.0f}% dans {top_sector}. Diversification limitée."))
-    elif nb_sectors >= 3:
-        diagnostics.append(("🟢", "Bonne diversification", f"{nb_sectors} secteurs représentés. Secteur principal : {top_sector} ({top_sector_pct:.0f}%)."))
-    else:
-        diagnostics.append(("🟡", "Diversification moyenne", f"{nb_sectors} secteurs. Envisagez d'élargir."))
 
     # 3. Concentration par titre
     title_pcts = (portfolio.groupby("ticker")["current_value"].sum() / total_value * 100).sort_values(ascending=False)
     nb_titres = len(title_pcts)
-    col3.metric("Nb titres", f"{nb_titres}",
-                help="Nombre de titres en portefeuille")
-
     top_ticker_pct = title_pcts.iloc[0] if not title_pcts.empty else 0
     top_ticker = title_pcts.index[0] if not title_pcts.empty else ""
 
-    if top_ticker_pct > 50:
-        diagnostics.append(("🔴", "Forte concentration titre", f"{top_ticker} représente {top_ticker_pct:.0f}% du portefeuille."))
-    elif top_ticker_pct > 35:
-        diagnostics.append(("🟡", "Concentration modérée", f"{top_ticker} pèse {top_ticker_pct:.0f}%. Envisagez de rééquilibrer."))
+    # Tone helpers pour KPIs
+    cash_tone = "down" if (cash_pct > 50 or cash_pct == 0) else ("ocre" if (cash_pct > 30 or cash_pct < 10) else "up")
+    sect_tone = "down" if nb_sectors == 1 else ("ocre" if top_sector_pct > 70 else "up")
+    titr_tone = "down" if top_ticker_pct > 50 else ("ocre" if top_ticker_pct > 35 else "up")
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        kpi_card("Ratio Cash", f"{cash_pct:.1f}", unit="%",
+                 sub="Part liquidités / total", tone=cash_tone)
+    with col2:
+        kpi_card("Secteurs", str(nb_sectors),
+                 sub=(f"Top · {top_sector} {top_sector_pct:.0f}%" if top_sector else "—"),
+                 tone=sect_tone)
+    with col3:
+        kpi_card("Titres", str(nb_titres),
+                 sub=(f"Top · {top_ticker} {top_ticker_pct:.0f}%" if top_ticker else "—"),
+                 tone=titr_tone)
+
+    # ─── Construction des diagnostics (status: ok | warn | risk) ───
+    if cash_pct > 50:
+        diagnostics.append(("risk", "Cash très élevé", f"{cash_pct:.0f}% du portefeuille en liquidités. Capital sous-utilisé."))
+    elif cash_pct > 30:
+        diagnostics.append(("warn", "Cash élevé", f"{cash_pct:.0f}% en liquidités. Opportunité d'investissement."))
+    elif cash_pct > 10:
+        diagnostics.append(("ok", "Cash correct", f"{cash_pct:.0f}% en liquidités. Réserve de sécurité."))
+    elif cash_pct > 0:
+        diagnostics.append(("warn", "Cash faible", f"Seulement {cash_pct:.0f}% en liquidités. Peu de marge."))
     else:
-        diagnostics.append(("🟢", "Bonne répartition par titre", f"Titre principal ({top_ticker}) à {top_ticker_pct:.0f}%."))
+        diagnostics.append(("risk", "Pas de cash", "Aucune liquidité disponible."))
+
+    if nb_sectors == 1:
+        diagnostics.append(("risk", "Mono-secteur", f"100% dans {top_sector}. Aucune diversification."))
+    elif top_sector_pct > 70:
+        diagnostics.append(("warn", "Forte concentration sectorielle", f"{top_sector_pct:.0f}% dans {top_sector}."))
+    elif nb_sectors >= 3:
+        diagnostics.append(("ok", "Bonne diversification sectorielle", f"{nb_sectors} secteurs · principal {top_sector} ({top_sector_pct:.0f}%)."))
+    else:
+        diagnostics.append(("warn", "Diversification moyenne", f"{nb_sectors} secteurs seulement."))
+
+    if top_ticker_pct > 50:
+        diagnostics.append(("risk", "Forte concentration titre", f"{top_ticker} = {top_ticker_pct:.0f}% du portefeuille."))
+    elif top_ticker_pct > 35:
+        diagnostics.append(("warn", "Concentration modérée", f"{top_ticker} pèse {top_ticker_pct:.0f}%."))
+    else:
+        diagnostics.append(("ok", "Bonne répartition par titre", f"Titre principal {top_ticker} à {top_ticker_pct:.0f}%."))
 
     # 4. Analyse fondamentale des positions — lecture depuis snapshots
     # (plus de get_fundamentals + compute_hybrid_score par ticker)
@@ -554,22 +557,40 @@ def _render_portfolio_analysis(portfolio, cash, total_value, total_portfolio, ti
     weak = [p for p in positions_analysis if p["score"] < 40]
     if weak:
         tickers_weak = ", ".join(f"{p['ticker']} ({p['verdict']})" for p in weak)
-        diagnostics.append(("🟡", "Positions fragiles", f"Titres avec score faible : {tickers_weak}"))
+        diagnostics.append(("warn", "Positions fragiles", f"Score faible : {tickers_weak}"))
 
     # 5. Rendement dividende du portefeuille
     if total_div > 0 and total_value > 0:
         pf_yield = total_div / total_value * 100
         if pf_yield >= 5:
-            diagnostics.append(("🟢", "Bon rendement dividende", f"Rendement portefeuille : {pf_yield:.1f}%"))
+            diagnostics.append(("ok", "Bon rendement dividende", f"Rendement portefeuille : {pf_yield:.1f}%"))
         elif pf_yield >= 3:
-            diagnostics.append(("🟢", "Rendement correct", f"Rendement portefeuille : {pf_yield:.1f}%"))
+            diagnostics.append(("ok", "Rendement correct", f"Rendement portefeuille : {pf_yield:.1f}%"))
         else:
-            diagnostics.append(("🟡", "Rendement faible", f"Rendement dividende : {pf_yield:.1f}%. Envisagez des titres à meilleur rendement."))
+            diagnostics.append(("warn", "Rendement faible", f"{pf_yield:.1f}% · envisager titres mieux rémunérés."))
 
-    # Affichage des diagnostics
-    st.markdown("**Diagnostic :**")
-    for emoji, label, detail in diagnostics:
-        st.markdown(f"{emoji} **{label}** — {detail}")
+    # ─── Affichage éditorial des diagnostics ───
+    section_heading("Diagnostic", spacing="default")
+    dot_tone_map = {"ok": "up", "warn": "ocre", "risk": "down"}
+    rows = []
+    for status, label, detail in diagnostics:
+        tone = dot_tone_map.get(status, "neutral")
+        rows.append(
+            f"<tr>"
+            f"<td style='padding:10px 12px;border-bottom:1px solid var(--border);width:18px;'>"
+            f"<span class='dot {tone}'></span></td>"
+            f"<td style='padding:10px 12px;border-bottom:1px solid var(--border);"
+            f"font-weight:600;font-size:13px;white-space:nowrap;'>{label}</td>"
+            f"<td style='padding:10px 12px;border-bottom:1px solid var(--border);"
+            f"color:var(--ink-2);font-size:13px;'>{detail}</td>"
+            f"</tr>"
+        )
+    st.markdown(
+        f"<div style='border:1px solid var(--border);border-radius:10px;"
+        f"overflow:hidden;background:var(--bg-elev);margin-bottom:14px;'>"
+        f"<table style='width:100%;border-collapse:collapse;'>{''.join(rows)}</table></div>",
+        unsafe_allow_html=True,
+    )
 
 
 def _render_position_recommendations(portfolio, total_value, cash):
@@ -577,10 +598,12 @@ def _render_position_recommendations(portfolio, total_value, cash):
     d'achat/vente (basées sur les signaux consolidés), usage du cash, diversification."""
     from config import load_tickers
 
-    section_heading("Recommandation globale")
-    st.caption(
-        "Synthèse combinant les signaux de la page Signaux (consolidés par famille) "
-        "et l'état du portefeuille (P&L, concentration, cash)."
+    section_heading("Recommandation globale", spacing="loose")
+    st.markdown(
+        "<div style='font-size:13px;color:var(--ink-3);margin-bottom:10px;'>"
+        "Synthèse combinant les signaux consolidés et l'état du portefeuille "
+        "(P&L, concentration, cash).</div>",
+        unsafe_allow_html=True,
     )
 
     # ---- 1. Scanner TOUS les titres via scoring_snapshot (1 requete) ----
@@ -689,31 +712,32 @@ def _render_position_recommendations(portfolio, total_value, cash):
         nb_sectors=nb_sectors, top_weight=(top_ticker["weight"] if top_ticker else 0),
     )
 
-    # ---- Affichage principal ----
+    # ---- Carte verdict éditoriale ----
     st.markdown(
-        f"<div style='padding:20px;border-left:6px solid {global_color};"
-        f"background:#F5F6FA;border-radius:8px;'>"
-        f"<h3 style='margin:0;color:{global_color}'>{global_icon} {global_action}</h3>"
+        f"<div style='border:1px solid var(--border);border-left:4px solid {global_color};"
+        f"border-radius:10px;padding:16px 18px;background:var(--bg-elev);margin-bottom:18px;'>"
+        f"<div class='label-xs' style='margin-bottom:4px;'>Verdict portefeuille</div>"
+        f"<div style='font-size:17px;font-weight:600;color:var(--ink);"
+        f"letter-spacing:-0.01em;'>{global_action}</div>"
         f"</div>",
         unsafe_allow_html=True,
     )
 
     # ---- 3 colonnes : Ventes / Renforcer / Nouveaux achats ----
-    st.markdown("")
     col_sell, col_reinforce, col_new = st.columns(3)
 
     with col_sell:
-        st.markdown("#### 🔴 À vendre / alléger")
+        section_heading("À vendre / alléger", spacing="default")
         if sells:
+            from utils.ui_helpers import tag as _tag, ticker as _tkr, delta as _delta
             for s in sells[:5]:
                 _action = "VENDRE" if s["verdict"] == "VENTE FORTE CONFIRMÉE" else "ALLÉGER"
-                color = "#dc3545" if _action == "VENDRE" else "#fd7e14"
                 col_info, col_btn = st.columns([5, 1])
                 with col_info:
                     st.markdown(
-                        f"<b style='color:{color}'>{_action}</b> — "
-                        f"{s['name']} ({s['ticker']})<br>"
-                        f"<small>Poids {s['weight']:.1f}% · P&L {s['pnl_pct']:+.1f}% · "
+                        f"{_tag(_action, 'down')} {s['name']} {_tkr(s['ticker'])}<br>"
+                        f"<small class='muted'>Poids {s['weight']:.1f}% · "
+                        f"P&L {_delta(s['pnl_pct'], with_arrow=False)} · "
                         f"Confiance {s['confidence']}%</small>",
                         unsafe_allow_html=True,
                     )
@@ -726,10 +750,14 @@ def _render_position_recommendations(portfolio, total_value, cash):
                     )
                 st.markdown("")
         else:
-            st.success("Aucune vente recommandée.")
+            st.markdown(
+                "<div style='color:var(--ink-3);font-size:13px;padding:6px 0;'>"
+                "Aucune vente recommandée.</div>",
+                unsafe_allow_html=True,
+            )
 
     with col_reinforce:
-        st.markdown("#### 🟢 À renforcer (détenus)")
+        section_heading("À renforcer (détenus)", spacing="default")
         if reinforce:
             from utils.ui_helpers import tag as _tag, ticker as _tkr, delta as _delta
             for s in reinforce[:5]:
@@ -752,10 +780,14 @@ def _render_position_recommendations(portfolio, total_value, cash):
                     )
                 st.markdown("")
         else:
-            st.info("Pas de position à renforcer.")
+            st.markdown(
+                "<div style='color:var(--ink-3);font-size:13px;padding:6px 0;'>"
+                "Pas de position à renforcer.</div>",
+                unsafe_allow_html=True,
+            )
 
     with col_new:
-        st.markdown("#### ✨ Nouvelles opportunités")
+        section_heading("Nouvelles opportunités", spacing="default")
         if new_buys:
             from utils.ui_helpers import tag as _tag, ticker as _tkr
             for s in new_buys[:5]:
@@ -779,18 +811,21 @@ def _render_position_recommendations(portfolio, total_value, cash):
                     )
                 st.markdown("")
         else:
-            st.info("Pas d'opportunité majeure détectée.")
+            st.markdown(
+                "<div style='color:var(--ink-3);font-size:13px;padding:6px 0;'>"
+                "Pas d'opportunité majeure détectée.</div>",
+                unsafe_allow_html=True,
+            )
 
     # ---- Recommandations cash et diversification ----
-    st.markdown("---")
     col_cash, col_div = st.columns(2)
 
     with col_cash:
-        st.markdown("#### 💵 Utilisation du cash")
+        section_heading("Utilisation du cash", spacing="loose")
         _render_cash_suggestion(cash, cash_pct, new_buys, reinforce)
 
     with col_div:
-        st.markdown("#### 🧩 Diversification")
+        section_heading("Diversification", spacing="loose")
         _render_diversification_suggestion(
             nb_sectors, top_sector, nb_titres,
             top_ticker, unheld_scans, sectors_held,
@@ -798,18 +833,22 @@ def _render_position_recommendations(portfolio, total_value, cash):
 
 
 def _top_signals(signals_cons: dict, limit: int = 2) -> str:
-    """Retourne un résumé court des top signaux (mix buy/sell)."""
+    """Retourne un résumé court des top signaux (mix buy/sell), sans emoji."""
     parts = []
     for s in signals_cons["buy"][:limit]:
-        parts.append(f"🟢 {s.get('family', '?')} · {s['signal']}")
+        parts.append(f"↑ {s.get('family', '?')} · {s['signal']}")
     for s in signals_cons["sell"][:limit]:
-        parts.append(f"🔴 {s.get('family', '?')} · {s['signal']}")
+        parts.append(f"↓ {s.get('family', '?')} · {s['signal']}")
     return " | ".join(parts)
 
 
 def _compute_global_action(nb_sells, nb_reinforce, nb_new_buys,
                            cash_pct, nb_sectors, top_weight):
-    """Calcule un libellé d'action globale pour le portefeuille."""
+    """Calcule un libellé d'action globale pour le portefeuille.
+    Retourne (texte, icône_legacy, couleur_v3).
+    Les couleurs utilisent les tokens du design v3 (CSS vars non exploitables ici :
+    on renvoie les couleurs équivalentes hardcoded)."""
+    # Tokens v3 : primary=#1F5D3A, terracotta=#C94C2A, ocre=#C99A3B, ink-3=#8A8275
     issues = []
     if nb_sells >= 2:
         issues.append(f"{nb_sells} positions à réduire")
@@ -820,37 +859,37 @@ def _compute_global_action(nb_sells, nb_reinforce, nb_new_buys,
 
     if issues:
         return (
-            "ACTION URGENTE : " + ", ".join(issues).capitalize(),
-            "⚠️", "#fd7e14",
+            "Action urgente — " + ", ".join(issues),
+            "", "#C94C2A",
         )
 
     if nb_sells >= 1 and cash_pct < 10:
         return (
-            "Rotation recommandée : vendre d'abord, puis réinvestir",
-            "🔄", "#6C5DD3",
+            "Rotation recommandée — vendre d'abord, puis réinvestir",
+            "", "#C99A3B",
         )
 
     if cash_pct > 30 and (nb_reinforce + nb_new_buys) >= 2:
         return (
             f"Déployer le cash ({cash_pct:.0f}% disponible) sur les opportunités identifiées",
-            "🚀", "#28a745",
+            "", "#1F5D3A",
         )
 
     if cash_pct > 30:
         return (
             f"Conserver le cash ({cash_pct:.0f}%) en attendant de meilleures entrées",
-            "⏸️", "#ffc107",
+            "", "#C99A3B",
         )
 
     if nb_reinforce >= 1 or nb_new_buys >= 1:
         return (
             "Portefeuille sain — quelques ajustements d'opportunité possibles",
-            "✅", "#28a745",
+            "", "#1F5D3A",
         )
 
     return (
         "Portefeuille équilibré — rester en position, surveiller les signaux",
-        "⚪", "#8F9BBA",
+        "", "#8A8275",
     )
 
 
@@ -917,19 +956,20 @@ def _render_diversification_suggestion(nb_sectors, top_sector, nb_titres,
         st.info("Portefeuille vide.")
         return
 
+    from utils.ui_helpers import flag_dot as _flag
     msgs = []
     top_sec_name, top_sec_weight = top_sector
 
     if nb_sectors == 1:
-        msgs.append(f"🔴 **Mono-sectoriel** : 100% sur {top_sec_name}. Ajouter d'autres secteurs.")
+        msgs.append(f"{_flag('risk')} — **Mono-sectoriel** : 100% sur {top_sec_name}. Ajouter d'autres secteurs.")
     elif top_sec_weight > 70:
-        msgs.append(f"🟡 **Forte concentration** : {top_sec_weight:.0f}% sur {top_sec_name}.")
+        msgs.append(f"{_flag('warn')} — **Forte concentration** : {top_sec_weight:.0f}% sur {top_sec_name}.")
     elif nb_sectors >= 3:
-        msgs.append(f"🟢 **Diversification OK** : {nb_sectors} secteurs.")
+        msgs.append(f"{_flag('ok')} — **Diversification OK** : {nb_sectors} secteurs.")
 
     if top_ticker and top_ticker["weight"] > 40:
         msgs.append(
-            f"🟡 **{top_ticker['ticker']}** pèse {top_ticker['weight']:.0f}% — "
+            f"{_flag('warn')} — **{top_ticker['ticker']}** pèse {top_ticker['weight']:.0f}% — "
             "envisager d'alléger ou de renforcer les autres."
         )
 
@@ -948,15 +988,19 @@ def _render_diversification_suggestion(nb_sectors, top_sector, nb_titres,
                     best_candidate = scan
 
     if not msgs and not best_candidate:
-        st.success("Diversification satisfaisante.")
+        st.markdown(
+            "<div style='color:var(--ink-3);font-size:13px;padding:6px 0;'>"
+            "Diversification satisfaisante.</div>",
+            unsafe_allow_html=True,
+        )
     else:
         for m in msgs:
-            st.markdown(m)
+            st.markdown(m, unsafe_allow_html=True)
         if best_candidate:
             col_msg, col_btn = st.columns([5, 1])
             with col_msg:
                 st.markdown(
-                    f"✨ Pour diversifier : **{best_candidate['name']}** "
+                    f"Pour diversifier : **{best_candidate['name']}** "
                     f"({best_candidate['ticker']}) secteur _{best_candidate['sector']}_ "
                     f"— {best_candidate['verdict']}"
                 )
