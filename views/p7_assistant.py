@@ -18,6 +18,60 @@ from analysis.scoring import compute_hybrid_score, rank_stocks, recommend_for_pr
 from utils.charts import radar_chart, gauge_chart, pie_chart, stars_display
 from utils.nav import ticker_analyze_button
 from utils.ui_helpers import section_heading
+from data.db import read_sql_df
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _load_snapshot_ranked_df() -> pd.DataFrame:
+    """Lecture rapide depuis scoring_snapshot (pre-calcule, cache 5 min).
+    Remplace rank_stocks() qui recalculait les 48 scores a chaque rerun.
+    Merge avec les fondamentaux pour avoir yield / PER / ROE."""
+    try:
+        snap = read_sql_df(
+            "SELECT ticker, company_name, sector, price, hybrid_score, "
+            "fundamental_score, technical_score, verdict, stars, trend "
+            "FROM scoring_snapshot"
+        )
+    except Exception:
+        snap = pd.DataFrame()
+    if snap.empty:
+        return pd.DataFrame()
+    snap = snap.rename(columns={"company_name": "name"})
+
+    # Merge avec fondamentaux (yield, PER, ROE) si disponibles
+    try:
+        from data.storage import get_all_stocks_for_analysis
+        fund = get_all_stocks_for_analysis()
+        if not fund.empty:
+            keep = ["ticker"]
+            for col in ["dividend_yield", "per", "roe", "dps"]:
+                if col in fund.columns:
+                    keep.append(col)
+            if "dps" in fund.columns and "price" in fund.columns:
+                fund = fund.copy()
+                fund["dividend_yield"] = fund.apply(
+                    lambda r: (r["dps"] / r["price"]) if (r.get("dps") and r.get("price")) else None,
+                    axis=1,
+                )
+                if "dividend_yield" not in keep:
+                    keep.append("dividend_yield")
+            snap = snap.merge(fund[keep].drop_duplicates("ticker"), on="ticker", how="left")
+    except Exception:
+        pass
+
+    # Colonnes attendues par recommend_for_profile
+    for c in ("dividend_yield", "per", "roe"):
+        if c not in snap.columns:
+            snap[c] = None
+    return snap.sort_values("hybrid_score", ascending=False).reset_index(drop=True)
+
+
+def _profile_signature(profile: dict) -> str:
+    """Signature stable du profil pour invalider le cache recommandations."""
+    import json as _j
+    keys = ["risk_profile", "horizon", "budget", "objective",
+            "preferred_sectors", "excluded_tickers", "preferred_tickers"]
+    return _j.dumps({k: profile.get(k) for k in keys}, sort_keys=True, default=str)
 
 
 def _render_choice_card(title: str, subtitle: str, tags, selected: bool = False):
@@ -395,30 +449,26 @@ def _show_results(profile, df_fund):
     """Affiche les résultats et recommandations personnalisées."""
     section_heading("Vos recommandations personnalisées", spacing="loose")
     _show_profile_badge(profile)
-    st.markdown("---")
 
-    # Build ranking
-    stocks_data = []
-    for _, row in df_fund.iterrows():
-        data = row.to_dict()
-        ticker = data.get("ticker", "")
-        price_df = get_cached_prices(ticker)
-        stocks_data.append({
-            "ticker": ticker,
-            "name": data.get("company_name") or ticker,
-            "fundamentals": data,
-            "price_df": price_df,
-        })
-
-    with st.spinner("Analyse en cours..."):
-        ranked = rank_stocks(stocks_data)
-
+    # ── Lecture snapshot pre-calculé (5 min cache) au lieu de 48 recalculs ──
+    ranked = _load_snapshot_ranked_df()
     if ranked.empty:
-        st.error("Impossible de générér les recommandations. Verifiez les données importees.")
+        st.error(
+            "Aucun snapshot de scoring disponible. Lancez le rebuild depuis la "
+            "page Admin avant d'utiliser l'Assistant."
+        )
         return
 
-    # Get personalized recommendations
-    recommendations = recommend_for_profile(ranked, profile)
+    # ── Mémoïsation des recommandations par signature de profil ──
+    sig = _profile_signature(profile)
+    cache_key = "_assistant_reco_cache"
+    cache = st.session_state.get(cache_key) or {}
+    if cache.get("sig") == sig and cache.get("recos") is not None:
+        recommendations = cache["recos"]
+    else:
+        with st.spinner("Calcul des recommandations…"):
+            recommendations = recommend_for_profile(ranked, profile)
+        st.session_state[cache_key] = {"sig": sig, "recos": recommendations}
 
     if not recommendations:
         st.warning(
@@ -503,12 +553,15 @@ def _show_results(profile, df_fund):
         st.write(f"**Total investi**: {total_allocated:,.0f} {CURRENCY}")
         st.write(f"**Solde restant**: {remaining:,.0f} {CURRENCY}")
 
-        # Projected dividend income
+        # Projected dividend income (dps deja dans ranked, pas de requete DB)
+        dps_map = {}
+        if "dps" in ranked.columns:
+            dps_map = dict(zip(ranked["ticker"], ranked["dps"]))
         total_div = 0
         for reco in recommendations:
-            fund = get_fundamentals(reco["ticker"])
-            if fund and fund.get("dps"):
-                total_div += fund["dps"] * reco["nb_shares"]
+            dps = dps_map.get(reco["ticker"]) or 0
+            if dps:
+                total_div += dps * reco["nb_shares"]
 
         if total_div > 0:
             div_yield = (total_div / total_allocated * 100) if total_allocated > 0 else 0
