@@ -97,23 +97,42 @@ def _render_choice_card(title: str, subtitle: str, tags, selected: bool = False)
     )
 
 
-def render():
-    # Data availability check
+@st.cache_data(ttl=300, show_spinner=False)
+def _cached_df_fund() -> pd.DataFrame:
+    """Fusion get_all_fundamentals + get_all_stocks_for_analysis, cache 5 min.
+    Evite 2 requetes Supabase a chaque transition d'etape."""
     df_fund = get_all_fundamentals()
     all_stocks = get_all_stocks_for_analysis()
     if df_fund.empty and all_stocks.empty:
-        st.warning("Aucune donnée disponible. Lancez l'enrichissement ou importez des fichiers Excel.")
-        return
+        return pd.DataFrame()
     if len(all_stocks) > len(df_fund):
-        df_fund = all_stocks
+        return all_stocks
+    return df_fund
 
-    existing_profile = get_investor_profile()
+
+def render():
+    # Initialisation step/profile en priorite (pas de DB avant)
     if "assistant_step" not in st.session_state:
         st.session_state.assistant_step = 1
     if "assistant_profile" not in st.session_state:
-        st.session_state.assistant_profile = existing_profile or {}
+        # Charge le profil existant une seule fois par session
+        st.session_state.assistant_profile = get_investor_profile() or {}
 
     step = st.session_state.assistant_step
+
+    # ── LAZY DATA LOAD ──
+    # Les etapes 1/2/3/5 n'ont pas besoin de df_fund → zero requete DB
+    # Etape 4 : liste des secteurs (depuis df_fund)
+    # Etape 6 : resultats (scoring_snapshot + ranked_df caches via _load_snapshot_ranked_df)
+    needs_fund = step in (4, 6)
+    if needs_fund:
+        df_fund = _cached_df_fund()
+        if df_fund.empty:
+            st.warning("Aucune donnée disponible. Lancez l'enrichissement ou importez des fichiers Excel.")
+            return
+    else:
+        df_fund = pd.DataFrame()
+
     profile = st.session_state.assistant_profile
     total_steps = 5
     step_shown = min(step, total_steps)
