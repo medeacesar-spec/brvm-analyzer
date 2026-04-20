@@ -631,27 +631,19 @@ elif "current_page" not in st.session_state or st.session_state["current_page"] 
 
 _current = st.session_state["current_page"]
 
-# ── ÉTAPE 1 : détecter un clic utilisateur AVANT toute opération sur les keys
-# Après un clic en section X, session_state[nav_sec_X] contient le nouveau choix
-# alors que current_page reflète encore la page précédente. On synchronise ici.
-for _sec_name, _sec_pages in _NAV_SECTIONS:
-    _widget_key = f"nav_sec_{_sec_name}"
-    _wid_val = st.session_state.get(_widget_key)
-    if _wid_val is not None and _wid_val in _sec_pages and _wid_val != _current:
-        st.session_state["current_page"] = _wid_val
-        _current = _wid_val
-        break  # une seule section peut avoir été cliquée par rerun
+# ── Détection de clic utilisateur via clés rotatives
+# Chaque rerun utilise de nouvelles clés de widget (nav_sec_<section>_<nonce>).
+# Au rerun suivant, les anciennes clés sont effacées et les nouveaux widgets
+# repartent à vide — impossible que 2 radios gardent un état "coché" en parallèle.
+_nav_nonce = st.session_state.get("_nav_nonce", 0)
 
-# ── ÉTAPE 2 : aligner le state de chaque radio sur _current
-# Radios des autres sections : clé supprimée → non sélectionné au rendu
-for _sec_name, _sec_pages in _NAV_SECTIONS:
-    _widget_key = f"nav_sec_{_sec_name}"
-    if _current in _sec_pages:
-        st.session_state[_widget_key] = _current
-    else:
-        st.session_state.pop(_widget_key, None)
+# Purge les clés de widgets des reruns précédents (pas le current_page)
+for _k in list(st.session_state.keys()):
+    if _k.startswith("nav_sec_") and not _k.endswith(f"_{_nav_nonce}"):
+        del st.session_state[_k]
 
-# ── ÉTAPE 3 : rendu sidebar
+# ── Rendu
+_clicked = None
 for _sec_name, _sec_pages in _NAV_SECTIONS:
     st.sidebar.markdown(
         f"<div style='font-size:10.5px;font-weight:600;color:var(--ink-3);"
@@ -659,18 +651,22 @@ for _sec_name, _sec_pages in _NAV_SECTIONS:
         f"margin:14px 0 4px 2px;'>{_sec_name}</div>",
         unsafe_allow_html=True,
     )
-    _widget_key = f"nav_sec_{_sec_name}"
-    if _widget_key in st.session_state:
-        st.sidebar.radio(
-            _sec_name, _sec_pages,
-            key=_widget_key, label_visibility="collapsed",
-        )
-    else:
-        st.sidebar.radio(
-            _sec_name, _sec_pages,
-            index=None, key=_widget_key,
-            label_visibility="collapsed",
-        )
+    _widget_key = f"nav_sec_{_sec_name}_{_nav_nonce}"
+    _idx = _sec_pages.index(_current) if _current in _sec_pages else None
+    _sel = st.sidebar.radio(
+        _sec_name, _sec_pages,
+        index=_idx, key=_widget_key,
+        label_visibility="collapsed",
+    )
+    # Un clic utilisateur dans une section DIFFÉRENTE de la page courante
+    if _sel is not None and _sel != _current and _sel in _sec_pages:
+        _clicked = _sel
+
+if _clicked is not None:
+    st.session_state["current_page"] = _clicked
+    # Rotation du nonce → les clés deviennent invalides → remount complet
+    st.session_state["_nav_nonce"] = _nav_nonce + 1
+    st.rerun()
 
 page = _current
 
