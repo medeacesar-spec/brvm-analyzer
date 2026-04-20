@@ -631,11 +631,19 @@ elif "current_page" not in st.session_state or st.session_state["current_page"] 
 
 _current = st.session_state["current_page"]
 
-# Rendu : un header de section + un radio par section.
-# Avant de rendre chaque radio, on aligne son state : si la page courante
-# n'est pas dans cette section, on force le radio à "non sélectionné" en
-# supprimant sa clé de session_state (sinon Streamlit conserve l'ancien choix
-# et on voit 2 sélections simultanées dans la sidebar).
+# ── ÉTAPE 1 : détecter un clic utilisateur AVANT toute opération sur les keys
+# Après un clic en section X, session_state[nav_sec_X] contient le nouveau choix
+# alors que current_page reflète encore la page précédente. On synchronise ici.
+for _sec_name, _sec_pages in _NAV_SECTIONS:
+    _widget_key = f"nav_sec_{_sec_name}"
+    _wid_val = st.session_state.get(_widget_key)
+    if _wid_val is not None and _wid_val in _sec_pages and _wid_val != _current:
+        st.session_state["current_page"] = _wid_val
+        _current = _wid_val
+        break  # une seule section peut avoir été cliquée par rerun
+
+# ── ÉTAPE 2 : aligner le state de chaque radio sur _current
+# Radios des autres sections : clé supprimée → non sélectionné au rendu
 for _sec_name, _sec_pages in _NAV_SECTIONS:
     _widget_key = f"nav_sec_{_sec_name}"
     if _current in _sec_pages:
@@ -643,6 +651,7 @@ for _sec_name, _sec_pages in _NAV_SECTIONS:
     else:
         st.session_state.pop(_widget_key, None)
 
+# ── ÉTAPE 3 : rendu sidebar
 for _sec_name, _sec_pages in _NAV_SECTIONS:
     st.sidebar.markdown(
         f"<div style='font-size:10.5px;font-weight:600;color:var(--ink-3);"
@@ -651,21 +660,17 @@ for _sec_name, _sec_pages in _NAV_SECTIONS:
         unsafe_allow_html=True,
     )
     _widget_key = f"nav_sec_{_sec_name}"
-    # Si la clé a été posée ci-dessus, st.radio l'utilise ; sinon index=None
     if _widget_key in st.session_state:
-        _sel = st.sidebar.radio(
+        st.sidebar.radio(
             _sec_name, _sec_pages,
             key=_widget_key, label_visibility="collapsed",
         )
     else:
-        _sel = st.sidebar.radio(
+        st.sidebar.radio(
             _sec_name, _sec_pages,
             index=None, key=_widget_key,
             label_visibility="collapsed",
         )
-    if _sel is not None and _sel != _current:
-        st.session_state["current_page"] = _sel
-        st.rerun()
 
 page = _current
 
