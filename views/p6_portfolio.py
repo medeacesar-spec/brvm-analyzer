@@ -423,7 +423,7 @@ def render():
         if cash > 0:
             labels.append("Cash")
             values.append(cash)
-        fig = pie_chart(labels, values, "Allocation par titre")
+        fig = pie_chart(labels, values, "")
         st.plotly_chart(fig, use_container_width=True)
 
     with col_pie2:
@@ -440,7 +440,7 @@ def render():
         if cash > 0:
             sec_labels.append("Cash")
             sec_values.append(cash)
-        fig = pie_chart(sec_labels, sec_values, "Allocation sectorielle")
+        fig = pie_chart(sec_labels, sec_values, "")
         st.plotly_chart(fig, use_container_width=True)
 
     # Sections suivantes (pas de divider — hiérarchie portée par les titres)
