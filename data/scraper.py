@@ -29,14 +29,137 @@ def _get_session():
     return session
 
 
+BRVM_QUOTES_URL = "https://www.brvm.org/fr/cours-actions/0"
+
+
+def _parse_brvm_number(text: str) -> float:
+    """Parse un nombre affiché par brvm.org : espaces (y.c. insécables) comme
+    milliers et virgule décimale FR. Retourne 0.0 en cas d'échec."""
+    if text is None:
+        return 0.0
+    s = str(text).replace("\xa0", " ").replace(" ", "").replace(",", ".").strip()
+    s = s.replace("%", "").replace("+", "")
+    try:
+        return float(s)
+    except (ValueError, TypeError):
+        return 0.0
+
+
+def fetch_daily_quotes_brvm() -> pd.DataFrame:
+    """
+    Cotations du jour depuis brvm.org/fr/cours-actions/0 (source officielle).
+
+    Pourquoi pas sikafinance : leur page /aaz charge le gros du tbody en JS,
+    BeautifulSoup ne voit que ~5 titres (BOA*) sur le HTML statique. brvm.org
+    rend tout côté serveur : 46 lignes complètes disponibles directement.
+
+    Retourne un DataFrame avec les mêmes colonnes que fetch_daily_quotes()
+    pour drop-in replacement : ticker, name, open, high, low, volume_shares,
+    volume_xof, last, variation.
+
+    Les tickers retournés sont dépourvus de suffixe (ex. "SNTS", "ETIT").
+    L'appelant peut les mapper vers les suffixes internes (.sn, .tg, ...) via
+    config.load_tickers si besoin.
+    """
+    session = _get_session()
+    try:
+        resp = session.get(BRVM_QUOTES_URL, timeout=30)
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        raise ConnectionError(f"Erreur de connexion à brvm.org: {e}")
+
+    soup = BeautifulSoup(resp.text, "lxml")
+
+    # La page contient plusieurs tables (top5, flop5, activity, puis cotations).
+    # On cible la table dont le header contient 'Symbole' ET 'Cours Clôture'.
+    target_table = None
+    for tbl in soup.find_all("table"):
+        headers = [th.get_text(strip=True).lower() for th in tbl.find_all("th")]
+        has_symbole = any("symbole" in h for h in headers)
+        has_close = any("clôt" in h or "clot" in h for h in headers)
+        if has_symbole and has_close:
+            target_table = tbl
+            break
+    if target_table is None:
+        return pd.DataFrame()
+
+    # Map brvm.org court (SNTS, ETIT, ABJC) → ticker interne avec suffixe
+    # (SNTS.sn, ETIT.tg, ABJC.ci). On s'appuie sur brvm_tickers.json.
+    try:
+        from config import load_tickers as _load_tickers
+        _ticker_map = {t["ticker"].split(".")[0].upper(): t["ticker"]
+                        for t in _load_tickers()}
+    except Exception:
+        _ticker_map = {}
+
+    tbody = target_table.find("tbody") or target_table
+    rows = []
+    for tr in tbody.find_all("tr"):
+        cells = tr.find_all("td")
+        if len(cells) < 7:
+            continue
+
+        symbole_short = cells[0].get_text(strip=True)
+        if not symbole_short:
+            continue
+        # Ticker complet (avec .ci/.sn/.tg/.bj/.bf) si présent dans notre config
+        symbole = _ticker_map.get(symbole_short.upper(), symbole_short)
+        name = cells[1].get_text(strip=True)
+        volume = _parse_brvm_number(cells[2].get_text())
+        prev_close = _parse_brvm_number(cells[3].get_text())
+        open_p = _parse_brvm_number(cells[4].get_text())
+        close_p = _parse_brvm_number(cells[5].get_text())
+
+        # Variation : souvent dans un <span class="text-good/text-bad/text-nul">
+        var_cell = cells[6]
+        var_span = var_cell.find("span")
+        var_text = (var_span.get_text(strip=True) if var_span
+                     else var_cell.get_text(strip=True))
+        # Signe : text-bad = négatif
+        is_neg = bool(var_span and "text-bad" in (var_span.get("class") or []))
+        variation = _parse_brvm_number(var_text)
+        if is_neg and variation > 0:
+            variation = -variation
+
+        rows.append({
+            "ticker": symbole,
+            "name": name,
+            "open": open_p,
+            "high": max(open_p, close_p) if open_p and close_p else close_p,
+            "low": min(open_p, close_p) if open_p and close_p else close_p,
+            "volume_shares": volume,
+            "volume_xof": volume * close_p if volume and close_p else 0.0,
+            "last": close_p or prev_close,
+            "variation": variation,
+            "prev_close": prev_close,
+        })
+
+    return pd.DataFrame(rows)
+
+
 def fetch_daily_quotes() -> pd.DataFrame:
     """
-    Recupere les cotations du jour depuis sikafinance.com/marches/aaz.
+    Cotations du jour — prend brvm.org en priorité (HTML server-rendered complet),
+    fallback sikafinance.com/marches/aaz si brvm.org est indisponible.
 
     Returns:
         DataFrame avec colonnes: ticker, name, open, high, low, volume_shares,
                                   volume_xof, last, variation
     """
+    # Source 1 : brvm.org (officiel, complet)
+    try:
+        df = fetch_daily_quotes_brvm()
+        if not df.empty and len(df) > 10:  # sanity : au moins 10 titres
+            return df
+    except Exception:
+        pass
+
+    # Fallback : sikafinance (peut être tronqué mais mieux que rien)
+    return _fetch_daily_quotes_sikafinance()
+
+
+def _fetch_daily_quotes_sikafinance() -> pd.DataFrame:
+    """Scraper historique sikafinance — gardé en fallback."""
     session = _get_session()
     try:
         resp = session.get(SIKA_AAZ_URL, timeout=30)
