@@ -93,17 +93,20 @@ def render():
     else:
         subtitle = "Aucune position · commencez par ajouter votre première"
 
-    col_head, col_actions = st.columns([4, 2])
+    col_head, col_actions = st.columns([3, 3])
     with col_head:
         st.title("Portefeuille")
         st.caption(subtitle)
     with col_actions:
         st.markdown("<div style='padding-top:8px;'></div>", unsafe_allow_html=True)
-        col_a1, col_a2 = st.columns(2)
+        col_a1, col_a2, col_a3 = st.columns(3)
         with col_a1:
             show_import = st.button("Importer relevé", use_container_width=True,
                                       key="pf_btn_import")
         with col_a2:
+            show_cash = st.button("Ajouter cash", use_container_width=True,
+                                    key="pf_btn_cash")
+        with col_a3:
             show_add = st.button("Ajouter position", type="primary",
                                    use_container_width=True, key="pf_btn_add")
 
@@ -138,6 +141,54 @@ def render():
                     st.session_state["pf_add_open"] = False
                     st.rerun()
             st.markdown("</div>", unsafe_allow_html=True)
+
+    # ─── Panneau Cash (ajouter / ajuster liquidités) ──
+    if show_cash or st.session_state.get("pf_cash_open"):
+        st.session_state["pf_cash_open"] = True
+        current_cash = st.session_state.get("portfolio_cash", 0) or 0
+        st.markdown(
+            "<div style='background:var(--bg-elev);border:1px solid var(--border);"
+            "border-radius:10px;padding:14px 16px;margin:10px 0;'>"
+            "<div style='font-size:14px;font-weight:600;margin-bottom:4px;'>Cash disponible</div>"
+            "<div style='font-size:12.5px;color:var(--ink-3);margin-bottom:10px;'>"
+            f"Solde courant : {current_cash:,.0f} {CURRENCY}. Ajoutez un montant (positif pour "
+            "dépôt, négatif pour retrait) ou saisissez un solde total."
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        with st.form("cash_form"):
+            col1, col2, col3 = st.columns([2, 2, 2])
+            mode = col1.radio(
+                "Mode", ["Ajouter / retirer", "Définir le solde"],
+                horizontal=False, label_visibility="collapsed",
+                key="pf_cash_mode",
+            )
+            if mode == "Ajouter / retirer":
+                delta = col2.number_input(
+                    f"Montant ({CURRENCY})", value=0, step=1000, key="pf_cash_delta",
+                )
+                new_total = float(current_cash) + float(delta)
+                col3.metric("Nouveau solde", f"{new_total:,.0f} {CURRENCY}")
+            else:
+                new_total = col2.number_input(
+                    f"Solde total ({CURRENCY})", min_value=0,
+                    value=int(current_cash), step=1000, key="pf_cash_set",
+                )
+                col3.metric("Nouveau solde", f"{new_total:,.0f} {CURRENCY}")
+            col_s, col_c = st.columns(2)
+            submitted_cash = col_s.form_submit_button(
+                "Enregistrer", type="primary", use_container_width=True,
+            )
+            if col_c.form_submit_button("Annuler", use_container_width=True):
+                st.session_state["pf_cash_open"] = False
+                st.rerun()
+            if submitted_cash:
+                set_portfolio_cash(float(new_total))
+                st.session_state.portfolio_cash = float(new_total)
+                st.session_state["pf_cash_open"] = False
+                st.success(f"Cash mis à jour : {new_total:,.0f} {CURRENCY}")
+                st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
 
     # ─── Panneau Import OCR (si bouton cliqué + OCR disponible) ──
     if show_import or st.session_state.get("pf_import_open"):
@@ -293,49 +344,6 @@ def render():
     cell_style = "padding:10px;font-size:13px;border-bottom:1px solid var(--border);"
     num_style = cell_style + "text-align:right;font-variant-numeric:tabular-nums;"
 
-    rows_html = (
-        f"<tr>"
-        f"<th style='{header_style};text-align:left;'>Ticker</th>"
-        f"<th style='{header_style};text-align:left;'>Nom</th>"
-        f"<th style='{header_style};text-align:right;'>Qté</th>"
-        f"<th style='{header_style};text-align:right;'>PRU</th>"
-        f"<th style='{header_style};text-align:right;'>Cours</th>"
-        f"<th style='{header_style};text-align:right;'>P&L</th>"
-        f"<th style='{header_style};text-align:right;'>Poids</th>"
-        f"<th style='{header_style};text-align:right;'>Yield</th>"
-        f"</tr>"
-    )
-    for _, pos in portfolio.iterrows():
-        poids_pct = (pos["current_value"] / total_value * 100) if total_value else 0
-        fund = _stocks_dict.get(pos["ticker"]) or {}
-        dps = fund.get("dps") or 0
-        yield_pos = (dps / pos["current_price"] * 100) if pos.get("current_price") else 0
-        pnl = pos.get("pnl")
-        if pd.notna(pos.get("current_price")) and pnl is not None:
-            pnl_sign = "−" if pnl < 0 else "+"
-            pnl_str = f"{pnl_sign}{abs(pnl):,.0f}"
-            pnl_color = "var(--up)" if pnl >= 0 else "var(--down)"
-        else:
-            pnl_str = "—"
-            pnl_color = "var(--ink-3)"
-
-        rows_html += (
-            f"<tr>"
-            f"<td style='{cell_style}'><span class='ticker'>{pos['ticker']}</span></td>"
-            f"<td style='{cell_style};font-weight:500;'>{pos['company_name']}</td>"
-            f"<td style='{num_style}'>{pos['quantity']:,.0f}</td>"
-            f"<td style='{num_style}'>{pos['avg_price']:,.0f}</td>"
-            f"<td style='{num_style}'>"
-            f"{f'{pos[chr(34)+chr(34)+chr(34)+chr(34)]}'}"  # placeholder to avoid key issues
-            f"</td>"
-            f"<td style='{num_style};color:{pnl_color};font-weight:600;'>{pnl_str}</td>"
-            f"<td style='{num_style}'>{poids_pct:.1f}%</td>"
-            f"<td style='{num_style}'>{yield_pos:.2f}%</td>"
-            f"</tr>"
-        )
-
-    # Fix: build the cours cell separately since f-string chr hack is messy
-    # Rebuild rows cleanly :
     rows_html = (
         f"<tr>"
         f"<th style='{header_style};text-align:left;'>Ticker</th>"

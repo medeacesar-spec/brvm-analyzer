@@ -19,6 +19,29 @@ from utils.charts import radar_chart, gauge_chart, pie_chart, stars_display
 from utils.nav import ticker_analyze_button
 
 
+def _render_choice_card(title: str, subtitle: str, tags, selected: bool = False):
+    """Carte de choix editorial v3 (bordure + titre + sous-titre + tags)."""
+    border = "var(--primary)" if selected else "var(--border)"
+    bg = "var(--primary-bg)" if selected else "var(--bg-elev)"
+    tags_html = "".join(
+        f"<span style='display:inline-block;background:var(--bg-sunken);"
+        f"color:var(--ink-2);padding:3px 8px;border-radius:4px;"
+        f"font-size:10.5px;font-weight:500;letter-spacing:0.02em;"
+        f"text-transform:uppercase;margin:2px 4px 2px 0;'>{t}</span>"
+        for t in (tags or [])
+    )
+    st.markdown(
+        f"<div style='background:{bg};border:2px solid {border};"
+        f"border-radius:10px;padding:18px 20px;min-height:170px;'>"
+        f"<div style='font-size:18px;font-weight:600;color:var(--ink);"
+        f"letter-spacing:-0.01em;margin-bottom:4px;'>{title}</div>"
+        f"<div style='font-size:13px;color:var(--ink-3);margin-bottom:14px;'>{subtitle}</div>"
+        f"<div style='margin-bottom:4px;'>{tags_html}</div>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+
 def render():
     from utils.ui_helpers import section_heading
 
@@ -158,75 +181,109 @@ def render():
                 st.session_state.assistant_step = 2
                 st.rerun()
 
-    # ─── STEP 2: INVESTMENT HORIZON ───
+    # ─── STEP 2: INVESTMENT HORIZON — 3 cards v3 ──────────────────────
     elif step == 2:
-        st.markdown("<div style='font-size:17px;font-weight:600;color:var(--ink);letter-spacing:-0.01em;margin-bottom:14px;'>Quel est votre horizon d'investissement ?</div>", unsafe_allow_html=True)
+        st.markdown(
+            "<div style='font-size:17px;font-weight:600;color:var(--ink);"
+            "letter-spacing:-0.01em;margin-bottom:4px;'>"
+            "Quel est votre horizon d'investissement ?</div>"
+            "<div style='font-size:13px;color:var(--ink-3);margin-bottom:18px;'>"
+            "La durée pendant laquelle vous prévoyez de détenir les titres."
+            "</div>",
+            unsafe_allow_html=True,
+        )
         _show_profile_badge(profile)
 
+        current = profile.get("horizon")
         col1, col2, col3 = st.columns(3)
-
-        with col1:
-            st.markdown("### ⏱️ Court terme")
-            st.markdown("**Moins de 6 mois**\n\nRecherche de gains rapides sur momentum")
-            if st.button("Court terme", key="h_short", use_container_width=True):
-                profile["horizon"] = "court"
-                st.session_state.assistant_step = 3
-                st.rerun()
-
-        with col2:
-            st.markdown("### 📅 Moyen terme")
-            st.markdown("**6 a 18 mois**\n\nEquilibre entre timing et patience")
-            if st.button("Moyen terme", key="h_medium", use_container_width=True):
-                profile["horizon"] = "moyen"
-                st.session_state.assistant_step = 3
-                st.rerun()
-
-        with col3:
-            st.markdown("### 🏦 Long terme")
-            st.markdown("**Plus de 18 mois**\n\nAccumulation et rendement compose")
-            if st.button("Long terme", key="h_long", use_container_width=True):
-                profile["horizon"] = "long"
-                st.session_state.assistant_step = 3
-                st.rerun()
+        for col, (key, title, subtitle, tags) in zip(
+            [col1, col2, col3],
+            [
+                ("court", "Court terme", "Moins de 6 mois",
+                 ["< 6 mois", "Momentum", "Sortie rapide"]),
+                ("moyen", "Moyen terme", "6 à 18 mois",
+                 ["6-18 mois", "Équilibre", "Timing + patience"]),
+                ("long", "Long terme", "Plus de 18 mois",
+                 ["> 18 mois", "Accumulation", "Composé"]),
+            ],
+        ):
+            with col:
+                _render_choice_card(title, subtitle, tags, selected=(current == key))
+                is_sel = (current == key)
+                label = "✓ Sélectionné" if is_sel else "Choisir"
+                btype = "primary" if is_sel else "secondary"
+                if st.button(label, key=f"h_{key}", type=btype,
+                              use_container_width=True):
+                    profile["horizon"] = key
+                    st.session_state.assistant_step = 3
+                    st.rerun()
 
     # ─── STEP 3: BUDGET ───
     elif step == 3:
-        st.markdown("<div style='font-size:17px;font-weight:600;color:var(--ink);letter-spacing:-0.01em;margin-bottom:14px;'>Quel montant souhaitez-vous investir ?</div>", unsafe_allow_html=True)
+        st.markdown(
+            "<div style='font-size:17px;font-weight:600;color:var(--ink);"
+            "letter-spacing:-0.01em;margin-bottom:4px;'>"
+            "Quel montant souhaitez-vous investir ?</div>"
+            "<div style='font-size:13px;color:var(--ink-3);margin-bottom:18px;'>"
+            "Montant total disponible, servira à calculer la répartition suggérée."
+            "</div>",
+            unsafe_allow_html=True,
+        )
         _show_profile_badge(profile)
 
-        budget = st.number_input(
-            f"Budget disponible ({CURRENCY})",
-            min_value=100_000,
-            max_value=1_000_000_000,
-            value=int(profile.get("budget", 5_000_000)),
-            step=500_000,
-            format="%d",
-        )
-        st.markdown(f"**{budget:,.0f} {CURRENCY}**")
+        col_input, _ = st.columns([2, 3])
+        with col_input:
+            budget = st.number_input(
+                f"Budget ({CURRENCY})",
+                min_value=100_000, max_value=1_000_000_000,
+                value=int(profile.get("budget", 5_000_000)),
+                step=500_000, format="%d",
+                label_visibility="collapsed",
+            )
+            st.markdown(
+                f"<div style='font-size:28px;font-weight:600;letter-spacing:-0.02em;"
+                f"color:var(--ink);margin-top:8px;font-variant-numeric:tabular-nums;'>"
+                f"{budget:,.0f} <span style='color:var(--ink-3);font-size:14px;font-weight:400;'>"
+                f"{CURRENCY}</span></div>",
+                unsafe_allow_html=True,
+            )
 
-        if st.button("Continuer ➡️", key="budget_next"):
+        if st.button("Continuer", key="budget_next", type="primary"):
             profile["budget"] = budget
             st.session_state.assistant_step = 4
             st.rerun()
 
     # ─── STEP 4: SECTOR PREFERENCES ───
     elif step == 4:
-        st.markdown("<div style='font-size:17px;font-weight:600;color:var(--ink);letter-spacing:-0.01em;margin-bottom:14px;'>Quels secteurs vous intéressent ?</div>", unsafe_allow_html=True)
+        st.markdown(
+            "<div style='font-size:17px;font-weight:600;color:var(--ink);"
+            "letter-spacing:-0.01em;margin-bottom:4px;'>"
+            "Quels secteurs vous intéressent ?</div>"
+            "<div style='font-size:13px;color:var(--ink-3);margin-bottom:18px;'>"
+            "Laissez vide pour considérer tous les secteurs."
+            "</div>",
+            unsafe_allow_html=True,
+        )
         _show_profile_badge(profile)
 
-        st.markdown("Sélectionnez les secteurs dans lesquels vous souhaitez investir. "
-                     "Laissez vide pour considerer tous les secteurs.")
-
         available_sectors = sorted(df_fund["sector"].dropna().unique().tolist())
-
+        st.markdown(
+            "<div class='label-xs' style='margin-bottom:4px;'>Secteurs préférés</div>",
+            unsafe_allow_html=True,
+        )
         selected_sectors = st.multiselect(
-            "Secteurs préférés",
-            available_sectors,
+            "Secteurs", available_sectors,
             default=profile.get("preferred_sectors", []),
+            label_visibility="collapsed",
+            placeholder="Tous les secteurs",
         )
 
-        # Specific tickers
-        st.markdown("##### Titres spécifiques (optionnel)")
+        st.markdown(
+            "<div class='label-xs' style='margin:14px 0 4px 0;'>"
+            "Titres à privilégier <span style='text-transform:none;"
+            "font-weight:400;'>(optionnel)</span></div>",
+            unsafe_allow_html=True,
+        )
         tracked_tickers = df_fund["ticker"].unique().tolist()
         tickers_data = load_tickers()
         ticker_options = [
@@ -234,69 +291,67 @@ def render():
             for t in tickers_data
             if t["ticker"] in tracked_tickers
         ]
-
         preferred = st.multiselect(
-            "Titres à privilégier",
-            ticker_options,
-            default=[],
-            help="Ces titres seront prioritaires dans les recommandations",
+            "Privilégier", ticker_options, default=[],
+            label_visibility="collapsed",
+            placeholder="Aucun titre privilégié",
+        )
+
+        st.markdown(
+            "<div class='label-xs' style='margin:14px 0 4px 0;'>"
+            "Titres à exclure <span style='text-transform:none;"
+            "font-weight:400;'>(optionnel)</span></div>",
+            unsafe_allow_html=True,
         )
         excluded = st.multiselect(
-            "Titres à exclure",
-            ticker_options,
-            default=[],
-            help="Ces titres ne seront jamais recommandés",
+            "Exclure", ticker_options, default=[],
+            label_visibility="collapsed",
+            placeholder="Aucun titre exclu",
         )
 
-        if st.button("Continuer ➡️", key="sector_next"):
+        if st.button("Continuer", key="sector_next", type="primary"):
             profile["preferred_sectors"] = selected_sectors
             profile["preferred_tickers"] = [p.split(" - ")[0] for p in preferred]
             profile["excluded_tickers"] = [e.split(" - ")[0] for e in excluded]
             st.session_state.assistant_step = 5
             st.rerun()
 
-    # ─── STEP 5: OBJECTIVE ───
+    # ─── STEP 5: OBJECTIVE — 3 cards v3 ──────────────────────────────
     elif step == 5:
-        st.markdown("<div style='font-size:17px;font-weight:600;color:var(--ink);letter-spacing:-0.01em;margin-bottom:14px;'>Quel est votre objectif principal ?</div>", unsafe_allow_html=True)
+        st.markdown(
+            "<div style='font-size:17px;font-weight:600;color:var(--ink);"
+            "letter-spacing:-0.01em;margin-bottom:4px;'>"
+            "Quel est votre objectif principal ?</div>"
+            "<div style='font-size:13px;color:var(--ink-3);margin-bottom:18px;'>"
+            "Cela déterminera la pondération des critères de sélection."
+            "</div>",
+            unsafe_allow_html=True,
+        )
         _show_profile_badge(profile)
 
+        current = profile.get("objective")
         col1, col2, col3 = st.columns(3)
-
-        with col1:
-            st.markdown("<div style='font-size:16px;font-weight:600;color:var(--ink);margin-bottom:4px;'>Rendement</div>", unsafe_allow_html=True)
-            st.markdown(
-                "Maximiser les **dividendes**\n\n"
-                "- Dividend Yield élevé\n"
-                "- Payout soutenable\n"
-                "- Revenus reguliers"
-            )
-            if st.button("Rendement", key="obj_yield", use_container_width=True):
-                profile["objective"] = "rendement"
-                _finalize(profile, df_fund)
-
-        with col2:
-            st.markdown("### 📈 Croissance")
-            st.markdown(
-                "Maximiser l'**appreciation du capital**\n\n"
-                "- Croissance du CA et RN\n"
-                "- PER raisonnable\n"
-                "- Momentum haussier"
-            )
-            if st.button("Croissance", key="obj_growth", use_container_width=True):
-                profile["objective"] = "croissance"
-                _finalize(profile, df_fund)
-
-        with col3:
-            st.markdown("<div style='font-size:16px;font-weight:600;color:var(--ink);margin-bottom:4px;'>Mixte</div>", unsafe_allow_html=True)
-            st.markdown(
-                "**Equilibre** dividendes + croissance\n\n"
-                "- Score hybride global\n"
-                "- Diversification\n"
-                "- Rendement + potentiel"
-            )
-            if st.button("Mixte", key="obj_mixed", use_container_width=True):
-                profile["objective"] = "mixte"
-                _finalize(profile, df_fund)
+        objectives = [
+            ("rendement", "Rendement",
+             "Maximiser les dividendes",
+             ["Yield élevé", "Payout sain", "Revenus"]),
+            ("croissance", "Croissance",
+             "Maximiser l'appréciation du capital",
+             ["Croissance CA/RN", "PER raisonnable", "Momentum"]),
+            ("mixte", "Mixte",
+             "Équilibre dividendes + croissance",
+             ["Score hybride", "Diversifié", "Rendement + potentiel"]),
+        ]
+        for col, (key, title, subtitle, tags) in zip([col1, col2, col3], objectives):
+            with col:
+                _render_choice_card(title, subtitle, tags, selected=(current == key))
+                is_sel = (current == key)
+                label = "✓ Sélectionné" if is_sel else "Choisir"
+                btype = "primary" if is_sel else "secondary"
+                if st.button(label, key=f"obj_{key}", type=btype,
+                              use_container_width=True):
+                    profile["objective"] = key
+                    _finalize(profile, df_fund)
 
     # ─── STEP 6: RESULTS ───
     elif step >= 6:
