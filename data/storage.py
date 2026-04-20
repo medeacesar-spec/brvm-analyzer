@@ -942,6 +942,26 @@ def delete_position(position_id: int, user_id: Optional[str] = None):
     conn.close()
 
 
+def update_position(position_id: int, quantity: float, avg_price: float,
+                     user_id: Optional[str] = None) -> bool:
+    """Met à jour la quantité et le PRU d'une position existante.
+    Ne change ni le ticker ni la date d'achat. Renvoie True si succès."""
+    uid = _resolve_user(user_id)
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE portfolio SET quantity = ?, avg_price = ? "
+            "WHERE id = ? AND user_id = ?",
+            (float(quantity), float(avg_price), int(position_id), uid),
+        )
+        conn.commit()
+        return True
+    except Exception:
+        return False
+    finally:
+        conn.close()
+
+
 # --- Portfolio settings (cash, devise…) — user-scoped ---
 
 def get_portfolio_setting(key: str, default=None, user_id: Optional[str] = None):

@@ -8,7 +8,7 @@ import pandas as pd
 
 from config import load_tickers, CURRENCY
 from data.storage import (
-    save_position, get_portfolio, delete_position,
+    save_position, get_portfolio, delete_position, update_position,
     get_fundamentals, get_cached_prices, get_all_stocks_for_analysis,
     get_portfolio_cash, set_portfolio_cash,
 )
@@ -392,22 +392,73 @@ def render():
         unsafe_allow_html=True,
     )
 
-    # Actions par ligne : Ouvrir + Supprimer sous le tableau (pour chaque pos)
+    # Actions par ligne : Ouvrir / Modifier / Supprimer
     with st.expander("Actions par position", expanded=False):
         for _, pos in portfolio.iterrows():
-            cols = st.columns([3, 1, 1])
+            pid = int(pos["id"])
+            edit_flag_key = f"pf_edit_open_{pid}"
+
+            cols = st.columns([3, 1, 1, 1])
             cols[0].markdown(f"**{pos['company_name']}** · {pos['ticker']}")
             with cols[1]:
                 ticker_analyze_button(
                     pos["ticker"],
-                    key=f"pf_goto_{pos['id']}",
+                    key=f"pf_goto_{pid}",
                     help_text=f"Analyser {pos['ticker']}",
                     use_container_width=True,
                 )
-            if cols[2].button("Supprimer", key=f"del_{pos['id']}",
+            if cols[2].button("Modifier", key=f"edit_{pid}",
                                 use_container_width=True):
-                delete_position(pos["id"])
+                st.session_state[edit_flag_key] = not st.session_state.get(edit_flag_key, False)
                 st.rerun()
+            if cols[3].button("Supprimer", key=f"del_{pid}",
+                                use_container_width=True):
+                delete_position(pid)
+                st.rerun()
+
+            # ─── Panneau Modifier (inline sous la ligne) ──
+            if st.session_state.get(edit_flag_key):
+                st.markdown(
+                    "<div style='background:var(--bg-elev);border:1px solid var(--border);"
+                    "border-radius:10px;padding:12px 14px;margin:6px 0 10px 0;'>",
+                    unsafe_allow_html=True,
+                )
+                with st.form(f"edit_form_{pid}"):
+                    st.markdown(
+                        f"<div class='label-xs' style='margin-bottom:8px;'>"
+                        f"Modifier {pos['ticker']} — {pos['company_name']}</div>",
+                        unsafe_allow_html=True,
+                    )
+                    c1, c2 = st.columns(2)
+                    new_qty = c1.number_input(
+                        "Quantité", min_value=1,
+                        value=int(pos["quantity"]), step=1,
+                        key=f"edit_qty_{pid}",
+                    )
+                    new_pru = c2.number_input(
+                        f"PRU ({CURRENCY})", min_value=1,
+                        value=int(pos["avg_price"]), step=1,
+                        key=f"edit_pru_{pid}",
+                    )
+                    c_s, c_c = st.columns(2)
+                    saved = c_s.form_submit_button(
+                        "Enregistrer", type="primary", use_container_width=True,
+                    )
+                    cancelled = c_c.form_submit_button(
+                        "Annuler", use_container_width=True,
+                    )
+                    if saved:
+                        ok = update_position(pid, new_qty, new_pru)
+                        if ok:
+                            st.session_state[edit_flag_key] = False
+                            st.success(f"{pos['ticker']} mis à jour")
+                            st.rerun()
+                        else:
+                            st.error("Échec de la mise à jour.")
+                    if cancelled:
+                        st.session_state[edit_flag_key] = False
+                        st.rerun()
+                st.markdown("</div>", unsafe_allow_html=True)
 
     # Allocation
     section_heading("Allocation", spacing="loose")
