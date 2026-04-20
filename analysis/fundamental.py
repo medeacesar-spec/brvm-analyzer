@@ -629,11 +629,22 @@ def compute_target_price(ratios: dict, sector: Optional[str] = None,
         fair_per = 12  # défaut prudent si pas de benchmark
 
     if eps and eps > 0 and fair_per:
-        price_per = fair_per * eps
+        price_per_raw = fair_per * eps
+        # Cap anti-aberration : si le marché décote structurellement un titre
+        # (ex. ETIT PER 1.6× vs sectoriel 10×), la méthode PER donnerait un
+        # target 10× le prix, physiquement peu crédible. On borne à 3× le
+        # prix actuel pour rester dans une fourchette d'upside réaliste.
+        price_per_capped = min(price_per_raw, 3 * price) if price else price_per_raw
+        capped = price_per_capped < price_per_raw
+        formula = f"PER {fair_per:.1f}× × EPS {eps:,.0f}"
+        if capped:
+            formula += " (plafonné à 3× cours)"
         components.append({
             "method": "PER sectoriel",
-            "formula": f"PER {fair_per:.1f}× × EPS {eps:,.0f}",
-            "price": price_per,
+            "formula": formula,
+            "price": price_per_capped,
+            "raw_price": price_per_raw,
+            "capped": capped,
         })
 
     # ── Méthode 2 : Yield cible ≥ 5% ──
@@ -644,11 +655,19 @@ def compute_target_price(ratios: dict, sector: Optional[str] = None,
     fair_yield = max(y_med, 0.05) if y_med else 0.06
 
     if dps and dps > 0 and fair_yield:
-        price_yield = dps / fair_yield
+        price_yield_raw = dps / fair_yield
+        # Même cap anti-aberration côté upper bound
+        price_yield_capped = min(price_yield_raw, 3 * price) if price else price_yield_raw
+        capped_y = price_yield_capped < price_yield_raw
+        formula_y = f"DPS {dps:,.0f} / yield {fair_yield*100:.1f}%"
+        if capped_y:
+            formula_y += " (plafonné à 3× cours)"
         components.append({
             "method": "Yield cible",
-            "formula": f"DPS {dps:,.0f} / yield {fair_yield*100:.1f}%",
-            "price": price_yield,
+            "formula": formula_y,
+            "price": price_yield_capped,
+            "raw_price": price_yield_raw,
+            "capped": capped_y,
         })
 
     if not components:
