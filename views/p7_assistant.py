@@ -420,29 +420,57 @@ def _finalize(profile, df_fund):
 
 
 def _show_profile_badge(profile):
-    """Affiche un résumé du profil en cours de construction (chips éditoriaux)."""
-    chips = []
-    label_map = {"prudent": "Prudent", "equilibre": "Équilibré", "dynamique": "Dynamique"}
+    """Affiche le résumé du profil : 1 chip étiqueté par étape (risque / horizon /
+    budget / secteurs / objectif). Palette v3 unifiée — tous en ton neutre éditorial,
+    seule l'étiquette varie pour distinguer l'origine de chaque chip."""
+    chips = []  # (label_etape, valeur)
+
     if "risk_profile" in profile:
-        chips.append(label_map.get(profile["risk_profile"], profile["risk_profile"].capitalize()))
+        risk_map = {"prudent": "Prudent", "equilibre": "Équilibré", "dynamique": "Dynamique"}
+        chips.append(("Risque", risk_map.get(profile["risk_profile"],
+                                              profile["risk_profile"].capitalize())))
+
     if "horizon" in profile:
         hz_map = {"court": "Court terme", "moyen": "Moyen terme", "long": "Long terme"}
-        chips.append(hz_map.get(profile["horizon"], f"{profile['horizon'].capitalize()} terme"))
-    if "budget" in profile:
-        chips.append(f"{profile['budget']:,.0f} {CURRENCY}")
+        chips.append(("Horizon", hz_map.get(profile["horizon"],
+                                              f"{profile['horizon'].capitalize()} terme")))
 
-    if chips:
-        chips_html = "".join(
-            f"<span style='display:inline-block;background:var(--bg-sunken);"
-            f"color:var(--ink-2);padding:3px 10px;border-radius:4px;"
-            f"font-size:11px;font-weight:500;letter-spacing:0.02em;"
-            f"text-transform:uppercase;margin-right:6px;'>{c}</span>"
-            for c in chips
-        )
-        st.markdown(
-            f"<div style='margin:6px 0 14px 0;'>{chips_html}</div>",
-            unsafe_allow_html=True,
-        )
+    if "budget" in profile:
+        chips.append(("Budget", f"{profile['budget']:,.0f} {CURRENCY}"))
+
+    sectors = profile.get("preferred_sectors") or []
+    if sectors:
+        if len(sectors) <= 2:
+            sec_val = " · ".join(sectors)
+        else:
+            sec_val = f"{sectors[0]} +{len(sectors) - 1}"
+        chips.append(("Secteurs", sec_val))
+    elif "preferred_sectors" in profile:
+        chips.append(("Secteurs", "Tous"))
+
+    if "objective" in profile:
+        obj_map = {"rendement": "Rendement", "croissance": "Croissance", "mixte": "Mixte"}
+        chips.append(("Objectif", obj_map.get(profile["objective"],
+                                                profile["objective"].capitalize())))
+
+    if not chips:
+        return
+
+    chips_html = "".join(
+        f"<span style='display:inline-flex;align-items:center;gap:6px;"
+        f"background:var(--bg-elev);border:1px solid var(--border);"
+        f"padding:4px 10px 4px 8px;border-radius:6px;margin:0 6px 6px 0;"
+        f"font-size:12px;'>"
+        f"<span style='font-size:10px;color:var(--ink-3);text-transform:uppercase;"
+        f"letter-spacing:0.06em;font-weight:600;'>{etape}</span>"
+        f"<span style='color:var(--ink);font-weight:500;'>{val}</span>"
+        f"</span>"
+        for etape, val in chips
+    )
+    st.markdown(
+        f"<div style='margin:6px 0 14px 0;display:flex;flex-wrap:wrap;'>{chips_html}</div>",
+        unsafe_allow_html=True,
+    )
 
 
 def _show_results(profile, df_fund):
