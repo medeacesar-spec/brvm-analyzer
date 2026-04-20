@@ -609,44 +609,51 @@ except Exception:
 # Widget authentification (connexion Google OAuth ou mode dev)
 render_auth_widget()
 
-# Titre de section Navigation — bold regular (même style que les titres de section)
-st.sidebar.markdown(
-    "<div style='font-size:14px;font-weight:600;color:var(--ink);"
-    "letter-spacing:-0.01em;margin:18px 0 6px 2px;'>Navigation</div>",
-    unsafe_allow_html=True,
-)
+# ─── Navigation par sections (Marché / Analyse / Outils) ──────────────
+# Historique Signaux est reservé aux administrateurs.
+_outils = ["Portefeuille", "Signaux", "Assistant IA"]
+if is_admin():
+    _outils = ["Portefeuille", "Signaux", "Historique Signaux", "Assistant IA"]
 
-_PAGE_OPTIONS = [
-    "Dashboard Marché",
-    "Analyse d'un titre",
-    "Screening",
-    "Comparateur",
-    "Signaux",
-    "Portefeuille",
-    "Assistant Investisseur",
-    "Performance des titres",
-    "Historique Signaux",
-    "Infos Générales Marché",
+_NAV_SECTIONS = [
+    ("Marché", ["Dashboard", "Infos Marché"]),
+    ("Analyse", ["Analyse d'un titre", "Screening", "Comparateur", "Performance des titres"]),
+    ("Outils", _outils),
 ]
+_PAGE_OPTIONS = [p for _, pages in _NAV_SECTIONS for p in pages]
 
 # If another page requested navigation (e.g. a ticker-link button), honor it.
 _pending_page = st.session_state.pop("pending_page", None)
 if _pending_page and _pending_page in _PAGE_OPTIONS:
-    st.session_state["nav_radio"] = _pending_page
-elif "nav_radio" not in st.session_state:
-    # Initialize default only the first time, before the widget is created
-    st.session_state["nav_radio"] = _PAGE_OPTIONS[0]
+    st.session_state["current_page"] = _pending_page
+elif "current_page" not in st.session_state or st.session_state["current_page"] not in _PAGE_OPTIONS:
+    st.session_state["current_page"] = _PAGE_OPTIONS[0]
 
-# IMPORTANT: when using `key=`, don't also pass `index=`; Streamlit will warn.
-page = st.sidebar.radio(
-    "Navigation",
-    _PAGE_OPTIONS,
-    key="nav_radio",
-    label_visibility="collapsed",
-)
+_current = st.session_state["current_page"]
+
+# Rendu : un header de section + un radio par section
+for _sec_name, _sec_pages in _NAV_SECTIONS:
+    st.sidebar.markdown(
+        f"<div style='font-size:10.5px;font-weight:600;color:var(--ink-3);"
+        f"letter-spacing:0.08em;text-transform:uppercase;"
+        f"margin:14px 0 4px 2px;'>{_sec_name}</div>",
+        unsafe_allow_html=True,
+    )
+    _idx = _sec_pages.index(_current) if _current in _sec_pages else None
+    _sel = st.sidebar.radio(
+        _sec_name, _sec_pages,
+        index=_idx,
+        key=f"nav_sec_{_sec_name}",
+        label_visibility="collapsed",
+    )
+    if _sel is not None and _sel != _current:
+        st.session_state["current_page"] = _sel
+        st.rerun()
+
+page = _current
 
 # Import and run the selected page
-if page == "Dashboard Marché":
+if page == "Dashboard":
     from views.p1_dashboard import render
     render()
 elif page == "Analyse d'un titre":
@@ -665,17 +672,20 @@ elif page == "Portefeuille":
     if require_login("le suivi de portefeuille"):
         from views.p6_portfolio import render
         render()
-elif page == "Assistant Investisseur":
-    if require_login("l'Assistant Investisseur"):
+elif page == "Assistant IA":
+    if require_login("l'Assistant IA"):
         from views.p7_assistant import render
         render()
 elif page == "Performance des titres":
     from views.p9_performance import render
     render()
 elif page == "Historique Signaux":
-    from views.p10_calibration import render
-    render()
-elif page == "Infos Générales Marché":
+    if is_admin():
+        from views.p10_calibration import render
+        render()
+    else:
+        st.warning("Page réservée aux administrateurs.")
+elif page == "Infos Marché":
     from views.p8_publications import render
     render()
 

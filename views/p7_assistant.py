@@ -142,7 +142,7 @@ def render():
     # ═══════════════════════════════════════════════════════════════════
     col_h, col_step = st.columns([5, 1])
     with col_h:
-        st.title("Assistant Investisseur")
+        st.title("Assistant IA")
         st.caption(f"{total_steps} étapes · recommandations personnalisées")
     with col_step:
         st.markdown(
