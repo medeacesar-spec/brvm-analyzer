@@ -17,6 +17,7 @@ from analysis.fundamental import compute_ratios, format_ratio
 from analysis.scoring import compute_hybrid_score, rank_stocks, recommend_for_profile
 from utils.charts import radar_chart, gauge_chart, pie_chart, stars_display
 from utils.nav import ticker_analyze_button
+from utils.ui_helpers import section_heading
 
 
 def _render_choice_card(title: str, subtitle: str, tags, selected: bool = False):
@@ -43,8 +44,6 @@ def _render_choice_card(title: str, subtitle: str, tags, selected: bool = False)
 
 
 def render():
-    from utils.ui_helpers import section_heading
-
     # Data availability check
     df_fund = get_all_fundamentals()
     all_stocks = get_all_stocks_for_analysis()
@@ -367,18 +366,29 @@ def _finalize(profile, df_fund):
 
 
 def _show_profile_badge(profile):
-    """Affiche un résumé du profil en cours de construction."""
-    badges = []
+    """Affiche un résumé du profil en cours de construction (chips éditoriaux)."""
+    chips = []
+    label_map = {"prudent": "Prudent", "equilibre": "Équilibré", "dynamique": "Dynamique"}
     if "risk_profile" in profile:
-        emoji = {"prudent": "🛡️", "equilibre": "⚖️", "dynamique": "🚀"}.get(profile["risk_profile"], "")
-        badges.append(f"{emoji} {profile['risk_profile'].capitalize()}")
+        chips.append(label_map.get(profile["risk_profile"], profile["risk_profile"].capitalize()))
     if "horizon" in profile:
-        badges.append(f"📅 {profile['horizon'].capitalize()} terme")
+        hz_map = {"court": "Court terme", "moyen": "Moyen terme", "long": "Long terme"}
+        chips.append(hz_map.get(profile["horizon"], f"{profile['horizon'].capitalize()} terme"))
     if "budget" in profile:
-        badges.append(f"💰 {profile['budget']:,.0f} {CURRENCY}")
+        chips.append(f"{profile['budget']:,.0f} {CURRENCY}")
 
-    if badges:
-        st.markdown(" | ".join(f"**{b}**" for b in badges))
+    if chips:
+        chips_html = "".join(
+            f"<span style='display:inline-block;background:var(--bg-sunken);"
+            f"color:var(--ink-2);padding:3px 10px;border-radius:4px;"
+            f"font-size:11px;font-weight:500;letter-spacing:0.02em;"
+            f"text-transform:uppercase;margin-right:6px;'>{c}</span>"
+            for c in chips
+        )
+        st.markdown(
+            f"<div style='margin:6px 0 14px 0;'>{chips_html}</div>",
+            unsafe_allow_html=True,
+        )
 
 
 def _show_results(profile, df_fund):
@@ -421,19 +431,25 @@ def _show_results(profile, df_fund):
         return
 
     # ─── TOP 3 RECOMMENDATIONS ───
-    st.markdown(f"### 🏆 Top {len(recommendations)} titres pour votre profil")
+    section_heading(f"Top {len(recommendations)} titres pour votre profil", spacing="loose")
 
     for i, reco in enumerate(recommendations):
-        medal = ["🥇", "🥈", "🥉"][i] if i < 3 else f"#{i+1}"
+        rank = f"{i+1}"
 
         with st.container():
             col_title, col_btn = st.columns([6, 1])
             with col_title:
-                st.markdown(f"## {medal} {reco['name']} ({reco['ticker']})")
+                st.markdown(
+                    f"<div style='font-size:20px;font-weight:600;color:var(--ink);"
+                    f"letter-spacing:-0.01em;margin-top:8px;'>"
+                    f"<span style='color:var(--ink-3);margin-right:10px;'>#{rank}</span>"
+                    f"{reco['name']} <span class='ticker'>{reco['ticker']}</span></div>",
+                    unsafe_allow_html=True,
+                )
             with col_btn:
                 st.markdown('<div style="padding-top:1.5rem"></div>', unsafe_allow_html=True)
                 ticker_analyze_button(
-                    reco["ticker"], label="🔍 Analyser",
+                    reco["ticker"], label="Analyser",
                     key=f"assistant_goto_{reco['ticker']}",
                     use_container_width=True,
                 )
@@ -479,7 +495,7 @@ def _show_results(profile, df_fund):
                 )
             with col_btn:
                 ticker_analyze_button(
-                    reco["ticker"], label="🔍",
+                    reco["ticker"], label=None,
                     key=f"assistant_alloc_{reco['ticker']}",
                 )
 
@@ -496,9 +512,13 @@ def _show_results(profile, df_fund):
 
         if total_div > 0:
             div_yield = (total_div / total_allocated * 100) if total_allocated > 0 else 0
-            st.success(
-                f"💰 **Dividendes projetes**: {total_div:,.0f} {CURRENCY}/an "
-                f"(rendement: {div_yield:.1f}%)"
+            st.markdown(
+                f"<div style='border:1px solid var(--border);border-left:4px solid var(--primary);"
+                f"border-radius:8px;padding:10px 14px;background:var(--bg-elev);margin-top:10px;"
+                f"font-size:13px;'>"
+                f"<b>Dividendes projetés</b> : {total_div:,.0f} {CURRENCY}/an "
+                f"(rendement {div_yield:.1f}%)</div>",
+                unsafe_allow_html=True,
             )
 
     with col_pie:
@@ -512,7 +532,7 @@ def _show_results(profile, df_fund):
 
     # ─── FULL RANKING ───
     st.markdown("---")
-    with st.expander("📋 Classement complet de tous les titres"):
+    with st.expander("Classement complet de tous les titres"):
         _display_ranking_table(ranked)
 
 
