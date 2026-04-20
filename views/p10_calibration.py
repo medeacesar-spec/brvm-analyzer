@@ -20,6 +20,7 @@ from data.db import read_sql_df
 from utils.charts import COLORS
 from utils.nav import ticker_quick_picker
 from utils.auth import is_admin
+from utils.ui_helpers import section_heading, kpi_card, tag, ticker as ticker_chip, delta
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -45,6 +46,18 @@ VERDICT_COLORS = {
     "VENTE FORTE": COLORS["red"],
 }
 
+# Verdict -> (dot_tone, tag_tone)
+VERDICT_TONES = {
+    "ACHAT FORT": ("up", "up"),
+    "ACHAT": ("up", "up"),
+    "CONSERVER": ("ocre", "ocre"),
+    "NEUTRE": ("ocre", "ocre"),
+    "PRUDENCE": ("ocre", "ocre"),
+    "VENTE": ("down", "down"),
+    "VENTE FORTE": ("down", "down"),
+    "EVITER": ("down", "down"),
+}
+
 
 def _fmt_pct(v):
     if v is None or pd.isna(v):
@@ -68,18 +81,25 @@ def _duration_days(first, last):
         return None
 
 
+def _delta_cell(v):
+    """Cellule tabulaire : retourne HTML coloré pour une fraction (ex 0.034 = +3.4%)."""
+    if v is None or pd.isna(v):
+        return "<span style='color:var(--ink-3)'>—</span>"
+    pct = v * 100
+    return delta(pct, with_arrow=False)
+
+
+def _fmt_date_fr(d):
+    try:
+        dt = datetime.strptime(str(d), "%Y-%m-%d")
+        return dt.strftime("%d/%m")
+    except Exception:
+        return str(d)
+
+
 def render():
-    st.markdown(
-        '<div class="main-header">🎯 Historique Signaux & Recommandations</div>',
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        '<div class="sub-header">Suivi long terme des signaux et recommandations. '
-        'Une ligne = un événement unique. Si un signal réapparaît dans les 7 jours, '
-        'il met à jour son événement existant (pas de doublon). Au-delà de 7 jours '
-        'sans réapparition, la prochaine occurrence sera considérée comme un nouvel événement.</div>',
-        unsafe_allow_html=True,
-    )
+    st.title("Historique Signaux & Recommandations")
+    st.caption("Performance agrégée · calibration du modèle")
 
     df_all = get_signal_history()
     if df_all.empty:
@@ -89,24 +109,42 @@ def render():
         )
         return
 
-    # --- Stats header ---
+    st.caption(
+        "Suivi long terme des signaux et recommandations. "
+        "1 ligne = 1 événement unique. Si un signal réapparaît dans les 7 jours, "
+        "il met à jour l'événement existant (pas de doublon). Au-delà de 7 jours, "
+        "la prochaine occurrence devient un nouvel événement."
+    )
+
+    # --- KPIs header ---
     n_events = len(df_all)
-    n_signals = len(df_all[df_all["entry_type"] == "signal"])
+    sig_all = df_all[df_all["entry_type"] == "signal"]
+    n_signals = len(sig_all)
     n_recos = len(df_all[df_all["entry_type"] == "recommendation"])
     n_tickers = df_all["ticker"].nunique()
     oldest = df_all["first_seen_date"].min()
     newest = df_all["last_seen_date"].max()
 
+    n_buy = int((sig_all["signal_type"] == "achat").sum()) if not sig_all.empty else 0
+    n_sell = int((sig_all["signal_type"] == "vente").sum()) if not sig_all.empty else 0
+    n_info = int((sig_all["signal_type"] == "info").sum()) if not sig_all.empty else 0
+
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Événements", f"{n_events:,}")
-    c2.metric("Signaux uniques", f"{n_signals:,}")
-    c3.metric("Recommandations", f"{n_recos:,}")
-    c4.metric("Titres suivis", f"{n_tickers}")
-    st.caption(f"Période : {oldest} → {newest}")
+    with c1:
+        kpi_card("Événements", f"{n_events:,}",
+                 sub=f"Période {_fmt_date_fr(oldest)} → {_fmt_date_fr(newest)}")
+    with c2:
+        kpi_card("Signaux uniques", f"{n_signals:,}",
+                 sub=f"{n_buy} achat · {n_sell} vente · {n_info} info")
+    with c3:
+        kpi_card("Recommandations", f"{n_recos:,}",
+                 sub=f"{n_recos} verdicts actifs")
+    with c4:
+        kpi_card("Titres suivis", f"{n_tickers}",
+                 sub="BRVM · tous secteurs")
 
     # --- Filters ---
-    st.markdown("---")
-    col_f1, col_f2, col_f3 = st.columns([2, 2, 2])
+    col_f1, col_f2, col_f3, col_f4 = st.columns([2, 2, 2, 3])
 
     with col_f1:
         tickers = ["Tous"] + sorted(df_all["ticker"].unique().tolist())
@@ -148,9 +186,7 @@ def render():
         st.warning("Aucun événement pour ces filtres.")
         return
 
-    # Performance : lecture depuis le snapshot précalculé (plus de N+1).
-    # Fallback sur compute_signal_performance live si le snapshot est vide
-    # (1er lancement avant que le cron/bouton admin ne soit exécuté).
+    # Performance depuis snapshot précalculé, fallback live
     snap = _load_signal_perf_snapshot()
     if not snap.empty and "id" in df.columns:
         df = df.merge(snap, how="left", left_on="id", right_on="event_id")
@@ -162,7 +198,6 @@ def render():
             df = compute_signal_performance(df)
         snapshot_used = False
 
-    # --- Add computed duration column (si pas déjà dans le snapshot) ---
     if "duration_days" not in df.columns or df["duration_days"].isna().all():
         df["duration_days"] = df.apply(
             lambda r: _duration_days(r.get("first_seen_date"), r.get("last_seen_date")),
@@ -171,74 +206,93 @@ def render():
 
     if not snapshot_used and is_admin():
         st.warning(
-            "⚠️ Snapshot de performance vide. Cliquez sur **📸 Regénérer snapshots** "
+            "Snapshot de performance vide. Cliquez sur **Regénérer snapshots** "
             "dans la sidebar pour accélérer cette page."
         )
 
-    # Quick jump to analysis of any ticker present in this history
+    # Quick picker (4e colonne filtres)
     present_tickers = sorted(df["ticker"].unique().tolist())
-    if present_tickers:
-        picker_options = [(t, t) for t in present_tickers]
-        ticker_quick_picker(
-            picker_options, key="calib_goto",
-            label="🔍 Ouvrir l'analyse d'un titre",
-        )
+    with col_f4:
+        if present_tickers:
+            picker_options = [(t, t) for t in present_tickers]
+            ticker_quick_picker(
+                picker_options, key="calib_goto",
+                label="Ouvrir l'analyse d'un titre",
+            )
 
-    # --- Tabs ---
+    # --- Tabs (sans émojis) ---
     tab1, tab2, tab3, tab_cal, tab4 = st.tabs([
-        "📊 Vue d'ensemble", "📡 Signaux", "🎯 Recommandations",
-        "⚖️ Calibration", "📋 Données brutes"
+        "Vue d'ensemble", "Signaux", "Recommandations",
+        "Calibration", "Données brutes"
     ])
 
     # ============================================================
     # TAB 1 : OVERVIEW
     # ============================================================
     with tab1:
-        st.subheader("Performance agrégée par type")
+        section_heading("Performance agrégée par type", spacing="loose")
 
         sig_df = df[df["entry_type"] == "signal"].copy()
+        reco_df_all = df[df["entry_type"] == "recommendation"].copy()
 
-        # Buy / Sell success rates
-        if not sig_df.empty:
-            buy_df = sig_df[sig_df["signal_type"] == "achat"]
-            sell_df = sig_df[sig_df["signal_type"] == "vente"]
+        # 3 cards : Achat / Vente / Recommandations (horizon 3M)
+        def _stats_buy(d):
+            vals = d["perf_3m"].dropna() if "perf_3m" in d.columns else pd.Series([], dtype=float)
+            if len(vals) == 0:
+                return None, None, 0
+            return (vals > 0).mean(), vals.mean(), len(vals)
 
-            colA, colB = st.columns(2)
-            with colA:
-                st.markdown("#### 🟢 Signaux d'achat")
-                st.caption("Un signal d'achat \"réussit\" si le prix monte depuis la 1re apparition")
-                for horizon, label in [("perf_1m", "1M"), ("perf_3m", "3M"),
-                                        ("perf_6m", "6M"), ("perf_1a", "1A"),
-                                        ("perf_since_start", "Depuis début")]:
-                    vals = buy_df[horizon].dropna()
-                    if len(vals) > 0:
-                        success = (vals > 0).sum() / len(vals)
-                        avg = vals.mean()
-                        st.metric(
-                            f"Horizon {label}",
-                            f"{success:.0%}",
-                            f"{_fmt_pct(avg)} moy. ({len(vals)} sig.)",
-                        )
+        def _stats_sell(d):
+            vals = d["perf_3m"].dropna() if "perf_3m" in d.columns else pd.Series([], dtype=float)
+            if len(vals) == 0:
+                return None, None, 0
+            return (vals < 0).mean(), vals.mean(), len(vals)
 
-            with colB:
-                st.markdown("#### 🔴 Signaux de vente")
-                st.caption("Un signal de vente \"réussit\" si le prix baisse depuis la 1re apparition")
-                for horizon, label in [("perf_1m", "1M"), ("perf_3m", "3M"),
-                                        ("perf_6m", "6M"), ("perf_1a", "1A"),
-                                        ("perf_since_start", "Depuis début")]:
-                    vals = sell_df[horizon].dropna()
-                    if len(vals) > 0:
-                        success = (vals < 0).sum() / len(vals)
-                        avg = vals.mean()
-                        st.metric(
-                            f"Horizon {label}",
-                            f"{success:.0%}",
-                            f"{_fmt_pct(avg)} moy. ({len(vals)} sig.)",
-                        )
+        buy_df = sig_df[sig_df["signal_type"] == "achat"] if not sig_df.empty else pd.DataFrame()
+        sell_df = sig_df[sig_df["signal_type"] == "vente"] if not sig_df.empty else pd.DataFrame()
 
-        # Performance by signal name
-        st.markdown("---")
-        st.markdown("### Détail par type de signal")
+        buy_rate, buy_avg, buy_n = _stats_buy(buy_df) if not buy_df.empty else (None, None, 0)
+        sell_rate, sell_avg, sell_n = _stats_sell(sell_df) if not sell_df.empty else (None, None, 0)
+
+        reco_vals = reco_df_all["perf_3m"].dropna() if "perf_3m" in reco_df_all.columns else pd.Series([], dtype=float)
+        if len(reco_vals) > 0:
+            reco_rate = (reco_vals > 0).mean()
+            reco_avg = reco_vals.mean()
+            reco_n = len(reco_vals)
+        else:
+            reco_rate, reco_avg, reco_n = None, None, 0
+
+        def _render_perf_card(label, rate, avg, n, footer, tone):
+            pct_txt = f"{rate*100:.0f}%" if rate is not None else "—"
+            sub = f"{n} signaux" if n else "Aucun échantillon"
+            avg_html = delta(avg * 100, with_arrow=True) if avg is not None else ""
+            avg_line = f"{avg_html} moy." if avg is not None else ""
+            accent = {"up": "var(--up)", "down": "var(--down)", "ocre": "var(--ocre)"}.get(tone, "var(--primary)")
+            st.markdown(
+                f"<div style='border:1px solid var(--border);border-left:3px solid {accent};"
+                f"border-radius:10px;padding:14px 16px;background:var(--bg-elev);min-height:138px;'>"
+                f"<div class='label-xs' style='color:var(--ink-3);margin-bottom:6px;'>{label}</div>"
+                f"<div style='font-size:28px;font-weight:600;font-variant-numeric:tabular-nums;'>{pct_txt}</div>"
+                f"<div style='font-size:12px;color:var(--ink-2);margin-top:2px;'>{sub}</div>"
+                f"<div style='font-size:12px;margin-top:6px;'>{avg_line}</div>"
+                f"<div style='font-size:11.5px;color:var(--ink-3);margin-top:8px;'>{footer}</div>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+        colA, colB, colC = st.columns(3)
+        with colA:
+            _render_perf_card("SIGNAUX D'ACHAT", buy_rate, buy_avg, buy_n,
+                              "Prix monte depuis 1re apparition", "up")
+        with colB:
+            _render_perf_card("SIGNAUX DE VENTE", sell_rate, sell_avg, sell_n,
+                              "Prix baisse depuis 1re apparition", "down")
+        with colC:
+            _render_perf_card("RECOMMANDATIONS", reco_rate, reco_avg, reco_n,
+                              "Hybride fondamental + technique", "ocre")
+
+        # Detail table
+        section_heading("Détail par type de signal", spacing="loose")
         if not sig_df.empty:
             agg = (
                 sig_df.groupby(["signal_type", "signal_name"])
@@ -255,23 +309,62 @@ def render():
                 .reset_index()
                 .sort_values("nb", ascending=False)
             )
-            agg["force_moy"] = agg["force_moy"].round(1)
-            agg["occ_moy"] = agg["occ_moy"].round(1)
-            for c in ["perf_1m", "perf_3m", "perf_6m", "perf_1a", "perf_start"]:
-                agg[c] = agg[c].apply(_fmt_pct)
 
-            st.dataframe(
-                agg.rename(columns={
-                    "signal_type": "Type", "signal_name": "Signal",
-                    "nb": "Nb événements", "force_moy": "Force moy.",
-                    "occ_moy": "Occ. moy.",
-                    "perf_1m": "Perf. 1M",
-                    "perf_3m": "Perf. 3M",
-                    "perf_6m": "Perf. 6M",
-                    "perf_1a": "Perf. 1A",
-                    "perf_start": "Perf. depuis début",
-                }),
-                use_container_width=True, hide_index=True,
+            header_style = (
+                "font-size:10.5px;text-transform:uppercase;letter-spacing:0.08em;"
+                "color:var(--ink-3);font-weight:500;padding:9px 10px;"
+                "border-bottom:1px solid var(--border);background:var(--bg-sunken);"
+            )
+            cell_style = "padding:10px 12px;font-size:13px;border-bottom:1px solid var(--border);"
+            num_style = cell_style + "text-align:right;font-variant-numeric:tabular-nums;"
+
+            rows_html = (
+                f"<tr>"
+                f"<th style='{header_style};text-align:left;'>Type</th>"
+                f"<th style='{header_style};text-align:left;'>Signal</th>"
+                f"<th style='{header_style};text-align:right;'>N</th>"
+                f"<th style='{header_style};text-align:right;'>Force</th>"
+                f"<th style='{header_style};text-align:right;'>Occ.</th>"
+                f"<th style='{header_style};text-align:right;'>1M</th>"
+                f"<th style='{header_style};text-align:right;'>3M</th>"
+                f"<th style='{header_style};text-align:right;'>6M</th>"
+                f"<th style='{header_style};text-align:right;'>1A</th>"
+                f"<th style='{header_style};text-align:right;'>Depuis début</th>"
+                f"</tr>"
+            )
+
+            for _, r in agg.iterrows():
+                stype = r["signal_type"]
+                if stype == "achat":
+                    type_html = tag("ACHAT", tone="up")
+                elif stype == "vente":
+                    type_html = tag("VENTE", tone="down")
+                else:
+                    type_html = tag((stype or "—").upper(), tone="ocre")
+                force_v = r["force_moy"]
+                force_s = f"{force_v:.1f}" if pd.notna(force_v) else "—"
+                occ_v = r["occ_moy"]
+                occ_s = f"{occ_v:.1f}" if pd.notna(occ_v) else "—"
+                rows_html += (
+                    f"<tr>"
+                    f"<td style='{cell_style}'>{type_html}</td>"
+                    f"<td style='{cell_style};font-weight:500;'>{r['signal_name']}</td>"
+                    f"<td style='{num_style}'>{int(r['nb']):,}</td>"
+                    f"<td style='{num_style}'>{force_s}</td>"
+                    f"<td style='{num_style}'>{occ_s}</td>"
+                    f"<td style='{num_style}'>{_delta_cell(r['perf_1m'])}</td>"
+                    f"<td style='{num_style}'>{_delta_cell(r['perf_3m'])}</td>"
+                    f"<td style='{num_style}'>{_delta_cell(r['perf_6m'])}</td>"
+                    f"<td style='{num_style}'>{_delta_cell(r['perf_1a'])}</td>"
+                    f"<td style='{num_style}'>{_delta_cell(r['perf_start'])}</td>"
+                    f"</tr>"
+                )
+
+            st.markdown(
+                f"<div style='border:1px solid var(--border);border-radius:10px;"
+                f"overflow:hidden;background:var(--bg-elev);margin-bottom:16px;'>"
+                f"<table style='width:100%;border-collapse:collapse;'>{rows_html}</table></div>",
+                unsafe_allow_html=True,
             )
         else:
             st.info("Pas encore de signaux.")
@@ -289,48 +382,49 @@ def render():
         else:
             from analysis.scoring import _signal_family
 
-            st.subheader(f"Événements de signaux ({len(sig_df)})")
-            st.caption(
-                "Cocher la colonne **🗑️** pour sélectionner une ou plusieurs lignes, "
-                "puis cliquer sur le bouton de suppression en bas. "
-                "La colonne **⚠️ Contradiction** signale les tickers dont la même famille de signal a "
-                "à la fois des signaux achat et vente actifs."
-            )
-
             sig_df["family"] = sig_df["signal_name"].apply(_signal_family)
 
-            # Flag contradictions per (ticker, family)
+            # Contradictions
             conflict_keys = set()
-            for (ticker, family), gdf in sig_df.groupby(["ticker", "family"]):
+            for (ticker_, family), gdf in sig_df.groupby(["ticker", "family"]):
                 if gdf["signal_type"].nunique() > 1:
-                    conflict_keys.add((ticker, family))
+                    conflict_keys.add((ticker_, family))
             sig_df["conflict"] = sig_df.apply(
-                lambda r: "⚠️" if (r["ticker"], r["family"]) in conflict_keys else "",
+                lambda r: "⚠" if (r["ticker"], r["family"]) in conflict_keys else "",
                 axis=1,
             )
 
-            # Icon for direction
+            # Direction (HTML n'est pas rendu par data_editor -> utiliser texte clair)
             sig_df["dir_icon"] = sig_df["signal_type"].map({
-                "achat": "🟢 Achat", "vente": "🔴 Vente", "info": "ℹ️ Info"
+                "achat": "● Achat", "vente": "● Vente", "info": "● Info"
             }).fillna("—")
 
-            # Build table for data_editor
+            # Header row : title + actions
+            head_left, head_right = st.columns([3, 2])
+            with head_left:
+                section_heading(f"Événements de signaux · {len(sig_df)}")
+            st.caption(
+                "Cocher pour sélectionner. La colonne ⚠ « Contradiction » marque les "
+                "tickers dont la même famille a à la fois des signaux achat et vente actifs."
+            )
+
+            # Build table
             table_df = pd.DataFrame({
-                "🗑️": False,
+                "☐": False,
                 "Ticker": sig_df["ticker"].values,
                 "Nom": sig_df["company_name"].fillna(sig_df["ticker"]).values,
                 "Direction": sig_df["dir_icon"].values,
                 "Famille": sig_df["family"].values,
                 "Signal": sig_df["signal_name"].values,
-                "Force": sig_df["signal_strength"].fillna(0).astype(int).values,
-                "⚠️": sig_df["conflict"].values,
-                "1re apparition": sig_df["first_seen_date"].values,
+                "F.": sig_df["signal_strength"].fillna(0).astype(int).values,
+                "⚠": sig_df["conflict"].values,
+                "1re app.": sig_df["first_seen_date"].values,
                 "Dernière vue": sig_df["last_seen_date"].values,
                 "Durée (j)": sig_df["duration_days"].fillna(0).astype(int).values,
                 "Occ.": sig_df["occurrence_count"].fillna(1).astype(int).values,
                 "Prix début": sig_df["price_at_start"].apply(_fmt_num).values,
                 "Prix actuel": sig_df["current_price"].apply(_fmt_num).values,
-                "Perf. depuis début": sig_df["perf_since_start"].apply(_fmt_pct).values,
+                "Depuis début": sig_df["perf_since_start"].apply(_fmt_pct).values,
                 "Perf. 1M": sig_df["perf_1m"].apply(_fmt_pct).values,
                 "Perf. 3M": sig_df["perf_3m"].apply(_fmt_pct).values,
                 "Perf. 6M": sig_df["perf_6m"].apply(_fmt_pct).values,
@@ -346,31 +440,46 @@ def render():
                 height=min(650, 80 + 35 * len(table_df)),
                 key="signals_table_editor",
                 column_config={
-                    "🗑️": st.column_config.CheckboxColumn(
-                        "🗑️", help="Cocher pour supprimer", default=False, width="small",
+                    "☐": st.column_config.CheckboxColumn(
+                        "☐", help="Cocher pour sélectionner", default=False, width="small",
                     ),
-                    "_id": None,  # hidden
+                    "_id": None,
                     "Détails": st.column_config.TextColumn(width="medium"),
                 },
-                disabled=[c for c in table_df.columns if c != "🗑️"],
+                disabled=[c for c in table_df.columns if c != "☐"],
             )
 
-            ids_to_delete = edited.loc[edited["🗑️"] == True, "_id"].astype(int).tolist()
+            ids_to_delete = edited.loc[edited["☐"] == True, "_id"].astype(int).tolist()
 
-            if ids_to_delete:
-                st.markdown("---")
-                col_b1, col_b2 = st.columns([1, 3])
-                with col_b1:
+            # Action bar (en haut visuel : on l'a placée au-dessus via head_right)
+            with head_right:
+                bcol1, bcol2 = st.columns(2)
+                with bcol1:
+                    csv_sig = sig_df.to_csv(index=False).encode("utf-8")
+                    st.download_button(
+                        "Exporter CSV",
+                        data=csv_sig,
+                        file_name=f"signaux_{datetime.now().strftime('%Y%m%d')}.csv",
+                        mime="text/csv",
+                        key="sig_csv_btn",
+                        use_container_width=True,
+                    )
+                with bcol2:
+                    disabled = len(ids_to_delete) == 0
+                    label = (
+                        f"Supprimer ({len(ids_to_delete)})" if not disabled
+                        else "Supprimer sélection"
+                    )
                     if st.button(
-                        f"🗑️ Supprimer {len(ids_to_delete)} événement(s)",
+                        label,
                         type="primary",
                         key="bulk_delete_signals_btn",
+                        disabled=disabled,
+                        use_container_width=True,
                     ):
                         n = delete_signal_events_bulk(ids_to_delete)
                         st.success(f"{n} événement(s) supprimé(s).")
                         st.rerun()
-                with col_b2:
-                    st.caption("Cette action est irréversible.")
 
     # ============================================================
     # TAB 3 : RECOMMENDATIONS
@@ -383,9 +492,9 @@ def render():
         if reco_df.empty:
             st.info("Aucune recommandation dans cette sélection.")
         else:
-            st.subheader(f"Événements de recommandations ({len(reco_df)})")
+            section_heading(f"Événements de recommandations · {len(reco_df)}")
             st.caption(
-                "Chaque ligne = une période pendant laquelle un titre a eu un même verdict. "
+                "Chaque ligne = période pendant laquelle un titre a eu un même verdict. "
                 "Si le verdict change ou disparaît > 7 jours puis revient, un nouvel événement est créé."
             )
 
@@ -411,27 +520,58 @@ def render():
             verdict_perf = verdict_perf.sort_values("order").drop(columns=["order"])
 
             if not verdict_perf.empty:
-                st.markdown("#### Performance moyenne par verdict")
-                display_v = verdict_perf.copy()
-                display_v["avg_score"] = display_v["avg_score"].apply(
-                    lambda x: f"{x:.0f}/100" if x and not pd.isna(x) else "—",
-                )
-                display_v["avg_duration"] = display_v["avg_duration"].apply(
-                    lambda x: f"{x:.0f} j" if x and not pd.isna(x) else "—",
-                )
-                for c in ["perf_1m", "perf_3m", "perf_6m", "perf_1a", "perf_start"]:
-                    display_v[c] = display_v[c].apply(_fmt_pct)
+                section_heading("Performance moyenne par verdict", spacing="loose")
 
-                st.dataframe(
-                    display_v.rename(columns={
-                        "verdict": "Verdict", "nb": "Nb événements",
-                        "avg_score": "Score moy.",
-                        "avg_duration": "Durée moy.",
-                        "perf_1m": "Perf. 1M", "perf_3m": "Perf. 3M",
-                        "perf_6m": "Perf. 6M", "perf_1a": "Perf. 1A",
-                        "perf_start": "Perf. depuis début",
-                    }),
-                    use_container_width=True, hide_index=True,
+                header_style = (
+                    "font-size:10.5px;text-transform:uppercase;letter-spacing:0.08em;"
+                    "color:var(--ink-3);font-weight:500;padding:9px 10px;"
+                    "border-bottom:1px solid var(--border);background:var(--bg-sunken);"
+                )
+                cell_style = "padding:10px 12px;font-size:13px;border-bottom:1px solid var(--border);"
+                num_style = cell_style + "text-align:right;font-variant-numeric:tabular-nums;"
+
+                rows_html = (
+                    f"<tr>"
+                    f"<th style='{header_style};text-align:left;'>Verdict</th>"
+                    f"<th style='{header_style};text-align:right;'>N</th>"
+                    f"<th style='{header_style};text-align:right;'>Score moy.</th>"
+                    f"<th style='{header_style};text-align:right;'>Durée moy.</th>"
+                    f"<th style='{header_style};text-align:right;'>1M</th>"
+                    f"<th style='{header_style};text-align:right;'>3M</th>"
+                    f"<th style='{header_style};text-align:right;'>6M</th>"
+                    f"<th style='{header_style};text-align:right;'>1A</th>"
+                    f"<th style='{header_style};text-align:right;'>Depuis début</th>"
+                    f"</tr>"
+                )
+                for _, r in verdict_perf.iterrows():
+                    v = r["verdict"]
+                    dot_tone, _ = VERDICT_TONES.get(v, ("ocre", "ocre"))
+                    verdict_html = (
+                        f"<span class='dot {dot_tone}'></span>"
+                        f"<span style='font-weight:500;letter-spacing:0.02em;'>{v}</span>"
+                    )
+                    score = r["avg_score"]
+                    score_s = f"{score:.0f}/100" if pd.notna(score) else "—"
+                    dur = r["avg_duration"]
+                    dur_s = f"{dur:.0f} j" if pd.notna(dur) else "—"
+                    rows_html += (
+                        f"<tr>"
+                        f"<td style='{cell_style}'>{verdict_html}</td>"
+                        f"<td style='{num_style}'>{int(r['nb'])}</td>"
+                        f"<td style='{num_style}'>{score_s}</td>"
+                        f"<td style='{num_style}'>{dur_s}</td>"
+                        f"<td style='{num_style}'>{_delta_cell(r['perf_1m'])}</td>"
+                        f"<td style='{num_style}'>{_delta_cell(r['perf_3m'])}</td>"
+                        f"<td style='{num_style}'>{_delta_cell(r['perf_6m'])}</td>"
+                        f"<td style='{num_style}'>{_delta_cell(r['perf_1a'])}</td>"
+                        f"<td style='{num_style}'>{_delta_cell(r['perf_start'])}</td>"
+                        f"</tr>"
+                    )
+                st.markdown(
+                    f"<div style='border:1px solid var(--border);border-radius:10px;"
+                    f"overflow:hidden;background:var(--bg-elev);margin-bottom:16px;'>"
+                    f"<table style='width:100%;border-collapse:collapse;'>{rows_html}</table></div>",
+                    unsafe_allow_html=True,
                 )
 
                 chart_df = verdict_perf.dropna(subset=["perf_3m"])
@@ -453,27 +593,44 @@ def render():
                     )
                     st.plotly_chart(fig, use_container_width=True)
 
-            st.markdown("---")
-            st.markdown("#### Liste des recommandations")
-            st.caption("Cocher la colonne 🗑️ pour sélectionner des lignes à supprimer.")
+            section_heading("Liste des recommandations", spacing="loose")
+            st.caption("Cocher pour sélectionner des lignes à supprimer.")
+
+            # Stars rendu texte (data_editor ne supporte pas HTML)
+            def _stars_txt(n):
+                try:
+                    n = int(n)
+                except Exception:
+                    n = 0
+                return "★" * n + "☆" * max(0, 5 - n) + f"  {n}/5"
+
+            def _trend_txt(t):
+                if not t or pd.isna(t):
+                    return "—"
+                tl = str(t).lower()
+                if "haus" in tl:
+                    return "▲ Haussière"
+                if "bais" in tl:
+                    return "▼ Baissière"
+                return str(t)
 
             reco_table = pd.DataFrame({
-                "🗑️": False,
+                "☐": False,
                 "Ticker": reco_df["ticker"].values,
                 "Nom": reco_df["company_name"].fillna(reco_df["ticker"]).values,
                 "Verdict": reco_df["verdict"].fillna("—").values,
                 "Score": reco_df["hybrid_score"].apply(
                     lambda x: f"{x:.0f}/100" if x and not pd.isna(x) else "—"
                 ).values,
-                "★": reco_df["stars"].fillna(0).astype(int).values,
-                "Tendance": reco_df["trend"].fillna("—").values,
-                "1re apparition": reco_df["first_seen_date"].values,
+                "★": [_stars_txt(s) for s in reco_df["stars"].fillna(0).values],
+                "Tendance": [_trend_txt(t) for t in reco_df["trend"].fillna("—").values],
+                "1re app.": reco_df["first_seen_date"].values,
                 "Dernière vue": reco_df["last_seen_date"].values,
                 "Durée (j)": reco_df["duration_days"].fillna(0).astype(int).values,
                 "Occ.": reco_df["occurrence_count"].fillna(1).astype(int).values,
                 "Prix début": reco_df["price_at_start"].apply(_fmt_num).values,
                 "Prix actuel": reco_df["current_price"].apply(_fmt_num).values,
-                "Perf. depuis début": reco_df["perf_since_start"].apply(_fmt_pct).values,
+                "Depuis début": reco_df["perf_since_start"].apply(_fmt_pct).values,
                 "Perf. 1M": reco_df["perf_1m"].apply(_fmt_pct).values,
                 "Perf. 3M": reco_df["perf_3m"].apply(_fmt_pct).values,
                 "Perf. 6M": reco_df["perf_6m"].apply(_fmt_pct).values,
@@ -488,35 +645,48 @@ def render():
                 height=min(650, 80 + 35 * len(reco_table)),
                 key="recos_table_editor",
                 column_config={
-                    "🗑️": st.column_config.CheckboxColumn(
-                        "🗑️", help="Cocher pour supprimer", default=False, width="small",
+                    "☐": st.column_config.CheckboxColumn(
+                        "☐", help="Cocher pour sélectionner", default=False, width="small",
                     ),
                     "_id": None,
                 },
-                disabled=[c for c in reco_table.columns if c != "🗑️"],
+                disabled=[c for c in reco_table.columns if c != "☐"],
             )
 
             reco_ids_to_delete = edited_reco.loc[
-                edited_reco["🗑️"] == True, "_id"
+                edited_reco["☐"] == True, "_id"
             ].astype(int).tolist()
 
-            if reco_ids_to_delete:
-                st.markdown("---")
-                col_b1, col_b2 = st.columns([1, 3])
-                with col_b1:
-                    if st.button(
-                        f"🗑️ Supprimer {len(reco_ids_to_delete)} recommandation(s)",
-                        type="primary",
-                        key="bulk_delete_recos_btn",
-                    ):
-                        n = delete_signal_events_bulk(reco_ids_to_delete)
-                        st.success(f"{n} recommandation(s) supprimée(s).")
-                        st.rerun()
-                with col_b2:
-                    st.caption("Cette action est irréversible.")
+            col_b1, col_b2, _ = st.columns([1.2, 1.2, 3])
+            with col_b1:
+                csv_reco = reco_df.to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    "Exporter CSV",
+                    data=csv_reco,
+                    file_name=f"recommandations_{datetime.now().strftime('%Y%m%d')}.csv",
+                    mime="text/csv",
+                    key="reco_csv_btn",
+                    use_container_width=True,
+                )
+            with col_b2:
+                disabled = len(reco_ids_to_delete) == 0
+                label = (
+                    f"Supprimer ({len(reco_ids_to_delete)})" if not disabled
+                    else "Supprimer sélection"
+                )
+                if st.button(
+                    label,
+                    type="primary",
+                    key="bulk_delete_recos_btn",
+                    disabled=disabled,
+                    use_container_width=True,
+                ):
+                    n = delete_signal_events_bulk(reco_ids_to_delete)
+                    st.success(f"{n} recommandation(s) supprimée(s).")
+                    st.rerun()
 
     # ============================================================
-    # TAB CAL : CALIBRATION (poids appliqués aux signaux/recommandations)
+    # TAB CAL : CALIBRATION
     # ============================================================
     with tab_cal:
         from analysis.calibration import (
@@ -526,59 +696,107 @@ def render():
             get_review_history, _get_last_review_date, REVIEW_INTERVAL_DAYS,
         )
 
-        st.subheader("⚖️ Calibration des signaux et recommandations")
-        st.caption(
-            f"Pondération dérivée de la performance historique à 3 mois. "
-            f"Active dès que l'historique couvre au moins **{MIN_DAYS_HISTORY} jours** "
-            f"et qu'un signal a ≥ **{MIN_SAMPLES} échantillons**. "
-            f"Poids dans [{WEIGHT_MIN}, {WEIGHT_MAX}] : multiplié à la force brute du signal."
-        )
-
-        # force_refresh=False : on respecte le cache module (30 min). Le calcul
-        # complet est couteux (appelle compute_signal_performance = N+1 queries).
-        # Le snapshot quotidien GitHub Actions ne touche pas ce cache, mais celui-ci
-        # se regenerera tout seul au bout de 30 min, ou sur clic "Lancer la revue".
         cal = get_calibration(force_refresh=False)
-
-        # Status header
         days_available = cal.get("days_available", 0)
         enabled = cal.get("enabled", False)
-        col_s1, col_s2, col_s3 = st.columns(3)
-        col_s1.metric("Historique", f"{days_available} jours")
-        col_s2.metric("Seuil activation", f"{MIN_DAYS_HISTORY} jours")
-        col_s3.metric("Statut", "🟢 Actif" if enabled else "⏸️ En attente")
 
-        if not enabled:
-            progress = min(1.0, days_available / MIN_DAYS_HISTORY)
-            st.progress(
-                progress,
-                text=f"Progression : {days_available}/{MIN_DAYS_HISTORY} jours "
-                     f"({int(progress*100)}%). Poids neutres (1.0) appliqués d'ici là.",
+        # Carte bordée : header + caption + KPIs + progress
+        status_tag = tag("ACTIVE", tone="up") if enabled else tag("EN ATTENTE", tone="ocre")
+        progress_pct = min(100, int(days_available / MIN_DAYS_HISTORY * 100)) if MIN_DAYS_HISTORY else 0
+
+        # Ouvre la carte
+        st.markdown(
+            "<div style='border:1px solid var(--border);border-radius:12px;"
+            "padding:18px 20px;background:var(--bg-elev);margin-bottom:18px;'>",
+            unsafe_allow_html=True,
+        )
+
+        head_l, head_r = st.columns([4, 1])
+        with head_l:
+            section_heading("Calibration des signaux et recommandations", spacing="tight")
+        with head_r:
+            st.markdown(
+                f"<div style='text-align:right;padding-top:4px;'>{status_tag}</div>",
+                unsafe_allow_html=True,
             )
 
-        # --- Monthly review controls ---
-        st.markdown("---")
-        st.markdown(f"### 🗓️ Revue mensuelle (tous les {REVIEW_INTERVAL_DAYS} jours)")
+        st.caption(
+            f"Pondération dérivée de la performance historique à 3 mois. "
+            f"S'active dès que l'historique couvre ≥ {MIN_DAYS_HISTORY} jours et que le "
+            f"signal a ≥ {MIN_SAMPLES} échantillons. Poids bornés dans "
+            f"[{WEIGHT_MIN}, {WEIGHT_MAX}], multipliés à la force brute."
+        )
+
+        k1, k2, k3 = st.columns(3)
+        with k1:
+            kpi_card("Historique", f"{days_available}", unit=" jours",
+                     sub="Période d'observation")
+        with k2:
+            kpi_card("Seuil activation", f"{MIN_DAYS_HISTORY}", unit=" jours",
+                     sub="Calibration auto")
+        with k3:
+            kpi_card("Progression", f"{progress_pct}", unit="%",
+                     sub=f"{days_available} / {MIN_DAYS_HISTORY} jours",
+                     tone="up" if enabled else "neutral")
+
+        st.markdown(
+            "<div class='label-xs' style='margin-top:14px;margin-bottom:6px;'>"
+            "PROGRESSION VERS L'ACTIVATION</div>"
+            f"<div style='height:6px;background:var(--bg-sunken);border-radius:3px;"
+            f"overflow:hidden;'>"
+            f"<div style='height:100%;width:{progress_pct}%;background:var(--primary);'></div>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+        if not enabled:
+            st.caption("Poids neutres (1.0×) appliqués d'ici là.")
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        # --- Monthly review ---
+        section_heading(
+            f"Revue mensuelle · tous les {REVIEW_INTERVAL_DAYS} jours",
+            spacing="loose",
+        )
         last_review = _get_last_review_date()
         next_review = next_review_date()
         due = is_review_due()
 
-        col_r1, col_r2, col_r3 = st.columns(3)
-        col_r1.metric(
-            "Dernière revue",
-            last_review.strftime("%d/%m/%Y") if last_review else "— Jamais",
-        )
-        col_r2.metric(
-            "Prochaine revue",
-            next_review.strftime("%d/%m/%Y") if next_review else "— (à la 1re)",
-        )
-        col_r3.metric("Statut", "⚠️ À faire" if due else "✅ À jour")
+        days_to_next = None
+        if next_review is not None:
+            try:
+                days_to_next = (next_review - datetime.now().date()).days
+            except Exception:
+                days_to_next = None
+
+        r1, r2, r3 = st.columns(3)
+        with r1:
+            kpi_card(
+                "Dernière revue",
+                last_review.strftime("%d/%m/%Y") if last_review else "—",
+                sub="Snapshot archivé" if last_review else "Jamais effectuée",
+            )
+        with r2:
+            next_sub = (
+                f"Dans {days_to_next} jours" if (days_to_next is not None and days_to_next >= 0)
+                else ("En retard" if (days_to_next is not None and days_to_next < 0) else "À la 1re revue")
+            )
+            kpi_card(
+                "Prochaine revue",
+                next_review.strftime("%d/%m/%Y") if next_review else "—",
+                sub=next_sub,
+            )
+        with r3:
+            if due:
+                kpi_card("Statut", "En retard", sub="Revue à lancer", tone="ocre")
+            else:
+                kpi_card("Statut", "À jour", sub="▲ Système OK", tone="up")
 
         col_b1, col_b2 = st.columns([1, 2])
         with col_b1:
             if is_admin():
                 if st.button(
-                    "🔄 Lancer la revue maintenant",
+                    "Lancer la revue maintenant",
                     type="primary" if due else "secondary",
                     use_container_width=True,
                 ):
@@ -587,13 +805,13 @@ def render():
                         st.warning(result.get("reason", "Non fait"))
                     else:
                         st.success(
-                            f"✅ Revue enregistrée : {result['calibrated_signals']} signaux "
+                            f"Revue enregistrée : {result['calibrated_signals']} signaux "
                             f"et {result['calibrated_recos']} verdicts calibrés "
                             f"(historique {result['days_available']}j)."
                         )
                     st.rerun()
             else:
-                st.caption("🔒 Action admin")
+                st.caption("Action réservée à l'administrateur.")
         with col_b2:
             st.caption(
                 "La revue recalcule les taux de succès et met à jour les poids. "
@@ -605,7 +823,7 @@ def render():
         # --- Review history ---
         history = get_review_history()
         if history:
-            st.markdown("#### Historique des revues")
+            section_heading("Historique des revues", spacing="loose")
             hist_rows = []
             for h in history:
                 hist_rows.append({
@@ -622,22 +840,19 @@ def render():
                 use_container_width=True, hide_index=True,
             )
 
-            # Evolution chart: show how each signal weight changed over reviews
             if len(history) >= 2:
-                with st.expander("📈 Évolution des poids entre revues", expanded=False):
-                    # Pick top signals by total samples in latest review
+                with st.expander("Évolution des poids entre revues", expanded=False):
                     latest_signals = history[0].get("payload", {}).get("signals", {})
                     tracked = sorted(
                         latest_signals.keys(),
                         key=lambda k: -(latest_signals[k].get("n_samples") or 0),
                     )[:6]
 
-                    import plotly.graph_objects as go
                     fig = go.Figure()
                     for sig_name in tracked:
                         dates = []
                         weights = []
-                        for rev in reversed(history):  # chronological
+                        for rev in reversed(history):
                             sig_info = rev.get("payload", {}).get("signals", {}).get(sig_name)
                             if sig_info:
                                 dates.append(rev["review_date"])
@@ -655,9 +870,8 @@ def render():
                     )
                     st.plotly_chart(fig, use_container_width=True)
 
-        # Signals table
-        st.markdown("---")
-        st.markdown("### 📡 Poids par type de signal")
+        # Signals weights table
+        section_heading("Poids par type de signal", spacing="loose")
         sig_rows = []
         for name, info in cal.get("signals", {}).items():
             sig_rows.append({
@@ -671,7 +885,7 @@ def render():
                     f"{info['avg_return']:+.1%}" if info.get("avg_return") is not None else "—"
                 ),
                 "Poids appliqué": f"{info.get('weight', 1.0):.2f}×",
-                "Calibré": "✅" if info.get("calibrated") else "⏸️",
+                "Calibré": "Oui" if info.get("calibrated") else "Non",
             })
         if sig_rows:
             st.dataframe(
@@ -681,8 +895,8 @@ def render():
         else:
             st.info("Aucun signal historique à pondérer pour l'instant.")
 
-        # Recommendations table
-        st.markdown("### 🎯 Poids par verdict de recommandation")
+        # Reco weights table
+        section_heading("Poids par verdict de recommandation", spacing="loose")
         reco_rows = []
         for verdict, info in cal.get("recommendations", {}).items():
             reco_rows.append({
@@ -696,7 +910,7 @@ def render():
                     f"{info['avg_return']:+.1%}" if info.get("avg_return") is not None else "—"
                 ),
                 "Poids appliqué": f"{info.get('weight', 1.0):.2f}×",
-                "Calibré": "✅" if info.get("calibrated") else "⏸️",
+                "Calibré": "Oui" if info.get("calibrated") else "Non",
             })
         if reco_rows:
             st.dataframe(
@@ -706,7 +920,7 @@ def render():
         else:
             st.info("Aucune recommandation historique à pondérer.")
 
-        with st.expander("ℹ️ Comment fonctionne la calibration ?"):
+        with st.expander("Comment fonctionne la calibration ?"):
             st.markdown(
                 f"""
 **Objectif** : remplacer les poids statiques des signaux (force 1 à 5 fixe) par des
@@ -739,13 +953,39 @@ poids dérivés de leur performance passée réelle.
     # TAB 4 : RAW DATA
     # ============================================================
     with tab4:
-        st.subheader(f"Toutes les données ({len(df)} lignes)")
-        st.dataframe(df, use_container_width=True, hide_index=True, height=600)
-
-        csv = df.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            "📥 Télécharger CSV",
-            data=csv,
-            file_name=f"signal_events_{datetime.now().strftime('%Y%m%d')}.csv",
-            mime="text/csv",
+        head_l, head_r = st.columns([3, 2])
+        with head_l:
+            section_heading(f"Toutes les données · {len(df)} lignes")
+        st.caption(
+            "Vue technique brute. Toutes les colonnes du modèle ; utile pour export "
+            "ou debugging. Double-cliquer pour éditer."
         )
+
+        with head_r:
+            b1, b2, b3 = st.columns(3)
+            with b1:
+                csv = df.to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    "Exporter CSV",
+                    data=csv,
+                    file_name=f"signal_events_{datetime.now().strftime('%Y%m%d')}.csv",
+                    mime="text/csv",
+                    key="raw_csv_btn",
+                    use_container_width=True,
+                )
+            with b2:
+                json_bytes = df.to_json(orient="records", force_ascii=False).encode("utf-8")
+                st.download_button(
+                    "Exporter JSON",
+                    data=json_bytes,
+                    file_name=f"signal_events_{datetime.now().strftime('%Y%m%d')}.json",
+                    mime="application/json",
+                    key="raw_json_btn",
+                    use_container_width=True,
+                )
+            with b3:
+                st.button("Colonnes", key="raw_cols_btn",
+                          use_container_width=True, disabled=True,
+                          help="Sélection de colonnes : à venir")
+
+        st.dataframe(df, use_container_width=True, hide_index=True, height=600)
