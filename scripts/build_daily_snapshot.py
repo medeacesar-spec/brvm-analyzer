@@ -36,8 +36,91 @@ from data.storage import (
     get_all_cached_prices,
     get_signal_history,
     compute_signal_performance,
+    save_market_data,
 )
 from analysis.scoring import compute_hybrid_score, compute_consolidated_verdict
+
+
+# ─────────────────────────────────────────────────────────────
+# 0. Ingestion prix du jour (avant tout calcul)
+# ─────────────────────────────────────────────────────────────
+
+def _last_business_day_str() -> str:
+    """Dernière date ouvrée (YYYY-MM-DD). Si on tourne le lundi, c'est lundi ;
+    si on tourne le samedi ou dimanche, c'est vendredi."""
+    d = datetime.now()
+    while d.weekday() >= 5:  # 5=sam, 6=dim
+        d -= timedelta(days=1)
+    return d.strftime("%Y-%m-%d")
+
+
+def ingest_today_prices(conn) -> int:
+    """Scrape les cotations du jour sur sikafinance et alimente :
+    - market_data (prix courant + variation)
+    - price_cache (close du jour ouvré)
+    Retourne le nombre de tickers mis à jour."""
+    try:
+        from data.scraper import fetch_daily_quotes
+    except Exception as e:
+        print(f"  [ingest] import fetch_daily_quotes KO: {e}")
+        return 0
+
+    try:
+        quotes = fetch_daily_quotes()
+    except Exception as e:
+        print(f"  [ingest] fetch_daily_quotes KO: {e}")
+        return 0
+
+    if quotes.empty:
+        print("  [ingest] aucune cotation scrapée")
+        return 0
+
+    date_str = _last_business_day_str()
+    n_market = 0
+    n_cache = 0
+
+    for _, row in quotes.iterrows():
+        ticker = row.get("ticker") or ""
+        last_price = row.get("last") or 0
+        if not ticker or not last_price:
+            continue
+
+        # market_data (latest)
+        try:
+            save_market_data({
+                "ticker": ticker,
+                "company_name": row.get("name") or ticker,
+                "price": last_price,
+                "variation": row.get("variation") or 0,
+            })
+            n_market += 1
+        except Exception:
+            pass
+
+        # price_cache (close du jour, upsert)
+        try:
+            conn.execute(
+                """INSERT INTO price_cache (ticker, date, open, high, low, close, volume)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(ticker, date) DO UPDATE SET
+                     open=excluded.open, high=excluded.high, low=excluded.low,
+                     close=excluded.close, volume=excluded.volume""",
+                (
+                    ticker, date_str,
+                    row.get("open") or last_price,
+                    row.get("high") or last_price,
+                    row.get("low") or last_price,
+                    last_price,
+                    row.get("volume_shares") or 0,
+                ),
+            )
+            n_cache += 1
+        except Exception as e:
+            print(f"  [ingest] price_cache insert KO pour {ticker}: {e}")
+
+    conn.commit()
+    print(f"  [ingest] market_data {n_market} · price_cache {n_cache} ({date_str})")
+    return n_cache
 
 
 # ─────────────────────────────────────────────────────────────
@@ -330,6 +413,12 @@ def build_all() -> dict:
     result = {"started_at": datetime.now().isoformat(timespec="seconds")}
 
     try:
+        # ── Étape 0 : scrape les cotations du jour (prix + close price_cache) ──
+        # Sans ça, les snapshots reposeraient sur la dernière clôture en cache
+        # (ex. vendredi soir si rien n'a tourné lundi avant 16h UTC).
+        ingested = ingest_today_prices(conn)
+        result["ingested_prices"] = ingested
+
         # Préchargement batch (réutilisé par les 3 builders)
         print("  [load] all_stocks + all_prices …")
         all_stocks = get_all_stocks_for_analysis()
