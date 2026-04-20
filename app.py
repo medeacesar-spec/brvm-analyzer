@@ -631,7 +631,18 @@ elif "current_page" not in st.session_state or st.session_state["current_page"] 
 
 _current = st.session_state["current_page"]
 
-# Rendu : un header de section + un radio par section
+# Rendu : un header de section + un radio par section.
+# Avant de rendre chaque radio, on aligne son state : si la page courante
+# n'est pas dans cette section, on force le radio à "non sélectionné" en
+# supprimant sa clé de session_state (sinon Streamlit conserve l'ancien choix
+# et on voit 2 sélections simultanées dans la sidebar).
+for _sec_name, _sec_pages in _NAV_SECTIONS:
+    _widget_key = f"nav_sec_{_sec_name}"
+    if _current in _sec_pages:
+        st.session_state[_widget_key] = _current
+    else:
+        st.session_state.pop(_widget_key, None)
+
 for _sec_name, _sec_pages in _NAV_SECTIONS:
     st.sidebar.markdown(
         f"<div style='font-size:10.5px;font-weight:600;color:var(--ink-3);"
@@ -639,13 +650,19 @@ for _sec_name, _sec_pages in _NAV_SECTIONS:
         f"margin:14px 0 4px 2px;'>{_sec_name}</div>",
         unsafe_allow_html=True,
     )
-    _idx = _sec_pages.index(_current) if _current in _sec_pages else None
-    _sel = st.sidebar.radio(
-        _sec_name, _sec_pages,
-        index=_idx,
-        key=f"nav_sec_{_sec_name}",
-        label_visibility="collapsed",
-    )
+    _widget_key = f"nav_sec_{_sec_name}"
+    # Si la clé a été posée ci-dessus, st.radio l'utilise ; sinon index=None
+    if _widget_key in st.session_state:
+        _sel = st.sidebar.radio(
+            _sec_name, _sec_pages,
+            key=_widget_key, label_visibility="collapsed",
+        )
+    else:
+        _sel = st.sidebar.radio(
+            _sec_name, _sec_pages,
+            index=None, key=_widget_key,
+            label_visibility="collapsed",
+        )
     if _sel is not None and _sel != _current:
         st.session_state["current_page"] = _sel
         st.rerun()
