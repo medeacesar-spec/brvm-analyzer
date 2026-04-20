@@ -21,6 +21,7 @@ from data.scraper import fetch_historical_prices, fetch_historical_prices_page
 from analysis.fundamental import (
     compute_ratios, format_ratio,
     get_sector_benchmarks, compare_to_sector,
+    compute_target_price,
 )
 from analysis.technical import compute_all_indicators, detect_trend, detect_support_resistance, generate_signals
 from analysis.scoring import compute_hybrid_score
@@ -1242,6 +1243,93 @@ def _render_recommendation(result, fundamentals):
         f"</div>",
         unsafe_allow_html=True,
     )
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Card "PRIX CIBLE" — modèle PER sectoriel + Yield cible
+    # ═══════════════════════════════════════════════════════════════════
+    ratios_src = result.get("ratios") or {}
+    if "price" not in ratios_src or not ratios_src.get("price"):
+        ratios_src = dict(ratios_src)
+        ratios_src["price"] = fundamentals.get("price") or 0
+    tgt = compute_target_price(ratios_src, sector=fundamentals.get("sector"))
+    tp = tgt.get("target_price")
+    if tp:
+        cur = tgt.get("current_price") or 0
+        delta_abs = tgt.get("delta_abs") or 0
+        delta_pct = tgt.get("delta_pct") or 0
+        conf = tgt.get("confidence", "moyenne")
+        # Sens du delta : positif = upside (potentiel haussier)
+        if delta_pct > 0:
+            tone_color = "var(--up)"
+            arrow = "▲"
+            label_sens = "Potentiel haussier"
+        elif delta_pct < 0:
+            tone_color = "var(--down)"
+            arrow = "▼"
+            label_sens = "Surévalué vs modèle"
+        else:
+            tone_color = "var(--ink-3)"
+            arrow = "—"
+            label_sens = "Cours à la juste valeur"
+
+        sign = "+" if delta_pct >= 0 else ""
+        components_html = " · ".join(
+            f"<span style='color:var(--ink-3);'>{c['method']}</span> "
+            f"<span style='color:var(--ink);font-weight:500;"
+            f"font-variant-numeric:tabular-nums;'>{c['price']:,.0f}</span>"
+            for c in tgt.get("components", [])
+        )
+
+        st.markdown(
+            f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
+            f"border-radius:10px;padding:16px 20px;margin-top:12px;"
+            f"display:flex;align-items:center;gap:32px;flex-wrap:wrap;'>"
+            # Prix actuel
+            f"<div>"
+            f"<div class='label-xs' style='margin-bottom:3px;'>Prix actuel</div>"
+            f"<div style='font-size:22px;font-weight:600;color:var(--ink);"
+            f"letter-spacing:-0.01em;font-variant-numeric:tabular-nums;'>"
+            f"{cur:,.0f} <span style='font-size:12px;color:var(--ink-3);"
+            f"font-weight:400;'>FCFA</span></div>"
+            f"</div>"
+            # Prix cible
+            f"<div>"
+            f"<div class='label-xs' style='margin-bottom:3px;'>Prix cible (modèle)</div>"
+            f"<div style='font-size:22px;font-weight:600;color:var(--ink);"
+            f"letter-spacing:-0.01em;font-variant-numeric:tabular-nums;'>"
+            f"{tp:,.0f} <span style='font-size:12px;color:var(--ink-3);"
+            f"font-weight:400;'>FCFA</span></div>"
+            f"</div>"
+            # Delta
+            f"<div>"
+            f"<div class='label-xs' style='margin-bottom:3px;'>Delta</div>"
+            f"<div style='font-size:22px;font-weight:600;color:{tone_color};"
+            f"letter-spacing:-0.01em;font-variant-numeric:tabular-nums;'>"
+            f"{arrow} {sign}{delta_pct:.1f}%</div>"
+            f"<div style='font-size:11.5px;color:var(--ink-3);margin-top:2px;"
+            f"font-variant-numeric:tabular-nums;'>{sign}{delta_abs:,.0f} FCFA</div>"
+            f"</div>"
+            # Lecture + confiance
+            f"<div style='flex:1;min-width:200px;'>"
+            f"<div class='label-xs' style='margin-bottom:3px;'>Lecture</div>"
+            f"<div style='font-size:13px;color:var(--ink);'>{label_sens}</div>"
+            f"<div style='font-size:11.5px;color:var(--ink-3);margin-top:4px;'>"
+            f"Confiance <b style='color:var(--ink-2);'>{conf}</b>"
+            f"{' · ' + components_html if components_html else ''}"
+            f"</div>"
+            f"</div>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            "<div style='background:var(--bg-elev);border:1px solid var(--border);"
+            "border-radius:10px;padding:14px 18px;margin-top:12px;"
+            "color:var(--ink-3);font-size:13px;'>"
+            "Prix cible indisponible — données EPS ou DPS manquantes."
+            "</div>",
+            unsafe_allow_html=True,
+        )
 
     # ═══════════════════════════════════════════════════════════════════
     # 3 cards : Score fondamental · Score technique · Conviction modèle

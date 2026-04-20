@@ -589,6 +589,99 @@ def _compute_fundamental_breakdown(ratios: dict, is_bank: bool) -> dict:
     }
 
 
+def compute_target_price(ratios: dict, sector: Optional[str] = None,
+                          benchmarks: Optional[dict] = None) -> dict:
+    """Calcule un prix cible simple à partir de deux méthodes transparentes :
+
+    - **PER fair** : min(PER médian secteur, 15) × EPS
+      (borne haute 15 pour rester Value ; utile quand EPS > 0)
+    - **Yield fair** : DPS / max(yield médian secteur, 5%)
+      (borne basse 5% qui est l'ancre BRVM pour un investisseur revenus)
+
+    Si les deux méthodes sont disponibles, moyenne simple (pondération 1:1).
+    Retourne dict avec target_price, components (liste de méthodes utilisées
+    avec détail), current_price, delta_abs, delta_pct, confidence.
+    """
+    price = ratios.get("price") or 0
+    eps = ratios.get("eps")
+    dps = ratios.get("dps") or 0
+
+    # Résout les benchmarks si non fournis
+    if benchmarks is None:
+        try:
+            benchmarks = get_sector_benchmarks(sector)
+        except Exception:
+            benchmarks = {}
+    sec_key = sector if sector and benchmarks and sector in benchmarks else "global"
+    sec_b = benchmarks.get(sec_key, {}) if benchmarks else {}
+
+    components = []
+
+    # ── Méthode 1 : PER sectoriel borné à 15 ──
+    per_med = None
+    if isinstance(sec_b, dict):
+        per_stats = sec_b.get("per") or {}
+        per_med = per_stats.get("median") if isinstance(per_stats, dict) else None
+    fair_per = None
+    if per_med and per_med > 0:
+        fair_per = min(per_med, 15)
+    elif not per_med:
+        fair_per = 12  # défaut prudent si pas de benchmark
+
+    if eps and eps > 0 and fair_per:
+        price_per = fair_per * eps
+        components.append({
+            "method": "PER sectoriel",
+            "formula": f"PER {fair_per:.1f}× × EPS {eps:,.0f}",
+            "price": price_per,
+        })
+
+    # ── Méthode 2 : Yield cible ≥ 5% ──
+    y_med = None
+    if isinstance(sec_b, dict):
+        y_stats = sec_b.get("dividend_yield") or {}
+        y_med = y_stats.get("median") if isinstance(y_stats, dict) else None
+    fair_yield = max(y_med, 0.05) if y_med else 0.06
+
+    if dps and dps > 0 and fair_yield:
+        price_yield = dps / fair_yield
+        components.append({
+            "method": "Yield cible",
+            "formula": f"DPS {dps:,.0f} / yield {fair_yield*100:.1f}%",
+            "price": price_yield,
+        })
+
+    if not components:
+        return {
+            "target_price": None,
+            "current_price": price,
+            "delta_abs": None,
+            "delta_pct": None,
+            "components": [],
+            "confidence": "indéterminée",
+        }
+
+    target = sum(c["price"] for c in components) / len(components)
+    delta_abs = target - price if price else None
+    delta_pct = (delta_abs / price * 100) if price else None
+
+    # Confiance : dispersion faible entre méthodes → élevée
+    if len(components) == 2:
+        spread = abs(components[0]["price"] - components[1]["price"]) / target
+        confidence = "élevée" if spread < 0.20 else ("moyenne" if spread < 0.50 else "faible")
+    else:
+        confidence = "moyenne"  # une seule méthode disponible
+
+    return {
+        "target_price": target,
+        "current_price": price,
+        "delta_abs": delta_abs,
+        "delta_pct": delta_pct,
+        "components": components,
+        "confidence": confidence,
+    }
+
+
 def format_ratio(value, fmt: str = "pct") -> str:
     """Formate un ratio pour l'affichage."""
     import math
