@@ -293,23 +293,53 @@ def gauge_chart(value: float, max_value: float = 100, title: str = "Score") -> g
     return fig
 
 
-def pie_chart(labels: list, values: list, title: str = "") -> go.Figure:
-    """Graphique camembert pour l'allocation."""
+def pie_chart(labels: list, values: list, title: str = "",
+              colors: list = None) -> go.Figure:
+    """Camembert design v3 : palette Africain moderne (vert / terracotta / ocre / neutres).
+    Cash reçoit systématiquement la teinte neutre sable pour se distinguer."""
+    # Palette v3 ordonnée — vert primary en tête, accent terracotta, ocre, puis neutres
+    v3_seq = [
+        "#1F5D3A",  # primary deep green
+        "#B8532A",  # terracotta accent
+        "#B5730E",  # ocre
+        "#7A756C",  # neutre sombre
+        "#4A7F5C",  # vert feuille (dérivé primary)
+        "#D4A574",  # sable chaud
+        "#A69E92",  # neutre clair
+        "#6B3A1F",  # brun terracotta sombre
+    ]
+    # Cash toujours sable sobre — le reste suit la séquence v3
+    cash_color = "#A69E92"
+    resolved = []
+    non_cash_idx = 0
+    for lbl in labels:
+        if str(lbl).strip().lower() in ("cash", "cash restant", "cash résiduel"):
+            resolved.append(cash_color)
+        else:
+            resolved.append(v3_seq[non_cash_idx % len(v3_seq)])
+            non_cash_idx += 1
+    if colors:  # override explicite
+        resolved = colors
+
     fig = go.Figure(go.Pie(
         labels=labels,
         values=values,
-        hole=0.4,
-        textposition="inside",
+        hole=0.55,
+        textposition="outside",
         textinfo="label+percent",
+        marker=dict(colors=resolved, line=dict(color=COLORS["bg"], width=2)),
+        sort=False,
     ))
 
     fig.update_layout(
         title=title,
         template="plotly_white",
         paper_bgcolor=COLORS["bg"],
-        font=dict(color=COLORS["text"]),
-        height=400,
-        margin=dict(l=20, r=20, t=50, b=20),
+        plot_bgcolor=COLORS["bg"],
+        font=dict(color=COLORS["text"], family="Inter, sans-serif", size=12),
+        height=360,
+        margin=dict(l=20, r=20, t=40 if title else 10, b=20),
+        showlegend=False,
     )
 
     return fig
