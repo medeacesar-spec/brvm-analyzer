@@ -88,6 +88,90 @@ def refresh_intraday() -> dict:
 
     conn.commit()
 
+    # ── Fallback capitalisations : remplit shares/market_cap/float_pct pour
+    # les tickers où ces champs sont NULL/0 dans market_data. Ne touche PAS
+    # aux tickers déjà renseignés (evite d'ecraser les fondamentaux manuels).
+    n_cap_filled = 0
+    try:
+        from data.scraper import fetch_capitalizations_brvm
+        caps = fetch_capitalizations_brvm()
+        if not caps.empty:
+            for _, c in caps.iterrows():
+                ticker = c["ticker"]
+                try:
+                    row = conn.execute(
+                        "SELECT shares, market_cap, float_pct FROM market_data "
+                        "WHERE ticker = ?", (ticker,)
+                    ).fetchone()
+                    if not row:
+                        continue
+                    # Row est tuple ou dict-like selon driver
+                    cur_shares = row[0] if not isinstance(row, dict) else row.get("shares")
+                    cur_mcap = row[1] if not isinstance(row, dict) else row.get("market_cap")
+                    cur_fp = row[2] if not isinstance(row, dict) else row.get("float_pct")
+                    updates = []
+                    params = []
+                    if (not cur_shares or cur_shares == 0) and c["shares"]:
+                        updates.append("shares = ?")
+                        params.append(float(c["shares"]))
+                    if (not cur_mcap or cur_mcap == 0) and c["total_market_cap"]:
+                        updates.append("market_cap = ?")
+                        params.append(float(c["total_market_cap"]))
+                    if (not cur_fp or cur_fp == 0) and c["float_pct"]:
+                        updates.append("float_pct = ?")
+                        params.append(float(c["float_pct"]))
+                    if updates:
+                        params.append(ticker)
+                        conn.execute(
+                            f"UPDATE market_data SET {', '.join(updates)} "
+                            f"WHERE ticker = ?", params,
+                        )
+                        n_cap_filled += 1
+                except Exception:
+                    continue
+            conn.commit()
+    except Exception as e:
+        print(f"  [caps] fallback KO: {e}")
+
+    # ── Volumes du jour + PER officiel + agregats marche (brvm.org/volumes/0) ──
+    n_vol = 0
+    market_totals = {}
+    try:
+        from data.scraper import fetch_volumes_brvm
+        vol_data = fetch_volumes_brvm()
+        vol_df = vol_data.get("tickers")
+        market_totals = vol_data.get("market", {}) or {}
+        if vol_df is not None and not vol_df.empty:
+            for _, v in vol_df.iterrows():
+                ticker = v["ticker"]
+                try:
+                    # Update du volume_xof dans price_cache (date du jour)
+                    conn.execute(
+                        "UPDATE price_cache SET volume = ? "
+                        "WHERE ticker = ? AND date = ?",
+                        (float(v["volume_shares"] or 0), ticker, date_str),
+                    )
+                    n_vol += 1
+                except Exception:
+                    pass
+            conn.commit()
+    except Exception as e:
+        print(f"  [volumes] KO: {e}")
+
+    # Persiste les agregats marche dans snapshot_meta pour le dashboard
+    try:
+        for k, v in market_totals.items():
+            conn.execute(
+                """INSERT INTO snapshot_meta (key, value, updated_at)
+                   VALUES (?, ?, CURRENT_TIMESTAMP)
+                   ON CONFLICT(key) DO UPDATE SET
+                     value = excluded.value, updated_at = CURRENT_TIMESTAMP""",
+                (f"market_{k}", str(v)),
+            )
+        conn.commit()
+    except Exception:
+        pass
+
     # Trace dans snapshot_meta pour debug (last intraday refresh)
     try:
         conn.execute(
@@ -108,6 +192,9 @@ def refresh_intraday() -> dict:
         "quotes": len(quotes),
         "market_data_updated": n_market,
         "price_cache_updated": n_cache,
+        "caps_filled": n_cap_filled,
+        "volumes_updated": n_vol,
+        "market_totals": market_totals,
         "date": date_str,
         "duration_sec": duration,
     }

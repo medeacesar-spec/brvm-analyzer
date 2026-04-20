@@ -30,6 +30,8 @@ def _get_session():
 
 
 BRVM_QUOTES_URL = "https://www.brvm.org/fr/cours-actions/0"
+BRVM_CAPITALIZATIONS_URL = "https://www.brvm.org/fr/capitalisations/0"
+BRVM_VOLUMES_URL = "https://www.brvm.org/fr/volumes/0"
 
 
 def _parse_brvm_number(text: str) -> float:
@@ -135,6 +137,148 @@ def fetch_daily_quotes_brvm() -> pd.DataFrame:
         })
 
     return pd.DataFrame(rows)
+
+
+def fetch_capitalizations_brvm() -> pd.DataFrame:
+    """Scrape https://www.brvm.org/fr/capitalisations/0 — table officielle des
+    capitalisations par titre. Utile en fallback quand shares / market_cap /
+    float_pct manquent dans notre DB.
+
+    Colonnes retournees : ticker (avec suffixe .ci/.sn/...), name, shares,
+    price, float_market_cap, total_market_cap, weight_pct.
+    """
+    session = _get_session()
+    try:
+        resp = session.get(BRVM_CAPITALIZATIONS_URL, timeout=30)
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        raise ConnectionError(f"Erreur de connexion à brvm.org/capitalisations: {e}")
+
+    soup = BeautifulSoup(resp.text, "lxml")
+
+    target = None
+    for tbl in soup.find_all("table"):
+        headers = [th.get_text(strip=True).lower() for th in tbl.find_all("th")]
+        if any("nombre de titres" in h for h in headers):
+            target = tbl
+            break
+    if target is None:
+        return pd.DataFrame()
+
+    try:
+        from config import load_tickers as _load_tickers
+        _map = {t["ticker"].split(".")[0].upper(): t["ticker"]
+                 for t in _load_tickers()}
+    except Exception:
+        _map = {}
+
+    rows = []
+    tbody = target.find("tbody") or target
+    for tr in tbody.find_all("tr"):
+        cells = tr.find_all("td")
+        if len(cells) < 7:
+            continue
+        short = cells[0].get_text(strip=True)
+        if not short:
+            continue
+        full_ticker = _map.get(short.upper(), short)
+        name = cells[1].get_text(strip=True)
+        shares = _parse_brvm_number(cells[2].get_text())
+        price = _parse_brvm_number(cells[3].get_text())
+        float_cap = _parse_brvm_number(cells[4].get_text())
+        total_cap = _parse_brvm_number(cells[5].get_text())
+        weight = _parse_brvm_number(cells[6].get_text())
+
+        float_pct = (float_cap / total_cap * 100) if total_cap and float_cap else None
+
+        rows.append({
+            "ticker": full_ticker,
+            "name": name,
+            "shares": shares,
+            "price": price,
+            "float_market_cap": float_cap,
+            "total_market_cap": total_cap,
+            "weight_pct": weight,
+            "float_pct": float_pct,
+        })
+
+    return pd.DataFrame(rows)
+
+
+def fetch_volumes_brvm() -> dict:
+    """Scrape https://www.brvm.org/fr/volumes/0 — volumes d'échange du jour.
+
+    Complete /cours-actions/0 avec :
+    - valeur_echangee (FCFA) par titre
+    - PER officiel BRVM (référence indépendante de nos calculs)
+    - part dans la valeur globale échangée (% market share du jour)
+    - total marché (valeur des transactions, capitalisation actions/obligations)
+
+    Retourne un dict {"tickers": DataFrame, "market": dict}.
+    """
+    session = _get_session()
+    try:
+        resp = session.get(BRVM_VOLUMES_URL, timeout=30)
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        raise ConnectionError(f"Erreur de connexion à brvm.org/volumes: {e}")
+
+    soup = BeautifulSoup(resp.text, "lxml")
+
+    try:
+        from config import load_tickers as _load_tickers
+        _map = {t["ticker"].split(".")[0].upper(): t["ticker"]
+                 for t in _load_tickers()}
+    except Exception:
+        _map = {}
+
+    # Table titres (Nombre de titres échangés + Valeur échangée + PER)
+    tbl_tickers = None
+    tbl_market = None
+    for tbl in soup.find_all("table"):
+        headers = [th.get_text(strip=True).lower() for th in tbl.find_all("th")]
+        if any("nombre de titres" in h for h in headers) and any("per" in h for h in headers):
+            tbl_tickers = tbl
+        if any("activités du marché" in h for h in headers):
+            tbl_market = tbl
+
+    rows = []
+    if tbl_tickers:
+        tbody = tbl_tickers.find("tbody") or tbl_tickers
+        for tr in tbody.find_all("tr"):
+            cells = tr.find_all("td")
+            if len(cells) < 6:
+                continue
+            short = cells[0].get_text(strip=True)
+            if not short:
+                continue
+            full_ticker = _map.get(short.upper(), short)
+            rows.append({
+                "ticker": full_ticker,
+                "name": cells[1].get_text(strip=True),
+                "volume_shares": _parse_brvm_number(cells[2].get_text()),
+                "volume_xof": _parse_brvm_number(cells[3].get_text()),
+                "per_brvm": _parse_brvm_number(cells[4].get_text()) or None,
+                "trade_share_pct": _parse_brvm_number(cells[5].get_text()),
+            })
+
+    market = {}
+    if tbl_market:
+        tbody = tbl_market.find("tbody") or tbl_market
+        for tr in tbody.find_all("tr"):
+            cells = [td.get_text(strip=True) for td in tr.find_all("td")]
+            if len(cells) < 2:
+                continue
+            key = cells[0].lower()
+            val = _parse_brvm_number(cells[1])
+            if "transactions" in key:
+                market["transactions_value_xof"] = val
+            elif "capitalisation actions" in key:
+                market["equity_market_cap"] = val
+            elif "capitalisation des obligations" in key:
+                market["bonds_market_cap"] = val
+
+    return {"tickers": pd.DataFrame(rows), "market": market}
 
 
 def fetch_daily_quotes() -> pd.DataFrame:
