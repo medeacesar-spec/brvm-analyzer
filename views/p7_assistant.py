@@ -142,14 +142,15 @@ def render():
         unsafe_allow_html=True,
     )
 
-    # Reset button (discrète, droite)
-    if step > 1 and step <= total_steps:
+    # Reset button (discrète, droite) — visible dès l'étape 2 et sur la page résultats
+    if step > 1:
         col_r1, col_r2 = st.columns([5, 1])
         with col_r2:
             if st.button("Recommencer", key="assistant_reset",
                            use_container_width=True):
                 st.session_state.assistant_step = 1
                 st.session_state.assistant_profile = {}
+                st.session_state.pop("_assistant_reco_cache", None)
                 st.rerun()
 
     # ─── STEP 1 : RISK PROFILE — 3 cards éditoriales ──────────────────
