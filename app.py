@@ -532,17 +532,50 @@ st.sidebar.markdown(
     unsafe_allow_html=True,
 )
 
-# Data status
+# Data status — 1 seul bloc cohérent : cotations (mi-séance / clôture) + snapshots
 conn = get_connection()
 try:
     count = conn.execute("SELECT COUNT(*) FROM market_data WHERE price > 0").fetchone()[0]
-    updated = conn.execute("SELECT MAX(updated_at) FROM market_data").fetchone()[0]
 except Exception:
     count = 0
-    updated = "?"
+try:
+    _meta_rows = conn.execute(
+        "SELECT key, value FROM snapshot_meta "
+        "WHERE key IN ('last_session_date','last_session_time','last_session_kind',"
+        "'last_build_at','last_intraday_refresh')"
+    ).fetchall()
+    _meta = {}
+    for r in _meta_rows:
+        k = r[0] if not isinstance(r, dict) else r.get("key")
+        v = r[1] if not isinstance(r, dict) else r.get("value")
+        _meta[k] = v
+except Exception:
+    _meta = {}
 conn.close()
 
-st.sidebar.caption(f"{count} titres | MAJ: {str(updated)[:16] if updated else '?'}")
+_kind = _meta.get("last_session_kind", "")
+_sdate = _meta.get("last_session_date", "") or ""
+_stime = _meta.get("last_session_time", "") or ""
+if _sdate:
+    try:
+        from datetime import datetime as _dtm
+        _d = _dtm.strptime(_sdate, "%Y-%m-%d")
+        _sdate_fr = f"{_d.day:02d}/{_d.month:02d}"
+    except Exception:
+        _sdate_fr = _sdate
+else:
+    _sdate_fr = "—"
+
+if _kind == "mi-seance":
+    _cot_label = f"Mi-séance · {_sdate_fr} {_stime}"
+elif _kind == "cloture":
+    _cot_label = f"Clôture · {_sdate_fr}"
+elif _kind == "cloture-veille":
+    _cot_label = f"Clôture veille · {_sdate_fr}"
+else:
+    _cot_label = f"MAJ · {_sdate_fr}" if _sdate else "—"
+
+st.sidebar.caption(f"{count} titres · {_cot_label}")
 
 # Debug indices + daily sync (admin uniquement)
 _idx_err = st.session_state.get("indices_error")
@@ -591,16 +624,18 @@ if is_admin() and _is_logged_in():
             st.sidebar.error(f"Échec : {res.get('error','inconnu')}")
         st.rerun()
 
-# Indicateur de fraîcheur des snapshots (visible pour tous)
+# Indicateur de fraîcheur des snapshots (visible pour tous).
+# On réutilise la _meta récupérée plus haut (économie d'1 query).
+_last_build = (_meta or {}).get("last_build_at", "")
+_last_intra = (_meta or {}).get("last_intraday_refresh", "")
 try:
-    _meta_conn = get_connection()
-    _meta = _meta_conn.execute(
-        "SELECT value FROM snapshot_meta WHERE key='last_build_at'"
-    ).fetchone()
-    _meta_conn.close()
-    if _meta and _meta[0]:
-        _dt_str = str(_meta[0])[:16].replace("T", " ")
-        st.sidebar.caption(f"Snapshots · {_dt_str}")
+    # On prend le plus récent des deux timestamps de mise à jour des données
+    _latest = max([t for t in (_last_build, _last_intra) if t], default="")
+    if _latest:
+        _dt_str = str(_latest)[:16].replace("T", " ")
+        # Indique aussi l'origine : build=snapshot complet, intraday=refresh léger
+        _src = "snapshot" if _last_build >= _last_intra else "intraday"
+        st.sidebar.caption(f"Snapshots · {_dt_str} · {_src}")
     else:
         st.sidebar.caption("Snapshots · jamais générés")
 except Exception:

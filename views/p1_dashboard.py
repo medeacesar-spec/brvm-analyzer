@@ -659,7 +659,14 @@ def render():
         try:
             dt = pd.to_datetime(last_trading_date)
             day_label = f"Jour · {dt.day}/{dt.month:02d}"
-            day_caption = f"Clôture du {JOURS_FR[dt.weekday()]} {dt.day} {MOIS_FR[dt.month-1]}"
+            day_fr = f"{JOURS_FR[dt.weekday()]} {dt.day} {MOIS_FR[dt.month-1]}"
+            # Utilise le même session_kind que la caption principale pour cohérence
+            if session_kind == "mi-seance" and session_time:
+                day_caption = f"Mi-journée · {day_fr} · relevé {session_time}"
+            elif session_kind == "cloture-veille":
+                day_caption = f"Clôture veille · {day_fr}"
+            else:
+                day_caption = f"Clôture du {day_fr}"
         except Exception:
             pass
 

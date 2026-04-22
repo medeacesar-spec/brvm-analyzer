@@ -55,15 +55,25 @@ def _last_business_day_str() -> str:
 
 
 def ingest_today_prices(conn) -> int:
-    """Scrape les cotations du jour sur sikafinance et alimente :
+    """Scrape les cotations du jour sur brvm.org et alimente :
     - market_data (prix courant + variation)
-    - price_cache (close du jour ouvré)
+    - price_cache (close sous la vraie date de séance brvm.org)
+    - snapshot_meta (last_session_date/time/kind/raw) pour le Dashboard.
     Retourne le nombre de tickers mis à jour."""
     try:
-        from data.scraper import fetch_daily_quotes
+        from data.scraper import fetch_daily_quotes, fetch_session_info
     except Exception as e:
-        print(f"  [ingest] import fetch_daily_quotes KO: {e}")
+        print(f"  [ingest] import KO: {e}")
         return 0
+
+    # ── Date et heure de séance officielle (brvm.org) ──
+    try:
+        session = fetch_session_info()
+    except Exception:
+        session = {}
+    session_date = session.get("date")
+    session_time = session.get("time")
+    is_open = session.get("is_open")
 
     try:
         quotes = fetch_daily_quotes()
@@ -75,7 +85,17 @@ def ingest_today_prices(conn) -> int:
         print("  [ingest] aucune cotation scrapée")
         return 0
 
-    date_str = _last_business_day_str()
+    # Date autoritative pour price_cache : celle de brvm.org. Fallback
+    # _last_business_day_str() si le header n'a pas pu être parsé.
+    date_str = session_date or _last_business_day_str()
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    if is_open:
+        kind = "mi-seance"
+    elif session_date and session_date == today_str:
+        kind = "cloture"
+    else:
+        kind = "cloture-veille"
+
     n_market = 0
     n_cache = 0
 
@@ -119,7 +139,28 @@ def ingest_today_prices(conn) -> int:
             print(f"  [ingest] price_cache insert KO pour {ticker}: {e}")
 
     conn.commit()
-    print(f"  [ingest] market_data {n_market} · price_cache {n_cache} ({date_str})")
+
+    # ── Persiste les metas séance pour le Dashboard ──
+    try:
+        for k, v in [
+            ("last_session_date", session_date or ""),
+            ("last_session_time", session_time or ""),
+            ("last_session_kind", kind),
+            ("last_session_raw", session.get("raw") or ""),
+        ]:
+            conn.execute(
+                """INSERT INTO snapshot_meta (key, value, updated_at)
+                   VALUES (?, ?, CURRENT_TIMESTAMP)
+                   ON CONFLICT(key) DO UPDATE SET
+                     value = excluded.value, updated_at = CURRENT_TIMESTAMP""",
+                (k, v),
+            )
+        conn.commit()
+    except Exception:
+        pass
+
+    print(f"  [ingest] market_data {n_market} · price_cache {n_cache} "
+           f"({date_str} · {kind})")
     return n_cache
 
 
