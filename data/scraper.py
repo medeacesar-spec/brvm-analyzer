@@ -47,6 +47,41 @@ def _parse_brvm_number(text: str) -> float:
         return 0.0
 
 
+_MONTHS_FR = {
+    "janvier": 1, "février": 2, "fevrier": 2, "mars": 3, "avril": 4,
+    "mai": 5, "juin": 6, "juillet": 7, "août": 8, "aout": 8,
+    "septembre": 9, "octobre": 10, "novembre": 11, "décembre": 12, "decembre": 12,
+}
+
+
+def _parse_brvm_session_header(soup) -> dict:
+    """Extrait depuis la page brvm.org : date et heure de session, statut ouvert/fermé.
+    Retourne {"date": "YYYY-MM-DD", "time": "HH:MM", "is_open": bool, "raw": str}
+    ou un dict partiel si parsing KO."""
+    import re as _re
+    out = {"date": None, "time": None, "is_open": None, "raw": None}
+
+    hdr = soup.find("p", class_="header-seance")
+    if hdr:
+        raw = hdr.get_text(strip=True)
+        out["raw"] = raw
+        # Ex : "Mercredi, 22 avril, 2026 - 09:32"
+        m = _re.search(r"(\d{1,2})\s+(\w+)[,\s]+(\d{4})\s*-\s*(\d{1,2}):(\d{2})", raw)
+        if m:
+            day, month_fr, year, hh, mm = m.groups()
+            month = _MONTHS_FR.get(month_fr.lower())
+            if month:
+                out["date"] = f"{int(year):04d}-{month:02d}-{int(day):02d}"
+                out["time"] = f"{int(hh):02d}:{int(mm):02d}"
+
+    stat = soup.find("div", class_=lambda c: c and ("seance-ouverte" in c or "seance-fermee" in c))
+    if stat:
+        cls = " ".join(stat.get("class") or [])
+        out["is_open"] = "seance-ouverte" in cls
+
+    return out
+
+
 def fetch_daily_quotes_brvm() -> pd.DataFrame:
     """
     Cotations du jour depuis brvm.org/fr/cours-actions/0 (source officielle).
@@ -137,6 +172,22 @@ def fetch_daily_quotes_brvm() -> pd.DataFrame:
         })
 
     return pd.DataFrame(rows)
+
+
+def fetch_session_info() -> dict:
+    """Retourne la date/heure/statut de la session BRVM courante depuis
+    brvm.org/fr/cours-actions/0.
+
+    Clés : date (YYYY-MM-DD de la séance affichée), time (HH:MM), is_open
+    (bool séance ouverte), raw (texte original du header)."""
+    session = _get_session()
+    try:
+        resp = session.get(BRVM_QUOTES_URL, timeout=30)
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        raise ConnectionError(f"Erreur brvm.org session info: {e}")
+    soup = BeautifulSoup(resp.text, "lxml")
+    return _parse_brvm_session_header(soup)
 
 
 def fetch_capitalizations_brvm() -> pd.DataFrame:

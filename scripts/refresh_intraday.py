@@ -36,6 +36,18 @@ def refresh_intraday() -> dict:
     t0 = time.time()
     init_db()
 
+    # ── Récupère d'abord la date/heure de séance officielle brvm.org ──
+    # Sans ça, on écrirait les prix de clôture veille sous la date du jour
+    # quand le scraper tourne avant l'ouverture du marché.
+    try:
+        from data.scraper import fetch_session_info
+        session = fetch_session_info()
+    except Exception:
+        session = {}
+    session_date = session.get("date")  # YYYY-MM-DD séance affichée
+    session_time = session.get("time")  # HH:MM
+    is_open = session.get("is_open")
+
     try:
         quotes = fetch_daily_quotes()
     except Exception as e:
@@ -44,7 +56,21 @@ def refresh_intraday() -> dict:
     if quotes.empty:
         return {"status": "empty", "quotes": 0, "duration_sec": 0}
 
-    date_str = _last_business_day_str()
+    # Date d'écriture price_cache : la date de séance brvm.org (autoritative).
+    # Fallback sur _last_business_day_str() si le scraping de l'entête a échoué.
+    date_str = session_date or _last_business_day_str()
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    # Qualification de la donnée :
+    # - séance ouverte : mi-séance (prix intra-séance)
+    # - séance fermée ET date == aujourd'hui : clôture du jour
+    # - séance fermée ET date < aujourd'hui : données veille (avant ouverture)
+    if is_open:
+        data_kind = "mi-seance"
+    elif session_date and session_date == today_str:
+        data_kind = "cloture"
+    else:
+        data_kind = "cloture-veille"
+
     conn = get_connection()
     n_market = 0
     n_cache = 0
@@ -173,14 +199,23 @@ def refresh_intraday() -> dict:
         pass
 
     # Trace dans snapshot_meta pour debug (last intraday refresh)
+    # + contexte seance pour l'affichage Dashboard
     try:
-        conn.execute(
-            """INSERT INTO snapshot_meta (key, value, updated_at)
-               VALUES (?, ?, CURRENT_TIMESTAMP)
-               ON CONFLICT(key) DO UPDATE SET
-                 value = excluded.value, updated_at = CURRENT_TIMESTAMP""",
+        meta_entries = [
             ("last_intraday_refresh", datetime.now().isoformat(timespec="seconds")),
-        )
+            ("last_session_date", session_date or ""),
+            ("last_session_time", session_time or ""),
+            ("last_session_kind", data_kind),  # mi-seance | cloture | cloture-veille
+            ("last_session_raw", session.get("raw") or ""),
+        ]
+        for k, v in meta_entries:
+            conn.execute(
+                """INSERT INTO snapshot_meta (key, value, updated_at)
+                   VALUES (?, ?, CURRENT_TIMESTAMP)
+                   ON CONFLICT(key) DO UPDATE SET
+                     value = excluded.value, updated_at = CURRENT_TIMESTAMP""",
+                (k, v),
+            )
         conn.commit()
     except Exception:
         pass
@@ -196,6 +231,9 @@ def refresh_intraday() -> dict:
         "volumes_updated": n_vol,
         "market_totals": market_totals,
         "date": date_str,
+        "session_date": session_date,
+        "session_time": session_time,
+        "session_kind": data_kind,
         "duration_sec": duration,
     }
 

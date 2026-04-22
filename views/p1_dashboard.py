@@ -578,18 +578,48 @@ def render():
         quotes.get("_last_trading_date", pd.Series()).iloc[0]
         if "_last_trading_date" in quotes.columns and len(quotes) > 0 else None
     )
-    # Plus de rollback artificiel au vendredi : on affiche la vraie date
-    # de la plus recente entree dans price_cache (source unique de verite).
-    # Les variations ci-dessous comparent cette date a la date precedente
-    # distincte → coherence garantie entre titre et Hausses/Baisses.
+
+    # ── Contexte séance depuis snapshot_meta (écrit par refresh_intraday) ──
+    # Permet d'afficher "Mi-journée DD/MM HH:MM" au lieu de "Clôture DD/MM"
+    # quand le scraper a tourné en séance ouverte.
+    session_kind = ""
+    session_time = ""
+    session_date_db = ""
+    try:
+        from data.db import get_connection as _gc
+        _c = _gc()
+        _rows = _c.execute(
+            "SELECT key, value FROM snapshot_meta "
+            "WHERE key IN ('last_session_kind','last_session_time','last_session_date')"
+        ).fetchall()
+        _c.close()
+        _meta_map = {}
+        for _r in _rows:
+            k = _r[0] if not isinstance(_r, dict) else _r.get("key")
+            v = _r[1] if not isinstance(_r, dict) else _r.get("value")
+            _meta_map[k] = v
+        session_kind = _meta_map.get("last_session_kind", "")
+        session_time = _meta_map.get("last_session_time", "")
+        session_date_db = _meta_map.get("last_session_date", "")
+    except Exception:
+        pass
+
     date_caption = "Bourse régionale des valeurs mobilières · 48 titres suivis"
     if last_trading_date:
         try:
             dt = pd.to_datetime(last_trading_date)
-            date_caption = (
-                f"Dernier jour coté · {JOURS_FR[dt.weekday()]} "
-                f"{dt.day} {MOIS_FR[dt.month-1]} {dt.year}"
-            )
+            day_fr = f"{JOURS_FR[dt.weekday()]} {dt.day} {MOIS_FR[dt.month-1]} {dt.year}"
+            if session_kind == "mi-seance" and session_time:
+                date_caption = f"Mi-journée · {day_fr} · relevé {session_time}"
+            elif session_kind == "cloture":
+                date_caption = f"Clôture · {day_fr}"
+            elif session_kind == "cloture-veille":
+                date_caption = (
+                    f"Clôture veille · {day_fr} "
+                    "(séance du jour pas encore ouverte)"
+                )
+            else:
+                date_caption = f"Dernier jour coté · {day_fr}"
         except Exception:
             pass
 
