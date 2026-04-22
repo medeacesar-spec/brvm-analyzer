@@ -203,9 +203,12 @@ def refresh_intraday() -> dict:
     try:
         meta_entries = [
             ("last_intraday_refresh", datetime.now().isoformat(timespec="seconds")),
-            ("last_session_date", session_date or ""),
+            # Fallback sur date_str (dernier jour ouvré) si le header brvm.org
+            # n'a pas été parsé — évite un snapshot_meta vide qui casse l'UI.
+            ("last_session_date", session_date or date_str),
             ("last_session_time", session_time or ""),
             ("last_session_kind", data_kind),  # mi-seance | cloture | cloture-veille
+            ("last_session_is_open", "1" if is_open else "0"),
             ("last_session_raw", session.get("raw") or ""),
         ]
         for k, v in meta_entries:

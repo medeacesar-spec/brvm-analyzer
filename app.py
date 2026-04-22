@@ -541,7 +541,7 @@ except Exception:
 try:
     _meta_rows = conn.execute(
         "SELECT key, value FROM snapshot_meta "
-        "WHERE key IN ('last_session_date','last_session_time','last_session_kind',"
+        "WHERE key IN ('last_session_date','last_session_time','last_session_is_open',"
         "'last_build_at','last_intraday_refresh')"
     ).fetchall()
     _meta = {}
@@ -551,31 +551,33 @@ try:
         _meta[k] = v
 except Exception:
     _meta = {}
+
+# Fallback si last_session_date est vide (scrape brvm.org header KO) :
+# utilise la date la plus récente de price_cache comme source de vérité.
+if not _meta.get("last_session_date"):
+    try:
+        _r = conn.execute("SELECT MAX(date) FROM price_cache").fetchone()
+        _max_date = _r[0] if _r else None
+        if _max_date:
+            _meta["last_session_date"] = str(_max_date)[:10]
+    except Exception:
+        pass
 conn.close()
 
-_kind = _meta.get("last_session_kind", "")
-_sdate = _meta.get("last_session_date", "") or ""
-_stime = _meta.get("last_session_time", "") or ""
-if _sdate:
-    try:
-        from datetime import datetime as _dtm
-        _d = _dtm.strptime(_sdate, "%Y-%m-%d")
-        _sdate_fr = f"{_d.day:02d}/{_d.month:02d}"
-    except Exception:
-        _sdate_fr = _sdate
-else:
-    _sdate_fr = "—"
-
-if _kind == "mi-seance":
-    _cot_label = f"Mi-séance · {_sdate_fr} {_stime}"
-elif _kind == "cloture":
-    _cot_label = f"Clôture · {_sdate_fr}"
-elif _kind == "cloture-veille":
-    _cot_label = f"Clôture veille · {_sdate_fr}"
-else:
-    _cot_label = f"MAJ · {_sdate_fr}" if _sdate else "—"
-
-st.sidebar.caption(f"{count} titres · {_cot_label}")
+# Label séance : source unique de vérité (recalcul au render, pas depuis
+# un session_kind figé qui devient obsolète après minuit).
+from utils.session_labels import build_session_label as _build_label
+_last_update = max(
+    (t for t in (_meta.get("last_build_at"), _meta.get("last_intraday_refresh")) if t),
+    default="",
+)
+_label = _build_label(
+    session_date=_meta.get("last_session_date"),
+    session_time=_meta.get("last_session_time"),
+    is_open=_meta.get("last_session_is_open"),
+    last_update_iso=_last_update,
+)
+st.sidebar.caption(f"{count} titres · {_label.sidebar}")
 
 # Debug indices + daily sync (admin uniquement)
 _idx_err = st.session_state.get("indices_error")
@@ -623,23 +625,6 @@ if is_admin() and _is_logged_in():
         else:
             st.sidebar.error(f"Échec : {res.get('error','inconnu')}")
         st.rerun()
-
-# Indicateur de fraîcheur des snapshots (visible pour tous).
-# On réutilise la _meta récupérée plus haut (économie d'1 query).
-_last_build = (_meta or {}).get("last_build_at", "")
-_last_intra = (_meta or {}).get("last_intraday_refresh", "")
-try:
-    # On prend le plus récent des deux timestamps de mise à jour des données
-    _latest = max([t for t in (_last_build, _last_intra) if t], default="")
-    if _latest:
-        _dt_str = str(_latest)[:16].replace("T", " ")
-        # Indique aussi l'origine : build=snapshot complet, intraday=refresh léger
-        _src = "snapshot" if _last_build >= _last_intra else "intraday"
-        st.sidebar.caption(f"Snapshots · {_dt_str} · {_src}")
-    else:
-        st.sidebar.caption("Snapshots · jamais générés")
-except Exception:
-    pass
 
 # Widget authentification (connexion Google OAuth ou mode dev)
 render_auth_widget()

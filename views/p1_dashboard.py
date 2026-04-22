@@ -570,7 +570,6 @@ def render():
         st.caption("Données en cours de chargement — patientez quelques secondes puis rafraîchissez.")
         return
 
-    JOURS_FR = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
     MOIS_FR = ["janvier", "février", "mars", "avril", "mai", "juin",
                "juillet", "aout", "septembre", "octobre", "novembre", "décembre"]
 
@@ -579,52 +578,36 @@ def render():
         if "_last_trading_date" in quotes.columns and len(quotes) > 0 else None
     )
 
-    # ── Contexte séance depuis snapshot_meta (écrit par refresh_intraday) ──
-    # Permet d'afficher "Mi-journée DD/MM HH:MM" au lieu de "Clôture DD/MM"
-    # quand le scraper a tourné en séance ouverte.
-    session_kind = ""
-    session_time = ""
-    session_date_db = ""
+    # ── Contexte séance depuis snapshot_meta (source unique de vérité) ──
+    # Le label est recalculé au render via utils.session_labels (évite le
+    # 'Clôture veille' figé qui persistait après minuit).
+    _meta_map = {}
     try:
         from data.db import get_connection as _gc
         _c = _gc()
         _rows = _c.execute(
             "SELECT key, value FROM snapshot_meta "
-            "WHERE key IN ('last_session_kind','last_session_time','last_session_date')"
+            "WHERE key IN ('last_session_date','last_session_time','last_session_is_open')"
         ).fetchall()
         _c.close()
-        _meta_map = {}
         for _r in _rows:
             k = _r[0] if not isinstance(_r, dict) else _r.get("key")
             v = _r[1] if not isinstance(_r, dict) else _r.get("value")
             _meta_map[k] = v
-        session_kind = _meta_map.get("last_session_kind", "")
-        session_time = _meta_map.get("last_session_time", "")
-        session_date_db = _meta_map.get("last_session_date", "")
     except Exception:
         pass
 
-    date_caption = "Bourse régionale des valeurs mobilières · 48 titres suivis"
-    if last_trading_date:
-        try:
-            dt = pd.to_datetime(last_trading_date)
-            day_fr = f"{JOURS_FR[dt.weekday()]} {dt.day} {MOIS_FR[dt.month-1]} {dt.year}"
-            if session_kind == "mi-seance" and session_time:
-                date_caption = f"Mi-journée · {day_fr} · relevé {session_time}"
-            elif session_kind == "cloture":
-                date_caption = f"Clôture · {day_fr}"
-            elif session_kind == "cloture-veille":
-                date_caption = (
-                    f"Clôture veille · {day_fr} "
-                    "(séance du jour pas encore ouverte)"
-                )
-            else:
-                date_caption = f"Dernier jour coté · {day_fr}"
-        except Exception:
-            pass
+    from utils.session_labels import build_session_label
+    session_label = build_session_label(
+        session_date=_meta_map.get("last_session_date") or (
+            str(last_trading_date)[:10] if last_trading_date else None
+        ),
+        session_time=_meta_map.get("last_session_time"),
+        is_open=_meta_map.get("last_session_is_open"),
+    )
 
     st.title("Marché BRVM")
-    st.caption(date_caption)
+    st.caption(session_label.caption)
 
     # Alerte publications non intégrées (conditionnelle, ne s'affiche que si besoin)
     _render_pending_publications_alert()
@@ -653,22 +636,9 @@ def render():
         except Exception:
             return "—"
 
-    day_label = "Jour"
-    day_caption = ""
-    if last_trading_date:
-        try:
-            dt = pd.to_datetime(last_trading_date)
-            day_label = f"Jour · {dt.day}/{dt.month:02d}"
-            day_fr = f"{JOURS_FR[dt.weekday()]} {dt.day} {MOIS_FR[dt.month-1]}"
-            # Utilise le même session_kind que la caption principale pour cohérence
-            if session_kind == "mi-seance" and session_time:
-                day_caption = f"Mi-journée · {day_fr} · relevé {session_time}"
-            elif session_kind == "cloture-veille":
-                day_caption = f"Clôture veille · {day_fr}"
-            else:
-                day_caption = f"Clôture du {day_fr}"
-        except Exception:
-            pass
+    # Tab Jour : label uniquement (la caption principale au-dessus porte déjà
+    # l'info de date/session, pas besoin de la redupliquer).
+    day_label = session_label.day_tab
 
     week_caption = ""
     if ranges.get("week_start") and ranges.get("week_end"):
@@ -685,8 +655,6 @@ def render():
 
     tab_day, tab_week, tab_month = st.tabs([day_label, "Semaine", "Mois"])
     with tab_day:
-        if day_caption:
-            st.caption(day_caption)
         _render_top5(perf.get("day", pd.DataFrame()), "du jour")
     with tab_week:
         if week_caption:
