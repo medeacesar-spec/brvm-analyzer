@@ -1444,11 +1444,13 @@ def get_data_gaps() -> pd.DataFrame:
         return pd.DataFrame()
 
     # ── Optim : 4 requêtes agrégées (au lieu de 48 × 4 = 192 round-trips) ──
-    # 1) Dernière année de fundamentals non-nulle par ticker
+    # 1) Dernière année de fundamentals par ticker (toute row, même partielle).
+    # On ne filtre PAS sur revenue : le parser PDF rate parfois ce champ
+    # mais l'integration reste consideree faite si la row existe (les
+    # autres champs comme net_income/eps/dps ont ete extraits).
     latest_fund = read_sql_df(
         """SELECT ticker, MAX(fiscal_year) AS latest
            FROM fundamentals
-           WHERE revenue IS NOT NULL AND revenue != 0
            GROUP BY ticker"""
     )
     latest_map = dict(zip(latest_fund["ticker"], latest_fund["latest"])) if not latest_fund.empty else {}
