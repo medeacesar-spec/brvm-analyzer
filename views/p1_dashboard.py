@@ -382,11 +382,13 @@ def _render_pending_publications_alert():
 
         # Scraped pending publications
         if pending is not None and not pending.empty:
-            st.markdown("#### 📥 Publications des 7 derniers jours à intégrer")
+            head_col, action_col = st.columns([5, 2], vertical_alignment="center")
+            head_col.markdown("#### Publications des 7 derniers jours à intégrer")
             if admin:
-                st.caption(
-                    "**🚀 Chercher** télécharge l'état financier (PDF) et rafraîchit sika. "
-                    "**🚫 Ignorer** retire la ligne."
+                head_col.caption(
+                    "Bouton **Chercher** par ligne télécharge le PDF et rafraîchit "
+                    "les données. Cochez puis **Ignorer la sélection** pour retirer "
+                    "les publications non pertinentes."
                 )
 
             _TYPE_LABELS = {
@@ -398,168 +400,293 @@ def _render_pending_publications_alert():
                 "corporate": "Opération capital",
                 "autre": "Autre",
             }
+            _REASON_LABELS = {
+                "nouveau": "Nouveau",
+                "annuel_non_integre": "Annuel à intégrer",
+                "trimestriel_a_verifier": "Trimestriel à vérifier",
+            }
 
-            # Header — colonnes larges pour le titre, étroites pour les métadonnées
+            # Bulk-ignore button (admin only) — invalide le cache 5 min après action
             if admin:
-                col_widths = [0.7, 1.3, 5.0, 0.6, 1.0, 0.9, 0.6, 0.6]
+                with action_col:
+                    if st.button(
+                        "Ignorer la sélection",
+                        icon=":material/delete:",
+                        use_container_width=True,
+                        key="bulk_ignore_pubs",
+                        help="Marque les publications cochées comme ignorées",
+                    ):
+                        n_done = 0
+                        for skey in list(st.session_state.keys()):
+                            if not skey.startswith("sel_pub_"):
+                                continue
+                            if st.session_state.get(skey):
+                                try:
+                                    rid = int(skey.split("_")[-1])
+                                    ignore_publication(rid)
+                                    st.session_state[skey] = False
+                                    n_done += 1
+                                except Exception:
+                                    continue
+                        if n_done:
+                            try:
+                                _cached_pending_publications.clear()
+                            except Exception:
+                                pass
+                            st.session_state["_pubs_flash"] = (
+                                f"{n_done} publication(s) ignorée(s)"
+                            )
+                            st.rerun()
+
+            # Flash de confirmation
+            flash = st.session_state.pop("_pubs_flash", None)
+            if flash:
+                st.success(flash)
+
+            # Header colonnes (admin a checkbox + action en plus)
+            if admin:
+                col_widths = [0.4, 0.7, 1.3, 5.0, 0.6, 1.0, 0.9, 0.6]
                 h = st.columns(col_widths, vertical_alignment="center")
-                h[6].markdown(_head("🚀"), unsafe_allow_html=True)
-                h[7].markdown(_head("🚫"), unsafe_allow_html=True)
+                h[0].markdown(_head("Sél."), unsafe_allow_html=True)
+                h[7].markdown(_head("Action"), unsafe_allow_html=True)
+                offset = 1
             else:
                 col_widths = [0.7, 1.3, 5.0, 0.6, 1.0, 0.9]
                 h = st.columns(col_widths, vertical_alignment="center")
-            h[0].markdown(_head("Ticker"), unsafe_allow_html=True)
-            h[1].markdown(_head("Type"), unsafe_allow_html=True)
-            h[2].markdown(_head("Titre"), unsafe_allow_html=True)
-            h[3].markdown(_head("Ex."), unsafe_allow_html=True)
-            h[4].markdown(_head("Date"), unsafe_allow_html=True)
-            h[5].markdown(_head("URL"), unsafe_allow_html=True)
-
-            reason_emoji = {
-                "nouveau": "🆕 Nouveau",
-                "annuel_non_integre": "📄 Annuel à intégrer",
-                "trimestriel_a_verifier": "📊 Trimestriel",
-            }
+                offset = 0
+            h[offset].markdown(_head("Ticker"), unsafe_allow_html=True)
+            h[offset + 1].markdown(_head("Type"), unsafe_allow_html=True)
+            h[offset + 2].markdown(_head("Titre"), unsafe_allow_html=True)
+            h[offset + 3].markdown(_head("Ex."), unsafe_allow_html=True)
+            h[offset + 4].markdown(_head("Date"), unsafe_allow_html=True)
+            h[offset + 5].markdown(_head("URL"), unsafe_allow_html=True)
 
             from scripts.fetch_publication import _is_financial_statement
 
-            # Reason badge compact (pas de retour ligne)
-            reason_short = {
-                "nouveau": "🆕",
-                "annuel_non_integre": "📄",
-                "trimestriel_a_verifier": "📊",
-            }
-
             for _, row in pending.head(15).iterrows():
                 rid = int(row["id"])
-                is_financial = _is_financial_statement(row.get("title"), row.get("pub_type"))
+                is_financial = _is_financial_statement(
+                    row.get("title"), row.get("pub_type"),
+                )
+                c = st.columns(col_widths, vertical_alignment="center")
+                pub_type_raw = row.get("pub_type") or ""
+                pub_type_label = _TYPE_LABELS.get(
+                    pub_type_raw, pub_type_raw.capitalize() if pub_type_raw else "—"
+                )
+                reason_label = _REASON_LABELS.get(
+                    row.get("pending_reason"), row.get("pending_reason") or "",
+                )
+                # Type avec libellé de raison entre parenthèses si différent
+                type_display = (
+                    f"{pub_type_label} · {reason_label}" if reason_label else pub_type_label
+                )
 
                 if admin:
-                    c = st.columns([0.7, 1.3, 5.0, 0.6, 1.0, 0.9, 0.6, 0.6],
-                                   vertical_alignment="center")
-                else:
-                    c = st.columns([0.7, 1.3, 5.0, 0.6, 1.0, 0.9],
-                                   vertical_alignment="center")
+                    c[0].checkbox(
+                        f"Sél. {rid}",
+                        key=f"sel_pub_{rid}",
+                        label_visibility="collapsed",
+                    )
 
-                r_emoji = reason_short.get(row["pending_reason"], "")
-                pub_type_raw = row.get("pub_type") or ""
-                pub_type_label = _TYPE_LABELS.get(pub_type_raw, pub_type_raw.capitalize())
-
-                c[0].markdown(
+                c[offset].markdown(
                     _cell(row["ticker"] or "—", title=row["ticker"] or ""),
                     unsafe_allow_html=True,
                 )
-                c[1].markdown(
-                    _cell(f"{r_emoji} {pub_type_label}", title=row["pending_reason"] or ""),
+                c[offset + 1].markdown(
+                    _cell(type_display, title=row.get("pending_reason") or ""),
                     unsafe_allow_html=True,
                 )
-                title_fr = _fr(row["title"] or "")
-                c[2].markdown(_cell(title_fr, title=title_fr), unsafe_allow_html=True)
-                year_txt = str(int(row["fiscal_year"])) if pd.notna(row.get("fiscal_year")) else "—"
-                c[3].markdown(_cell(year_txt), unsafe_allow_html=True)
+                title_fr = _fr(row.get("title") or "")
+                c[offset + 2].markdown(_cell(title_fr, title=title_fr),
+                                        unsafe_allow_html=True)
+                year_txt = (
+                    str(int(row["fiscal_year"]))
+                    if pd.notna(row.get("fiscal_year")) else "—"
+                )
+                c[offset + 3].markdown(_cell(year_txt), unsafe_allow_html=True)
                 pub_date = row.get("pub_date") or ""
                 short_date = pub_date[5:] if len(pub_date) >= 10 else pub_date
-                c[4].markdown(
+                c[offset + 4].markdown(
                     _cell(short_date or "—", title=pub_date),
                     unsafe_allow_html=True,
                 )
                 if row.get("url"):
-                    c[5].markdown(
-                        f'<div style="{CELL_STYLE}"><a href="{row["url"]}" target="_blank">📄</a></div>',
+                    c[offset + 5].markdown(
+                        f'<div style="{CELL_STYLE}">'
+                        f'<a href="{row["url"]}" target="_blank">Voir</a></div>',
                         unsafe_allow_html=True,
                     )
                 else:
-                    c[5].markdown(_cell("—"), unsafe_allow_html=True)
+                    c[offset + 5].markdown(_cell("—"), unsafe_allow_html=True)
 
                 if admin:
-                    with c[6]:
+                    with c[7]:
                         if is_financial:
-                            if st.button("🚀", key=f"fetch_pub_{rid}", help="Télécharger l'état financier + rafraîchir sika"):
+                            if st.button(
+                                "Chercher",
+                                icon=":material/download:",
+                                key=f"fetch_pub_{rid}",
+                                help="Télécharger l'état financier + rafraîchir sika",
+                                use_container_width=True,
+                            ):
                                 with st.spinner(f"Récupération {row['ticker']}…"):
-                                    from scripts.fetch_publication import auto_fetch_publication
+                                    from scripts.fetch_publication import (
+                                        auto_fetch_publication,
+                                    )
                                     res = auto_fetch_publication(rid)
                                 if res.get("success"):
                                     parts = []
                                     s = res.get("sika", {})
                                     if s.get("inserted") or s.get("updated"):
-                                        parts.append(f"Sika: +{s.get('inserted',0)} / ~{s.get('updated',0)}")
+                                        parts.append(
+                                            f"Sika: +{s.get('inserted',0)} / "
+                                            f"~{s.get('updated',0)}"
+                                        )
                                     if res.get("pdf_path"):
-                                        parts.append(f"PDF → {os.path.basename(res['pdf_path'])}")
-                                    st.success("✅ " + " · ".join(parts))
+                                        parts.append(
+                                            f"PDF → {os.path.basename(res['pdf_path'])}"
+                                        )
+                                    st.session_state["_pubs_flash"] = (
+                                        " · ".join(parts) or "Téléchargé"
+                                    )
                                 else:
-                                    err = res.get("sika", {}).get("error") or res.get("pdf_error") or res.get("sika_error") or "Aucune donnée récupérée"
-                                    st.warning(f"⚠️ {err}")
+                                    err = (
+                                        res.get("sika", {}).get("error")
+                                        or res.get("pdf_error")
+                                        or res.get("sika_error")
+                                        or "Aucune donnée récupérée"
+                                    )
+                                    st.warning(err)
+                                try:
+                                    _cached_pending_publications.clear()
+                                except Exception:
+                                    pass
                                 st.rerun()
                         else:
-                            c[6].caption("ℹ️")
-                    with c[7]:
-                        if st.button("🚫", key=f"ignore_pub_{rid}", help="Ignorer"):
-                            ignore_publication(rid)
-                            st.rerun()
+                            c[7].caption("Info")
 
-        # Gaps detected — ignore action admin only
+        # Gaps detected — ignore action admin only (cases à cocher + bulk)
         if gaps is not None and not gaps.empty:
             st.markdown("<div style='margin-top:14px'></div>", unsafe_allow_html=True)
-            st.markdown("#### Écarts détectés par rapport au cycle de publication")
-            st.caption(
-                "Cycle UEMOA : rapport annuel au plus tard fin avril, trimestriels dans "
-                "les 45j suivant la fin de trimestre."
-                + (" Bouton **Ignorer** si le titre ne publie pas." if admin else "")
+
+            # En-tête + bouton bulk-ignore
+            head_col, action_col = st.columns([5, 2], vertical_alignment="center")
+            head_col.markdown("#### Écarts détectés par rapport au cycle de publication")
+            head_col.caption(
+                "Cycle UEMOA : rapport annuel au plus tard fin avril, "
+                "trimestriels dans les 45j suivant la fin de trimestre."
+                + (" Cochez puis Ignorer pour les titres qui ne publient pas."
+                   if admin else "")
             )
+            # Map clé checkbox → action ignore_gap(ticker, gap_type, fiscal_year)
+            gap_actions: dict = {}
+            for _, row in gaps.iterrows():
+                tk = row["ticker"]
+                if row.get("missing_annual"):
+                    yr = int(row["expected_latest"])
+                    gap_actions[f"sel_gap_ann_{tk}_{yr}"] = (tk, "annuel", yr)
+                if pd.notna(row.get("missing_quarter")):
+                    gap_actions[f"sel_gap_q_{tk}"] = (tk, "trimestriel", None)
 
             if admin:
-                h = st.columns([0.7, 2.5, 1.5, 0.7, 2.5, 0.6, 0.6],
-                               vertical_alignment="center")
-                h[5].markdown(_head("🚫 An."), unsafe_allow_html=True)
-                h[6].markdown(_head("🚫 Tr."), unsafe_allow_html=True)
+                with action_col:
+                    if st.button(
+                        "Ignorer la sélection",
+                        icon=":material/delete:",
+                        use_container_width=True,
+                        key="bulk_ignore_gaps",
+                        help="Marque les écarts cochés comme non-applicables",
+                    ):
+                        n_done = 0
+                        for skey, args in gap_actions.items():
+                            if st.session_state.get(skey):
+                                ignore_gap(*args,
+                                            reason="Marqué non-applicable par l'utilisateur")
+                                # Décocher pour nettoyer l'UI au rerun
+                                st.session_state[skey] = False
+                                n_done += 1
+                        if n_done:
+                            # Invalide le cache 5 min sinon la liste réapparaît
+                            try:
+                                _cached_data_gaps.clear()
+                            except Exception:
+                                pass
+                            st.session_state["_gaps_flash"] = (
+                                f"{n_done} écart(s) ignoré(s)"
+                            )
+                            st.rerun()
+
+            # Flash de confirmation après bulk-ignore
+            flash = st.session_state.pop("_gaps_flash", None)
+            if flash:
+                st.success(flash)
+
+            if admin:
+                col_widths = [0.4, 0.4, 0.7, 2.5, 1.5, 0.7, 2.5]
+                h = st.columns(col_widths, vertical_alignment="center")
+                h[0].markdown(_head("An."), unsafe_allow_html=True)
+                h[1].markdown(_head("Tr."), unsafe_allow_html=True)
+                h[2].markdown(_head("Ticker"), unsafe_allow_html=True)
+                h[3].markdown(_head("Nom"), unsafe_allow_html=True)
+                h[4].markdown(_head("Secteur"), unsafe_allow_html=True)
+                h[5].markdown(_head("Dern."), unsafe_allow_html=True)
+                h[6].markdown(_head("Manquant"), unsafe_allow_html=True)
             else:
-                h = st.columns([0.7, 2.5, 1.5, 0.7, 2.5], vertical_alignment="center")
-            h[0].markdown(_head("Ticker"), unsafe_allow_html=True)
-            h[1].markdown(_head("Nom"), unsafe_allow_html=True)
-            h[2].markdown(_head("Secteur"), unsafe_allow_html=True)
-            h[3].markdown(_head("Dern."), unsafe_allow_html=True)
-            h[4].markdown(_head("Manquant"), unsafe_allow_html=True)
+                col_widths = [0.7, 2.5, 1.5, 0.7, 2.5]
+                h = st.columns(col_widths, vertical_alignment="center")
+                h[0].markdown(_head("Ticker"), unsafe_allow_html=True)
+                h[1].markdown(_head("Nom"), unsafe_allow_html=True)
+                h[2].markdown(_head("Secteur"), unsafe_allow_html=True)
+                h[3].markdown(_head("Dern."), unsafe_allow_html=True)
+                h[4].markdown(_head("Manquant"), unsafe_allow_html=True)
 
             for _, row in gaps.iterrows():
-                ticker = row["ticker"]
-                if admin:
-                    c = st.columns([0.7, 2.5, 1.5, 0.7, 2.5, 0.6, 0.6],
-                                   vertical_alignment="center")
-                else:
-                    c = st.columns([0.7, 2.5, 1.5, 0.7, 2.5],
-                                   vertical_alignment="center")
-                c[0].markdown(_cell(ticker, title=ticker), unsafe_allow_html=True)
-                name = _fr(row["name"] or "")
-                c[1].markdown(_cell(name, title=name), unsafe_allow_html=True)
-                sector = _fr(row["sector"] or "")
-                c[2].markdown(_cell(sector, title=sector), unsafe_allow_html=True)
-                year_txt = (
-                    str(int(row["latest_year_in_db"]))
-                    if pd.notna(row.get("latest_year_in_db"))
-                    else "—"
-                )
-                c[3].markdown(_cell(year_txt), unsafe_allow_html=True)
-                manquant = ", ".join(filter(None, [
-                    f"📄 {int(row['expected_latest'])}" if row["missing_annual"] else None,
-                    f"📊 {row['missing_quarter']}" if pd.notna(row.get("missing_quarter")) else None,
-                ]))
-                c[4].markdown(_cell(manquant, title=manquant), unsafe_allow_html=True)
+                tk = row["ticker"]
+                c = st.columns(col_widths, vertical_alignment="center")
 
                 if admin:
-                    with c[5]:
-                        if row["missing_annual"]:
-                            if st.button("🚫", key=f"ignore_gap_ann_{ticker}",
-                                         help="Ignorer l'écart annuel"):
-                                ignore_gap(ticker, "annuel", int(row["expected_latest"]),
-                                           reason="Marqué non-applicable par l'utilisateur")
-                                st.rerun()
-                    with c[6]:
-                        if pd.notna(row.get("missing_quarter")):
-                            if st.button("🚫", key=f"ignore_gap_q_{ticker}",
-                                         help="Ignorer les trimestriels"):
-                                ignore_gap(ticker, "trimestriel",
-                                           reason="Titre ne publie pas de trimestriels")
-                                st.rerun()
+                    # Checkbox annuel
+                    if row.get("missing_annual"):
+                        yr = int(row["expected_latest"])
+                        c[0].checkbox(
+                            "An.",
+                            key=f"sel_gap_ann_{tk}_{yr}",
+                            label_visibility="collapsed",
+                        )
+                    else:
+                        c[0].markdown(_cell(""), unsafe_allow_html=True)
+                    # Checkbox trimestriel
+                    if pd.notna(row.get("missing_quarter")):
+                        c[1].checkbox(
+                            "Tr.",
+                            key=f"sel_gap_q_{tk}",
+                            label_visibility="collapsed",
+                        )
+                    else:
+                        c[1].markdown(_cell(""), unsafe_allow_html=True)
+                    offset = 2
+                else:
+                    offset = 0
+
+                c[offset].markdown(_cell(tk, title=tk), unsafe_allow_html=True)
+                name = _fr(row.get("name") or "")
+                c[offset + 1].markdown(_cell(name, title=name), unsafe_allow_html=True)
+                sector = _fr(row.get("sector") or "")
+                c[offset + 2].markdown(_cell(sector, title=sector), unsafe_allow_html=True)
+                year_txt = (
+                    str(int(row["latest_year_in_db"]))
+                    if pd.notna(row.get("latest_year_in_db")) else "—"
+                )
+                c[offset + 3].markdown(_cell(year_txt), unsafe_allow_html=True)
+                manquant = ", ".join(filter(None, [
+                    f"Annuel {int(row['expected_latest'])}"
+                    if row.get("missing_annual") else None,
+                    f"Trim. {row['missing_quarter']}"
+                    if pd.notna(row.get("missing_quarter")) else None,
+                ]))
+                c[offset + 4].markdown(
+                    _cell(manquant, title=manquant), unsafe_allow_html=True,
+                )
 
         if admin:
             st.caption(
