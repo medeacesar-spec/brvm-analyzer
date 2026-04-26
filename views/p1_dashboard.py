@@ -579,34 +579,43 @@ def _render_pending_publications_alert():
                    if admin else "")
             )
             # Map clé checkbox → action ignore_gap(ticker, gap_type, fiscal_year)
+            # Pour l'annuel : on stocke aussi `published_year` (annee REELLEMENT
+            # manquante d'apres publications) pour l'option Completer-via-sika.
             gap_actions: dict = {}
             for _, row in gaps.iterrows():
                 tk = row["ticker"]
                 if row.get("missing_annual"):
                     yr = int(row["expected_latest"])
-                    gap_actions[f"sel_gap_ann_{tk}_{yr}"] = (tk, "annuel", yr)
+                    fetch_yr = (
+                        int(row["published_year"])
+                        if pd.notna(row.get("published_year")) else yr
+                    )
+                    gap_actions[f"sel_gap_ann_{tk}_{yr}"] = (
+                        tk, "annuel", yr, fetch_yr,
+                    )
                 if pd.notna(row.get("missing_quarter")):
-                    gap_actions[f"sel_gap_q_{tk}"] = (tk, "trimestriel", None)
+                    gap_actions[f"sel_gap_q_{tk}"] = (tk, "trimestriel", None, None)
 
             if admin:
                 with action_col:
-                    if st.button(
-                        "Ignorer la sélection",
+                    bcol1, bcol2 = st.columns(2)
+                    if bcol1.button(
+                        "Ignorer",
                         icon=":material/delete:",
                         use_container_width=True,
                         key="bulk_ignore_gaps",
                         help="Marque les écarts cochés comme non-applicables",
                     ):
                         n_done = 0
-                        for skey, args in gap_actions.items():
+                        for skey, (tk, gt, yr, _fy) in gap_actions.items():
                             if st.session_state.get(skey):
-                                ignore_gap(*args,
-                                            reason="Marqué non-applicable par l'utilisateur")
-                                # Décocher pour nettoyer l'UI au rerun
+                                ignore_gap(
+                                    tk, gt, yr,
+                                    reason="Marqué non-applicable par l'utilisateur",
+                                )
                                 st.session_state[skey] = False
                                 n_done += 1
                         if n_done:
-                            # Invalide le cache 5 min sinon la liste réapparaît
                             try:
                                 _cached_data_gaps.clear()
                             except Exception:
@@ -615,11 +624,78 @@ def _render_pending_publications_alert():
                                 f"{n_done} écart(s) ignoré(s)"
                             )
                             st.rerun()
+                    if bcol2.button(
+                        "Compléter via sika",
+                        icon=":material/cloud_download:",
+                        use_container_width=True,
+                        key="bulk_complete_gaps",
+                        help=(
+                            "Récupère les chiffres manquants (revenue, "
+                            "net_income, eps, dps...) depuis sikafinance "
+                            "pour les écarts annuels cochés. Ne touche que "
+                            "les champs NULL — préserve les valeurs existantes."
+                        ),
+                    ):
+                        from scripts.fetch_publication import (
+                            complete_missing_fundamentals_from_sika,
+                        )
+                        n_filled = 0
+                        n_inserted = 0
+                        n_skipped_q = 0
+                        errors = []
+                        for skey, (tk, gt, _yr, fetch_yr) in gap_actions.items():
+                            if not st.session_state.get(skey):
+                                continue
+                            if gt != "annuel":
+                                n_skipped_q += 1
+                                continue
+                            try:
+                                res = complete_missing_fundamentals_from_sika(
+                                    tk, fetch_yr,
+                                )
+                                if res.get("error"):
+                                    errors.append(f"{tk} {fetch_yr}: {res['error']}")
+                                    continue
+                                if res.get("inserted"):
+                                    n_inserted += res["inserted"]
+                                if res.get("updated"):
+                                    n_filled += 1
+                                # Décoche apres action OK
+                                st.session_state[skey] = False
+                            except Exception as e:
+                                errors.append(f"{tk} {fetch_yr}: {e}")
+                        try:
+                            _cached_data_gaps.clear()
+                        except Exception:
+                            pass
+                        bits = []
+                        if n_inserted:
+                            bits.append(f"{n_inserted} nouvelle(s) ligne(s)")
+                        if n_filled:
+                            bits.append(f"{n_filled} ligne(s) complétée(s)")
+                        if n_skipped_q:
+                            bits.append(
+                                f"{n_skipped_q} trim. ignoré(s) "
+                                "(sika ne fournit pas le détail trimestriel)"
+                            )
+                        if errors:
+                            bits.append(f"{len(errors)} erreur(s)")
+                        if bits:
+                            st.session_state["_gaps_flash"] = " · ".join(bits)
+                            if errors:
+                                st.session_state["_gaps_errors"] = errors
+                            st.rerun()
 
-            # Flash de confirmation après bulk-ignore
+            # Flash de confirmation après bulk-ignore / completion
             flash = st.session_state.pop("_gaps_flash", None)
             if flash:
                 st.success(flash)
+            errors = st.session_state.pop("_gaps_errors", None)
+            if errors:
+                with st.expander(f"{len(errors)} erreur(s) détaillée(s)",
+                                  expanded=False):
+                    for e in errors:
+                        st.warning(e)
 
             if admin:
                 col_widths = [0.4, 0.4, 0.7, 2.5, 1.5, 0.7, 2.5]

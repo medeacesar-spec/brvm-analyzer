@@ -161,6 +161,122 @@ def refresh_ticker_from_sika(ticker: str) -> dict:
     return {"inserted": inserted, "updated": updated}
 
 
+def complete_missing_fundamentals_from_sika(
+    ticker: str, fiscal_year: int = None,
+) -> dict:
+    """Complete les champs MANQUANTS (NULL) dans fundamentals depuis sikafinance.
+
+    Contrairement a refresh_ticker_from_sika qui ECRASE, cette fonction ne
+    touche que les champs NULL — preserve les valeurs deja en base
+    (notamment celles extraites du PDF qui sont plus precises que sika).
+
+    Args:
+        ticker  : ticker BRVM (ex 'CBIBF.bf')
+        fiscal_year : annee specifique (None = toutes les annees sika)
+
+    Retourne {
+        'inserted': int,        # nouvelles rows creees
+        'updated': int,         # rows mises a jour (au moins 1 champ comble)
+        'fields_filled': dict,  # {year: [list of fields filled]}
+        'error': str | None,
+    }
+    """
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__))))
+    from scrape_societe import scrape_societe, HEADERS
+
+    session = requests.Session()
+    session.headers.update(HEADERS)
+    result = scrape_societe(session, ticker)
+
+    if not result.get("financials"):
+        return {
+            "inserted": 0, "updated": 0, "fields_filled": {},
+            "error": "Aucune donnée sikafinance pour ce ticker",
+        }
+
+    conn = get_connection()
+    inserted = 0
+    updated = 0
+    fields_filled: dict = {}
+
+    for year, fin in result["financials"].items():
+        if fiscal_year is not None and int(year) != int(fiscal_year):
+            continue
+
+        existing_row = conn.execute(
+            """SELECT revenue, net_income, dps, eps, per,
+                       revenue_growth, net_income_growth, shares
+               FROM fundamentals
+               WHERE ticker = ? AND fiscal_year = ?""",
+            (ticker, year),
+        ).fetchone()
+
+        if existing_row is None:
+            # Pas de row — INSERT avec ce que sika a
+            conn.execute(
+                """INSERT INTO fundamentals
+                   (ticker, fiscal_year, shares,
+                    revenue, net_income, dps, eps, per,
+                    revenue_growth, net_income_growth, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)""",
+                (
+                    ticker, year, result.get("shares"),
+                    fin.get("revenue"), fin.get("net_income"),
+                    fin.get("dps"), fin.get("eps"), fin.get("per"),
+                    fin.get("revenue_growth"), fin.get("net_income_growth"),
+                ),
+            )
+            inserted += 1
+            filled = [k for k in (
+                "revenue", "net_income", "dps", "eps", "per",
+                "revenue_growth", "net_income_growth",
+            ) if fin.get(k) is not None]
+            if result.get("shares"):
+                filled.append("shares")
+            fields_filled[int(year)] = filled
+            continue
+
+        # Row existante — ne touche QUE les NULL
+        existing_dict = dict(existing_row) if isinstance(existing_row, dict) else {
+            "revenue": existing_row[0], "net_income": existing_row[1],
+            "dps": existing_row[2], "eps": existing_row[3], "per": existing_row[4],
+            "revenue_growth": existing_row[5], "net_income_growth": existing_row[6],
+            "shares": existing_row[7],
+        }
+        set_parts = []
+        params = []
+        filled = []
+        for key in ("revenue", "net_income", "dps", "eps", "per",
+                     "revenue_growth", "net_income_growth"):
+            if existing_dict.get(key) is None and fin.get(key) is not None:
+                set_parts.append(f"{key} = ?")
+                params.append(fin[key])
+                filled.append(key)
+        if existing_dict.get("shares") is None and result.get("shares"):
+            set_parts.append("shares = ?")
+            params.append(result["shares"])
+            filled.append("shares")
+
+        if set_parts:
+            set_parts.append("updated_at = CURRENT_TIMESTAMP")
+            params.append(ticker)
+            params.append(year)
+            conn.execute(
+                f"UPDATE fundamentals SET {', '.join(set_parts)} "
+                f"WHERE ticker = ? AND fiscal_year = ?",
+                params,
+            )
+            updated += 1
+            fields_filled[int(year)] = filled
+
+    conn.commit()
+    conn.close()
+    return {
+        "inserted": inserted, "updated": updated,
+        "fields_filled": fields_filled, "error": None,
+    }
+
+
 def _is_financial_statement(title: str, pub_type: str = None) -> bool:
     """Indique si la publication est un état financier / rapport d'activité à télécharger.
     On ignore : convocations, AG, dividendes, augmentations de capital, notes d'info, franchissements."""
