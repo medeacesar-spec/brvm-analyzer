@@ -536,13 +536,16 @@ def get_analyzable_tickers() -> list:
 
 def _sanitize_fundamentals(data: dict) -> dict:
     """Nettoie les valeurs aberrantes avant insertion.
-    Met à NULL toute valeur clairement incohérente pour éviter de polluer la base."""
+    Met à NULL toute valeur clairement incohérente pour éviter de polluer la base.
+
+    Seuils calibrés pour la BRVM (le plus gros emetteur Sonatel ~1.6T FCFA
+    revenue, ~330B net income, banques peuvent avoir des bilans plus gros).
+    """
     data = dict(data)  # copy
     rev = data.get("revenue")
     ni = data.get("net_income")
     eq = data.get("equity")
     debt = data.get("total_debt")
-    shares = data.get("shares")
 
     reasons = []
 
@@ -551,10 +554,10 @@ def _sanitize_fundamentals(data: dict) -> dict:
             data[k] = None
         reasons.append(why)
 
-    # 1. Marge nette > 100% ou < -100% → incohérent
+    # 1. Marge nette absurde : >60% (très haute meme pour banque) ou <-100%
     if rev and ni and rev != 0:
         margin = ni / rev
-        if abs(margin) > 1.0:
+        if margin > 0.6 or margin < -1.0:
             _clear("revenue", "net_income",
                    why=f"Marge absurde {margin*100:.1f}% (rev={rev:,.0f}, ni={ni:,.0f})")
 
@@ -566,17 +569,30 @@ def _sanitize_fundamentals(data: dict) -> dict:
     if eq is not None and 0 < abs(eq) < 1e6:
         _clear("equity", why=f"Equity trop faible : {eq:,.0f}")
 
-    # 4. ROE > 200% → incohérent (sauf si equity négatif, cas réel de société en difficulté)
+    # 4. ROE > 200% → incohérent
     if ni and eq and eq > 0:
         roe = ni / eq
         if abs(roe) > 2.0:
             _clear("equity", why=f"ROE absurde {roe*100:.1f}%")
 
-    # 5. Revenue > 10 trillion FCFA → absurde (plus grosse entreprise BRVM ~2T)
-    for key in ("revenue", "net_income", "equity", "total_debt", "ebit", "cfo"):
+    # 5. Seuils superieurs par champ — le parser PDF se trompe souvent d'un
+    # ordre de grandeur (loupe une virgule, lit une ligne sur deux, etc.)
+    UPPER_LIMITS = {
+        "revenue": 5e12,           # 5T FCFA (Sonatel ~1.6T)
+        "net_income": 1e12,        # 1T FCFA (Sonatel ~330B)
+        "ebit": 1e12,
+        "equity": 5e12,
+        "total_debt": 5e12,
+        "cfo": 1e12,
+        "capex": 5e11,
+        "interest_expense": 5e11,
+        "total_assets": 50e12,     # banques ont gros bilan, mais 50T = limite generouse
+        "dividends_total": 1e12,
+    }
+    for key, limit in UPPER_LIMITS.items():
         v = data.get(key)
-        if v is not None and abs(v) > 1e13:
-            _clear(key, why=f"{key} > 10T FCFA : {v:,.0f}")
+        if v is not None and abs(v) > limit:
+            _clear(key, why=f"{key} > {limit:.0e} FCFA : {v:,.0f}")
 
     # 6. D/E > 20x hors banques → suspect
     sector = (data.get("sector") or "").lower()
@@ -587,7 +603,8 @@ def _sanitize_fundamentals(data: dict) -> dict:
             _clear("total_debt", why=f"D/E absurde {de:.1f}x (hors banque)")
 
     if reasons:
-        print(f"[sanitize] {data.get('ticker')} {data.get('fiscal_year')}: " + " | ".join(reasons))
+        print(f"[sanitize] {data.get('ticker')} {data.get('fiscal_year')}: "
+              + " | ".join(reasons))
 
     return data
 
