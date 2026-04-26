@@ -678,9 +678,19 @@ def _render_pending_publications_alert():
                     if pd.notna(row.get("latest_year_in_db")) else "—"
                 )
                 c[offset + 3].markdown(_cell(year_txt), unsafe_allow_html=True)
+                # Pour l'annuel : affiche l'annee REELLEMENT manquante.
+                # `published_year` est l'annee d'une publication scrapee
+                # mais pas encore integree (prioritaire) ; sinon on tombe
+                # sur `expected_latest` (annee attendue par cycle UEMOA).
+                annual_year = (
+                    int(row.get("published_year"))
+                    if pd.notna(row.get("published_year")) else
+                    int(row.get("expected_latest"))
+                    if pd.notna(row.get("expected_latest")) else None
+                )
                 manquant = ", ".join(filter(None, [
-                    f"Annuel {int(row['expected_latest'])}"
-                    if row.get("missing_annual") else None,
+                    f"Annuel {annual_year}"
+                    if row.get("missing_annual") and annual_year else None,
                     f"Trim. {row['missing_quarter']}"
                     if pd.notna(row.get("missing_quarter")) else None,
                 ]))
