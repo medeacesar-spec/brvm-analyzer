@@ -276,9 +276,14 @@ def _render_pending_publications_alert():
     """Affiche une bannière si des publications récentes (états financiers annuels ou
     données trimestrielles) n'ont pas encore été intégrées en base.
 
+    Réservée aux admins : c'est une info de qualité de données qui n'est
+    pertinente que pour les responsables de l'intégration.
+
     Résultats cachés 5 min (les deux requêtes font ensemble 240+ round-trips
     Supabase dans la version non optimisée).
     """
+    if not is_admin():
+        return
     pending = _cached_pending_publications()
     gaps = _cached_data_gaps()
 
