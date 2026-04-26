@@ -623,8 +623,13 @@ def save_fundamentals(data: dict) -> int:
         if c in _update_always:
             update_parts.append(f"{c}=excluded.{c}")
         else:
-            # COALESCE(excluded.col, col) → prend la nouvelle valeur si non-NULL, sinon garde l'ancienne
-            update_parts.append(f"{c}=COALESCE(excluded.{c}, {c})")
+            # COALESCE(excluded.col, fundamentals.col) → prend la nouvelle
+            # valeur si non-NULL, sinon garde l'ancienne. La table doit etre
+            # qualifiee : Postgres rejette `price` ambigu entre la nouvelle
+            # ligne et la cible du SET (SQLite etait tolerant).
+            update_parts.append(
+                f"{c}=COALESCE(excluded.{c}, fundamentals.{c})"
+            )
     update_clause = ", ".join(update_parts)
 
     cursor = conn.execute(
