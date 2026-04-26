@@ -185,6 +185,19 @@ def build_scoring_snapshot(conn, all_stocks: pd.DataFrame, all_prices: dict) -> 
     import math as _m
     rows_to_insert = []
     history_to_save = []  # buffer pour signal_history (auto-historisation)
+    verdict_daily_rows = []  # buffer pour verdict_daily (journal append-only)
+
+    # Date canonique de la session : on lit snapshot_meta (rempli par
+    # ingest_today_prices juste avant), fallback sur _last_business_day_str()
+    # si jamais le scrape header brvm.org a échoué.
+    try:
+        _r = conn.execute(
+            "SELECT value FROM snapshot_meta WHERE key = ?",
+            ("last_session_date",),
+        ).fetchone()
+        session_date_str = (_r[0] if _r else "") or _last_business_day_str()
+    except Exception:
+        session_date_str = _last_business_day_str()
 
     for _, row in all_stocks.iterrows():
         ticker = row["ticker"]
@@ -233,6 +246,20 @@ def build_scoring_snapshot(conn, all_stocks: pd.DataFrame, all_prices: dict) -> 
             "trend": trend,
         })
 
+        verdict_daily_rows.append((
+            ticker, session_date_str,
+            reco.get("verdict"),
+            reco.get("stars"),
+            result.get("hybrid_score"),
+            result.get("fundamental_score"),
+            result.get("technical_score"),
+            ref_price,
+            trend,
+            nb_signals,
+            sector,
+            company_name,
+        ))
+
     # Batch insert via executemany (1 round-trip au lieu de 49)
     conn.execute("DELETE FROM scoring_snapshot")
     if rows_to_insert:
@@ -248,6 +275,39 @@ def build_scoring_snapshot(conn, all_stocks: pd.DataFrame, all_prices: dict) -> 
         )
     conn.commit()
     print(f"  [scoring] {len(rows_to_insert)} tickers écrits (batch)")
+
+    # ── Journal quotidien append-only (verdict_daily) ──
+    # Source de vérité pour toute analyse rétrospective : trajectoires,
+    # backtests, hit rate, score evolution, cohorts. UPSERT sur (ticker,date)
+    # pour rester idempotent si build_daily_snapshot tourne 2x dans la journée.
+    if verdict_daily_rows:
+        try:
+            cur = conn.cursor()
+            cur.executemany(
+                """INSERT INTO verdict_daily
+                   (ticker, date, verdict, stars,
+                    hybrid_score, fundamental_score, technical_score,
+                    price, trend, nb_signals, sector, company_name)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT (ticker, date) DO UPDATE SET
+                     verdict = excluded.verdict,
+                     stars = excluded.stars,
+                     hybrid_score = excluded.hybrid_score,
+                     fundamental_score = excluded.fundamental_score,
+                     technical_score = excluded.technical_score,
+                     price = excluded.price,
+                     trend = excluded.trend,
+                     nb_signals = excluded.nb_signals,
+                     sector = excluded.sector,
+                     company_name = excluded.company_name,
+                     computed_at = CURRENT_TIMESTAMP""",
+                verdict_daily_rows,
+            )
+            conn.commit()
+            print(f"  [verdict_daily] {len(verdict_daily_rows)} lignes upsertées"
+                  f" pour {session_date_str}")
+        except Exception as e:
+            print(f"  [verdict_daily] échec batch insert: {e}")
 
     # ── Auto-historisation dans signal_history ──
     # Avant : signal_history n'était peuplée que via les visites admin sur p2

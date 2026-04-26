@@ -301,6 +301,30 @@ def init_db():
             computed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
+        -- Journal quotidien append-only des verdicts/scores. Source de vérité
+        -- pour : trajectoires, backtests, hit rate, score evolution, cohorts.
+        -- ~12k lignes/an pour 48 tickers, négligeable. PK composite (ticker,date)
+        -- garantit l'idempotence si build_daily_snapshot tourne 2x dans la journée.
+        CREATE TABLE IF NOT EXISTS verdict_daily (
+            ticker TEXT NOT NULL,
+            date TEXT NOT NULL,
+            verdict TEXT,
+            stars INTEGER,
+            hybrid_score REAL,
+            fundamental_score REAL,
+            technical_score REAL,
+            price REAL,
+            trend TEXT,
+            nb_signals INTEGER,
+            sector TEXT,
+            company_name TEXT,
+            computed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (ticker, date)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_verdict_daily_date ON verdict_daily(date);
+        CREATE INDEX IF NOT EXISTS idx_verdict_daily_verdict ON verdict_daily(verdict);
+
         CREATE TABLE IF NOT EXISTS ticker_performance_snapshot (
             ticker TEXT PRIMARY KEY,
             company_name TEXT,
