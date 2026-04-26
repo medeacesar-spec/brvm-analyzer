@@ -187,6 +187,15 @@ def build_scoring_snapshot(conn, all_stocks: pd.DataFrame, all_prices: dict) -> 
     history_to_save = []  # buffer pour signal_history (auto-historisation)
     verdict_daily_rows = []  # buffer pour verdict_daily (journal append-only)
 
+    # Fallback secteur depuis tickers.json : fundamentals/market_data peuvent
+    # avoir sector NULL pour certains tickers (BICC, ECOC, ETIT, SGBC, SNTS…)
+    # alors que tickers.json est la source autoritaire de cette taxonomie.
+    try:
+        from config import load_tickers as _load_tickers
+        _ticker_sectors = {t["ticker"]: t.get("sector", "") for t in _load_tickers()}
+    except Exception:
+        _ticker_sectors = {}
+
     # Date canonique de la session : on lit snapshot_meta (rempli par
     # ingest_today_prices juste avant), fallback sur _last_business_day_str()
     # si jamais le scrape header brvm.org a échoué.
@@ -217,7 +226,9 @@ def build_scoring_snapshot(conn, all_stocks: pd.DataFrame, all_prices: dict) -> 
         signals = result.get("signals", []) or []
         nb_signals = sum(1 for s in signals if s.get("type") in ("achat", "vente"))
         company_name = fund.get("company_name") or ticker
-        sector = fund.get("sector", "")
+        # Fallback sur tickers.json si fundamentals/market_data n'ont pas
+        # de secteur (cas frequent pour BICC, ECOC, ETIT, SGBC, SNTS).
+        sector = (fund.get("sector") or "").strip() or _ticker_sectors.get(ticker, "")
         ref_price = fund.get("price") or 0
 
         rows_to_insert.append((
