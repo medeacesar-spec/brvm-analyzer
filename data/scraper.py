@@ -141,7 +141,11 @@ def fetch_daily_quotes_brvm() -> pd.DataFrame:
             continue
         # Ticker complet (avec .ci/.sn/.tg/.bj/.bf) si présent dans notre config
         symbole = _ticker_map.get(symbole_short.upper(), symbole_short)
-        name = cells[1].get_text(strip=True)
+        # Normalise le nom officiel ALL CAPS de brvm.org en Title Case lisible
+        # avec accents et acronymes corrects (sinon save_market_data écraserait
+        # les noms propres en MAJUSCULES à chaque sync).
+        from utils.text import normalize_company_name
+        name = normalize_company_name(cells[1].get_text(strip=True))
         volume = _parse_brvm_number(cells[2].get_text())
         prev_close = _parse_brvm_number(cells[3].get_text())
         open_p = _parse_brvm_number(cells[4].get_text())
