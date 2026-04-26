@@ -365,8 +365,10 @@ def _render_pending_publications_alert():
             ("generale ", "générale "),
         ]
 
-        def _fr(text: str) -> str:
-            if not text:
+        def _fr(text) -> str:
+            # Garde-fou : NaN/None/non-string → "". Sans ça, `pd.NA or ""`
+            # renvoie NaN (truthy) qui n'a pas de .replace() et crash.
+            if text is None or not isinstance(text, str) or not text:
                 return ""
             out = text
             for old, new in _ACCENT_REPLACEMENTS:

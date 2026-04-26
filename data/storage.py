@@ -1083,17 +1083,27 @@ def get_investor_profile(user_id: Optional[str] = None) -> Optional[dict]:
 # --- Market Data (auto-scraped from sikafinance) ---
 
 def save_market_data(data: dict):
-    """Sauvegarde les donnees de marche scrapees pour un titre."""
+    """Sauvegarde les donnees de marche scrapees pour un titre.
+
+    IMPORTANT : on utilise COALESCE pour `company_name` et `sector` afin de
+    NE PAS ecraser ces colonnes avec NULL quand le scraper ne les fournit pas
+    (cas frequent : fetch_daily_quotes_brvm ne renvoie que prix/variation).
+    Sinon chaque sync intraday remettait sector a NULL pour tous les tickers.
+    """
     conn = get_connection()
     conn.execute(
         """INSERT INTO market_data (ticker, company_name, sector, price, variation,
            market_cap, beta, rsi, dps, dividend_history, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
            ON CONFLICT(ticker) DO UPDATE SET
-           company_name=excluded.company_name, sector=excluded.sector,
+           company_name=COALESCE(excluded.company_name, market_data.company_name),
+           sector=COALESCE(excluded.sector, market_data.sector),
            price=excluded.price, variation=excluded.variation,
-           market_cap=excluded.market_cap, beta=excluded.beta, rsi=excluded.rsi,
-           dps=excluded.dps, dividend_history=excluded.dividend_history,
+           market_cap=COALESCE(excluded.market_cap, market_data.market_cap),
+           beta=COALESCE(excluded.beta, market_data.beta),
+           rsi=COALESCE(excluded.rsi, market_data.rsi),
+           dps=COALESCE(excluded.dps, market_data.dps),
+           dividend_history=COALESCE(excluded.dividend_history, market_data.dividend_history),
            updated_at=CURRENT_TIMESTAMP""",
         (
             data.get("ticker"), data.get("name"), data.get("sector"),
