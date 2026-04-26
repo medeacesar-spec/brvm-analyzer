@@ -70,9 +70,16 @@ def _load_all_stocks_dict() -> dict:
 def render():
     portfolio = get_portfolio()
 
-    # Load cash from DB once per session
-    if "portfolio_cash" not in st.session_state:
-        st.session_state.portfolio_cash = get_portfolio_cash()
+    # Lecture systématique du cash depuis la DB à chaque render (pas de cache
+    # session_state). Évite les divergences entre l'affichage et la valeur
+    # persistée — le cache ne nous gagne rien (1 SELECT trivial).
+    current_cash_db = get_portfolio_cash()
+    st.session_state.portfolio_cash = current_cash_db
+
+    # Flash de confirmation après save cash (survit au st.rerun)
+    flash = st.session_state.pop("pf_cash_flash", None)
+    if flash:
+        st.success(flash)
 
     # ═══════════════════════════════════════════════════════════════════
     # Header row : Title + subtitle (gauche) · Actions (droite)
@@ -189,7 +196,11 @@ def render():
                 set_portfolio_cash(float(new_total))
                 st.session_state.portfolio_cash = float(new_total)
                 st.session_state["pf_cash_open"] = False
-                st.success(f"Cash mis à jour : {new_total:,.0f} {CURRENCY}")
+                # Message persistant via session_state : st.success() est perdu
+                # à cause du st.rerun() qui suit. On l'affiche après rerun.
+                st.session_state["pf_cash_flash"] = (
+                    f"Cash mis à jour : {new_total:,.0f} {CURRENCY}"
+                )
                 st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
 

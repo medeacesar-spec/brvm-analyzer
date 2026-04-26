@@ -631,9 +631,9 @@ render_auth_widget()
 
 # ─── Navigation par sections (Marché / Analyse / Outils) ──────────────
 # Historique Signaux est reservé aux administrateurs.
-_outils = ["Portefeuille", "Signaux", "Assistant IA"]
+_outils = ["Portefeuille", "Signaux", "Analyses", "Assistant IA"]
 if is_admin():
-    _outils = ["Portefeuille", "Signaux", "Historique Signaux", "Assistant IA"]
+    _outils = ["Portefeuille", "Signaux", "Analyses", "Historique Signaux", "Assistant IA"]
 
 _NAV_SECTIONS = [
     ("Marché", ["Dashboard", "Infos Marché"]),
@@ -716,6 +716,9 @@ elif page == "Assistant IA":
         render()
 elif page == "Performance des titres":
     from views.p9_performance import render
+    render()
+elif page == "Analyses":
+    from views.p11_analyses import render
     render()
 elif page == "Historique Signaux":
     if is_admin():

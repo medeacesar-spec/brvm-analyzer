@@ -392,6 +392,7 @@ def render():
 
     with tab3:
         _render_recommendation(result, fundamentals)
+        _render_score_evolution(selected_ticker)
 
     with tab4:
         _render_profile(selected_ticker, fundamentals)
@@ -1659,6 +1660,77 @@ def _render_input_form(ticker, tickers_data):
             save_fundamentals(data)
             st.success("✅ Données enregistrées !")
             st.rerun()
+
+
+def _render_score_evolution(ticker: str):
+    """Affiche l'évolution des scores (hybrid/fond/tech) sur les 90 derniers
+    jours pour ce ticker, en bas de l'onglet Recommandation. Les données
+    proviennent de verdict_daily (peuplé chaque jour par build_daily_snapshot).
+    """
+    from analysis.verdict_history import get_score_evolution, has_history
+    section_heading("Évolution du score", spacing="loose")
+    if not has_history():
+        st.caption(
+            "Collecte des verdicts quotidiens en cours. Les courbes "
+            "apparaîtront après le prochain build (cron 16h UTC ou bouton admin "
+            "*Regénérer snapshots*)."
+        )
+        return
+    df = get_score_evolution(ticker, days=90)
+    if df.empty:
+        st.caption(
+            f"Aucun historique pour {ticker} dans verdict_daily. "
+            "Les données s'accumulent à partir du prochain build quotidien."
+        )
+        return
+    import plotly.graph_objects as go
+    df = df.copy()
+    df["date"] = pd.to_datetime(df["date"])
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=df["date"], y=df["hybrid_score"], mode="lines+markers",
+        name="Score hybride", line=dict(width=3, color="#1F5D3A"),
+    ))
+    fig.add_trace(go.Scatter(
+        x=df["date"], y=df["fundamental_score"], mode="lines",
+        name="Fondamental", line=dict(width=1.5, color="#7A8C99", dash="dot"),
+    ))
+    fig.add_trace(go.Scatter(
+        x=df["date"], y=df["technical_score"], mode="lines",
+        name="Technique", line=dict(width=1.5, color="#B5730E", dash="dot"),
+    ))
+    # Bandes de seuils verdicts (70=ACHAT FORT, 52=ACHAT, 38=CONSERVER, 25=PRUDENCE)
+    fig.add_hline(y=70, line_dash="dash", line_color="rgba(31,93,58,0.4)",
+                  annotation_text="ACHAT FORT", annotation_position="right")
+    fig.add_hline(y=52, line_dash="dash", line_color="rgba(31,93,58,0.25)",
+                  annotation_text="ACHAT", annotation_position="right")
+    fig.update_layout(
+        height=300, margin=dict(l=10, r=80, t=10, b=10),
+        yaxis=dict(title="Score / 100", range=[0, 100]),
+        xaxis=dict(title=None),
+        legend=dict(orientation="h", y=-0.2),
+        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+    )
+    st.plotly_chart(fig, use_container_width=True)
+    # Tableau compact des changements de verdict
+    df["verdict_changed"] = df["verdict"] != df["verdict"].shift(1)
+    transitions = df[df["verdict_changed"]][["date", "verdict", "hybrid_score", "price"]]
+    if len(transitions) > 1:
+        with st.expander(f"Changements de verdict ({len(transitions) - 1} sur 90j)",
+                          expanded=False):
+            transitions = transitions.copy()
+            transitions["date"] = transitions["date"].dt.strftime("%d/%m/%Y")
+            transitions["hybrid_score"] = transitions["hybrid_score"].round(1)
+            transitions["price"] = transitions["price"].apply(
+                lambda p: f"{p:,.0f} {CURRENCY}" if pd.notna(p) else "—"
+            )
+            st.dataframe(
+                transitions.rename(columns={
+                    "date": "Date", "verdict": "Verdict",
+                    "hybrid_score": "Score", "price": "Prix",
+                }),
+                use_container_width=True, hide_index=True,
+            )
 
 
 def _render_profile(ticker: str, fundamentals: dict):
