@@ -184,6 +184,7 @@ def build_scoring_snapshot(conn, all_stocks: pd.DataFrame, all_prices: dict) -> 
 
     import math as _m
     rows_to_insert = []
+    history_to_save = []  # buffer pour signal_history (auto-historisation)
 
     for _, row in all_stocks.iterrows():
         ticker = row["ticker"]
@@ -202,12 +203,12 @@ def build_scoring_snapshot(conn, all_stocks: pd.DataFrame, all_prices: dict) -> 
         trend = (result.get("trend", {}) or {}).get("trend", "")
         signals = result.get("signals", []) or []
         nb_signals = sum(1 for s in signals if s.get("type") in ("achat", "vente"))
+        company_name = fund.get("company_name") or ticker
+        sector = fund.get("sector", "")
+        ref_price = fund.get("price") or 0
 
         rows_to_insert.append((
-            ticker,
-            fund.get("company_name") or ticker,
-            fund.get("sector", ""),
-            fund.get("price") or 0,
+            ticker, company_name, sector, ref_price,
             result.get("hybrid_score"),
             result.get("fundamental_score"),
             result.get("technical_score"),
@@ -218,6 +219,19 @@ def build_scoring_snapshot(conn, all_stocks: pd.DataFrame, all_prices: dict) -> 
             json.dumps(signals, default=str),
             json.dumps(consolidated, default=str),
         ))
+
+        history_to_save.append({
+            "ticker": ticker,
+            "company_name": company_name,
+            "sector": sector,
+            "price": ref_price,
+            "signals": signals,
+            "reco": reco,
+            "hybrid_score": result.get("hybrid_score"),
+            "fundamental_score": result.get("fundamental_score"),
+            "technical_score": result.get("technical_score"),
+            "trend": trend,
+        })
 
     # Batch insert via executemany (1 round-trip au lieu de 49)
     conn.execute("DELETE FROM scoring_snapshot")
@@ -234,6 +248,46 @@ def build_scoring_snapshot(conn, all_stocks: pd.DataFrame, all_prices: dict) -> 
         )
     conn.commit()
     print(f"  [scoring] {len(rows_to_insert)} tickers écrits (batch)")
+
+    # ── Auto-historisation dans signal_history ──
+    # Avant : signal_history n'était peuplée que via les visites admin sur p2
+    # → seuls les tickers manuellement ouverts y figuraient (ETIT only).
+    # Désormais : chaque build quotidien archive TOUS les verdicts + signaux,
+    # ce qui rend possible l'analyse rétrospective à 30j sans dépendre des
+    # interactions UI. La règle de merge 7j (cf. _upsert_signal_event) évite
+    # le bloat : un même verdict qui persiste ne crée pas de doublon.
+    from data.storage import save_signal_snapshots, save_recommendation_snapshot
+    n_new_signals = 0
+    n_new_recos = 0
+    n_errors = 0
+    for h in history_to_save:
+        try:
+            n_new_signals += save_signal_snapshots(
+                ticker=h["ticker"],
+                signals=h["signals"],
+                price=h["price"],
+                company_name=h["company_name"],
+                sector=h["sector"],
+            )
+            if save_recommendation_snapshot(
+                ticker=h["ticker"],
+                recommendation=h["reco"],
+                hybrid_score=h["hybrid_score"],
+                fundamental_score=h["fundamental_score"],
+                technical_score=h["technical_score"],
+                price=h["price"],
+                trend=h["trend"],
+                company_name=h["company_name"],
+                sector=h["sector"],
+            ):
+                n_new_recos += 1
+        except Exception as e:
+            n_errors += 1
+            if n_errors <= 3:
+                print(f"  [history] {h['ticker']} KO: {e}")
+    print(f"  [history] +{n_new_recos} reco events · +{n_new_signals} signaux"
+          f" · {n_errors} erreurs")
+
     return len(rows_to_insert)
 
 

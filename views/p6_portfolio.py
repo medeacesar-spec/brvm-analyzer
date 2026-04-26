@@ -156,25 +156,28 @@ def render():
             "</div>",
             unsafe_allow_html=True,
         )
+        # Radio HORS du form : un widget dans st.form() n'enregistre sa valeur
+        # qu'au submit, donc changer le mode ne re-rendrait pas le bon input.
+        # En le sortant, le clic sur le radio déclenche un rerun et le form
+        # re-rend avec la bonne branche if/else.
+        mode = st.radio(
+            "Mode", ["Ajouter / retirer", "Définir le solde"],
+            horizontal=True, key="pf_cash_mode",
+        )
         with st.form("cash_form"):
-            col1, col2, col3 = st.columns([2, 2, 2])
-            mode = col1.radio(
-                "Mode", ["Ajouter / retirer", "Définir le solde"],
-                horizontal=False, label_visibility="collapsed",
-                key="pf_cash_mode",
-            )
+            col_input, col_preview = st.columns([3, 2])
             if mode == "Ajouter / retirer":
-                delta = col2.number_input(
+                delta = col_input.number_input(
                     f"Montant ({CURRENCY})", value=0, step=1000, key="pf_cash_delta",
+                    help="Positif = dépôt, négatif = retrait",
                 )
                 new_total = float(current_cash) + float(delta)
-                col3.metric("Nouveau solde", f"{new_total:,.0f} {CURRENCY}")
             else:
-                new_total = col2.number_input(
+                new_total = col_input.number_input(
                     f"Solde total ({CURRENCY})", min_value=0,
                     value=int(current_cash), step=1000, key="pf_cash_set",
                 )
-                col3.metric("Nouveau solde", f"{new_total:,.0f} {CURRENCY}")
+            col_preview.metric("Nouveau solde", f"{new_total:,.0f} {CURRENCY}")
             col_s, col_c = st.columns(2)
             submitted_cash = col_s.form_submit_button(
                 "Enregistrer", type="primary", use_container_width=True,
