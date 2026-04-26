@@ -1663,68 +1663,20 @@ def _render_input_form(ticker, tickers_data):
 
 
 def _render_publications_with_status(ticker: str):
-    """Affiche les publications du ticker (depuis `publications` enrichie de
-    richbourse) avec leur date, type et statut d'intégration en base.
-
-    Statuts :
-      - 🆕 nouveau   : pub.is_new = 1 (jamais vue avant)
-      - ⏳ à intégrer : annuel dont fiscal_year > max(fundamentals.fiscal_year),
-                        OU trimestriel/semestriel non présent dans quarterly_data
-      - ✅ intégré    : sinon
+    """Affiche les publications du ticker (richbourse) avec date, type et
+    statut d'intégration en base — voir analysis.publications.
     """
-    pubs = read_sql_df(
-        """SELECT id, title, pub_type, fiscal_year, url, pub_date, is_new
-           FROM publications
-           WHERE ticker = ? AND COALESCE(ignored, 0) = 0
-           ORDER BY pub_date DESC NULLS LAST, created_at DESC
-           LIMIT 20""",
-        params=(ticker,),
-        parse_dates=["pub_date"],
-    )
+    from analysis.publications import get_publications_with_status
+
+    pubs = get_publications_with_status(ticker=ticker, limit=20)
     if pubs.empty:
         return
 
-    # Charge les indicateurs d'intégration pour ce ticker
-    fund_years = read_sql_df(
-        "SELECT fiscal_year FROM fundamentals WHERE ticker = ? AND revenue IS NOT NULL",
-        params=(ticker,),
-    )
-    fund_max = (
-        int(fund_years["fiscal_year"].max())
-        if not fund_years.empty and fund_years["fiscal_year"].notna().any() else None
-    )
-    quart_years = read_sql_df(
-        "SELECT DISTINCT fiscal_year FROM quarterly_data WHERE ticker = ?",
-        params=(ticker,),
-    )
-    quart_set = set(quart_years["fiscal_year"].dropna().astype(int).tolist())
-
-    def _status(row):
-        if row.get("is_new"):
-            return ("🆕", "Nouveau", "warn")
-        pt = (row.get("pub_type") or "").lower()
-        fy = row.get("fiscal_year")
-        try:
-            fy_int = int(fy) if fy and not pd.isna(fy) else None
-        except Exception:
-            fy_int = None
-        if pt == "annuel" and fy_int is not None:
-            if fund_max is None or fy_int > fund_max:
-                return ("⏳", "À intégrer", "down")
-            return ("✅", "Intégré", "up")
-        if pt in ("trimestriel", "semestriel") and fy_int is not None:
-            if fy_int not in quart_set:
-                return ("⏳", "À intégrer", "down")
-            return ("✅", "Intégré", "up")
-        # Types informationnels (gouvernance, dividende, autre) → pas d'intégration attendue
-        return ("·", "", "neutral")
-
     section_heading("Publications & actualités", spacing="loose")
 
-    # KPI ligne : combien à intégrer ?
-    statuses = [_status(r) for _, r in pubs.iterrows()]
-    n_pending = sum(1 for s in statuses if s[1] == "À intégrer")
-    n_new = sum(1 for s in statuses if s[1] == "Nouveau")
+    # KPI ligne : combien à intégrer / nouveaux ?
+    n_pending = int((pubs["status"] == "À intégrer").sum())
+    n_new = int((pubs["status"] == "Nouveau").sum())
     if n_pending or n_new:
         bits = []
         if n_pending:
@@ -1733,7 +1685,7 @@ def _render_publications_with_status(ticker: str):
             bits.append(f"🆕 **{n_new}** nouveau{'x' if n_new > 1 else ''}")
         st.caption(" · ".join(bits))
 
-    for (_, art), (icon, label, _tone) in zip(pubs.iterrows(), statuses):
+    for _, art in pubs.iterrows():
         date_raw = art.get("pub_date")
         if isinstance(date_raw, str):
             date_disp = date_raw[:10]
@@ -1747,19 +1699,17 @@ def _render_publications_with_status(ticker: str):
         title = art.get("title") or ""
         url = art.get("url") or ""
         pt = art.get("pub_type") or ""
-        # Badge type
+        icon = art.get("status_icon") or "·"
+        label = art.get("status") or ""
         badge = (
             f"<span style='background:var(--bg-sunken);color:var(--ink-3);"
             f"padding:1px 7px;border-radius:4px;font-size:10.5px;font-weight:600;"
             f"text-transform:uppercase;letter-spacing:0.04em;margin-right:6px;'>{pt}</span>"
             if pt else ""
         )
-        # Status icon
         status_html = (
             f"<span title='{label}' style='font-size:14px;margin-right:4px;'>{icon}</span>"
-            if icon else ""
         )
-        # Date
         date_html = (
             f"<span style='color:var(--ink-3);font-variant-numeric:tabular-nums;"
             f"font-size:12px;margin-right:8px;'>{date_disp}</span>"

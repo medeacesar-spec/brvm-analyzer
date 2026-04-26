@@ -72,19 +72,14 @@ def _sync_all_profiles():
 
 
 def _refresh_news():
-    from data.scraper import fetch_company_news
-    tickers = load_tickers()
-    progress = st.progress(0, text="Actualisation…")
-    for i, t in enumerate(tickers):
+    """Lance scan_publications.main() (richbourse + sikafinance) pour
+    actualiser la table `publications` qui sert de source au fil."""
+    with st.spinner("Scan des publications (richbourse + sikafinance)…"):
         try:
-            articles = fetch_company_news(t["ticker"], max_articles=5)
-            if articles:
-                save_company_news(t["ticker"], articles)
-        except Exception:
-            pass
-        progress.progress((i + 1) / len(tickers))
-        time.sleep(0.2)
-    progress.empty()
+            from scripts.scan_publications import main as _scan_main
+            _scan_main(limit=50)
+        except Exception as e:
+            st.error(f"Échec du scan : {e}")
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -145,15 +140,29 @@ def _render_news_feed():
     if filter_sel != "Tous les titres":
         selected_ticker = filter_sel.split(" - ")[0]
 
-    news = get_company_news(selected_ticker, limit=200)
+    # Source : table `publications` (richbourse) — pub_date + pub_type fiables
+    # et statut d'intégration calculable. company_news (sikafinance) n'avait
+    # pas de date populée, on l'a abandonné.
+    from analysis.publications import get_publications_with_status
+    news = get_publications_with_status(ticker=selected_ticker, limit=200)
     if news.empty:
-        st.info("Aucune actualité chargée. Cliquez sur Actualiser ou "
-                 "lancez `scripts/scrape_profiles.py`.")
+        st.info("Aucune publication scannée. Cliquez sur Actualiser ou "
+                 "lancez `python scripts/scan_publications.py`.")
         return
 
-    # ── Classification par type ──
+    # Mappe pub_type (richbourse, lowercase) → label d'affichage cohérent
+    # avec les chips de filtre.
+    _pubtype_to_label = {
+        "trimestriel": "Trimestriel",
+        "semestriel": "Semestriel",
+        "annuel": "Annuel",
+        "gouvernance": "Gouvernance",
+        "dividende": "Gouvernance",  # dividende = info gouvernance
+    }
     news = news.copy()
-    news["type"] = news["title"].apply(_classify_publication)
+    news["type"] = news["pub_type"].fillna("").str.lower().map(
+        _pubtype_to_label
+    ).fillna("Autre")
 
     # ── Chips de filtre par type ──
     type_counts = news["type"].value_counts().to_dict()
@@ -201,7 +210,7 @@ def _render_news_feed():
 
     # ── Export CSV ──
     if export_clicked:
-        csv = news[["article_date", "ticker", "title", "type", "url"]].to_csv(index=False)
+        csv = news[["pub_date", "ticker", "title", "type", "status", "url"]].to_csv(index=False)
         st.download_button(
             "Télécharger CSV", data=csv,
             file_name="infos_marche.csv", mime="text/csv",
@@ -211,6 +220,17 @@ def _render_news_feed():
     if news.empty:
         st.info("Aucune publication pour ces filtres.")
         return
+
+    # ── KPI : combien à intégrer / nouveau ──
+    n_pending = int((news["status"] == "À intégrer").sum())
+    n_new = int((news["status"] == "Nouveau").sum())
+    if n_pending or n_new:
+        bits = []
+        if n_pending:
+            bits.append(f"⏳ **{n_pending}** à intégrer")
+        if n_new:
+            bits.append(f"🆕 **{n_new}** nouveau{'x' if n_new > 1 else ''}")
+        st.caption(" · ".join(bits))
 
     # ── Table éditoriale ──
     header_style = (
@@ -231,6 +251,7 @@ def _render_news_feed():
 
     rows = [
         f"<tr>"
+        f"<th style='{header_style};text-align:center;width:46px;'>Statut</th>"
         f"<th style='{header_style}'>Date</th>"
         f"<th style='{header_style}'>Ticker</th>"
         f"<th style='{header_style}'>Publication</th>"
@@ -239,15 +260,17 @@ def _render_news_feed():
     ]
     for _, art in news.iterrows():
         ticker = art.get("ticker") or ""
-        date_raw = art.get("article_date") or ""
-        # Format DD/MM depuis YYYY-MM-DD si possible
+        date_raw = art.get("pub_date")
+        # Format DD/MM depuis YYYY-MM-DD ou datetime
         if isinstance(date_raw, str) and len(date_raw) >= 10:
+            date_disp = f"{date_raw[8:10]}/{date_raw[5:7]}"
+        elif date_raw is not None and not pd.isna(date_raw):
             try:
-                date_disp = f"{date_raw[8:10]}/{date_raw[5:7]}"
+                date_disp = date_raw.strftime("%d/%m")
             except Exception:
-                date_disp = date_raw
+                date_disp = str(date_raw)[:10]
         else:
-            date_disp = str(date_raw) if date_raw else "—"
+            date_disp = "—"
         title = art.get("title") or ""
         url = art.get("url") or ""
         if url and str(url).startswith("http"):
@@ -256,9 +279,13 @@ def _render_news_feed():
             title_html = title
         typ = art.get("type", "Autre")
         tag_style = tag_styles.get(typ, tag_styles["Autre"])
+        status_icon = art.get("status_icon") or "·"
+        status_label = art.get("status") or ""
 
         rows.append(
             f"<tr>"
+            f"<td style='{cell_style};text-align:center;font-size:14px;' "
+            f"title='{status_label}'>{status_icon}</td>"
             f"<td style='{num_style}'>{date_disp}</td>"
             f"<td style='{cell_style}'><span class='ticker'>{ticker}</span></td>"
             f"<td style='{cell_style}'>{title_html}</td>"
