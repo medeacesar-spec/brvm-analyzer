@@ -221,16 +221,11 @@ def _render_news_feed():
         st.info("Aucune publication pour ces filtres.")
         return
 
-    # ── KPI : combien à intégrer / nouveau ──
+    # ── KPI : combien à intégrer ──
     n_pending = int((news["status"] == "À intégrer").sum())
-    n_new = int((news["status"] == "Nouveau").sum())
-    if n_pending or n_new:
-        bits = []
-        if n_pending:
-            bits.append(f"⏳ **{n_pending}** à intégrer")
-        if n_new:
-            bits.append(f"🆕 **{n_new}** nouveau{'x' if n_new > 1 else ''}")
-        st.caption(" · ".join(bits))
+    if n_pending:
+        st.caption(f"**{n_pending}** publication{'s' if n_pending > 1 else ''}"
+                    " à intégrer")
 
     # ── Table éditoriale ──
     header_style = (
@@ -249,13 +244,14 @@ def _render_news_feed():
         "Autre": "background:#EDE8DC;color:#7A756C;",
     }
 
+    from utils.ui_helpers import tag as _tag_html
     rows = [
         f"<tr>"
-        f"<th style='{header_style};text-align:center;width:46px;'>Statut</th>"
         f"<th style='{header_style}'>Date</th>"
         f"<th style='{header_style}'>Ticker</th>"
         f"<th style='{header_style}'>Publication</th>"
-        f"<th style='{header_style};text-align:right;'>Type</th>"
+        f"<th style='{header_style};text-align:center;'>Type</th>"
+        f"<th style='{header_style};text-align:right;'>Statut</th>"
         f"</tr>"
     ]
     for _, art in news.iterrows():
@@ -271,7 +267,7 @@ def _render_news_feed():
                 date_disp = str(date_raw)[:10]
         else:
             date_disp = "—"
-        title = art.get("title") or ""
+        title = art.get("title_pretty") or art.get("title") or ""
         url = art.get("url") or ""
         if url and str(url).startswith("http"):
             title_html = f"<a href='{url}' target='_blank' style='color:var(--ink);text-decoration:none;'>{title}</a>"
@@ -279,21 +275,21 @@ def _render_news_feed():
             title_html = title
         typ = art.get("type", "Autre")
         tag_style = tag_styles.get(typ, tag_styles["Autre"])
-        status_icon = art.get("status_icon") or "·"
         status_label = art.get("status") or ""
+        status_tone = art.get("status_tone") or "neutral"
+        status_html = _tag_html(status_label, status_tone) if status_label else ""
 
         rows.append(
             f"<tr>"
-            f"<td style='{cell_style};text-align:center;font-size:14px;' "
-            f"title='{status_label}'>{status_icon}</td>"
             f"<td style='{num_style}'>{date_disp}</td>"
             f"<td style='{cell_style}'><span class='ticker'>{ticker}</span></td>"
             f"<td style='{cell_style}'>{title_html}</td>"
-            f"<td style='{cell_style};text-align:right;'>"
+            f"<td style='{cell_style};text-align:center;'>"
             f"<span style='{tag_style}padding:3px 10px;border-radius:4px;"
             f"font-size:10.5px;font-weight:600;letter-spacing:0.04em;"
             f"text-transform:uppercase;'>{typ}</span>"
             f"</td>"
+            f"<td style='{cell_style};text-align:right;'>{status_html}</td>"
             f"</tr>"
         )
 

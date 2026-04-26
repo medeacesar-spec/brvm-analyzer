@@ -1667,6 +1667,7 @@ def _render_publications_with_status(ticker: str):
     statut d'intégration en base — voir analysis.publications.
     """
     from analysis.publications import get_publications_with_status
+    from utils.ui_helpers import tag as _tag_html
 
     pubs = get_publications_with_status(ticker=ticker, limit=20)
     if pubs.empty:
@@ -1674,16 +1675,11 @@ def _render_publications_with_status(ticker: str):
 
     section_heading("Publications & actualités", spacing="loose")
 
-    # KPI ligne : combien à intégrer / nouveaux ?
+    # KPI ligne : combien à intégrer ?
     n_pending = int((pubs["status"] == "À intégrer").sum())
-    n_new = int((pubs["status"] == "Nouveau").sum())
-    if n_pending or n_new:
-        bits = []
-        if n_pending:
-            bits.append(f"⏳ **{n_pending}** à intégrer")
-        if n_new:
-            bits.append(f"🆕 **{n_new}** nouveau{'x' if n_new > 1 else ''}")
-        st.caption(" · ".join(bits))
+    if n_pending:
+        st.caption(f"**{n_pending}** publication{'s' if n_pending > 1 else ''}"
+                    " à intégrer")
 
     for _, art in pubs.iterrows():
         date_raw = art.get("pub_date")
@@ -1696,23 +1692,21 @@ def _render_publications_with_status(ticker: str):
                 date_disp = str(date_raw)[:10]
         else:
             date_disp = "—"
-        title = art.get("title") or ""
+        title = art.get("title_pretty") or art.get("title") or ""
         url = art.get("url") or ""
         pt = art.get("pub_type") or ""
-        icon = art.get("status_icon") or "·"
-        label = art.get("status") or ""
-        badge = (
+        status_label = art.get("status") or ""
+        status_tone = art.get("status_tone") or "neutral"
+        type_badge = (
             f"<span style='background:var(--bg-sunken);color:var(--ink-3);"
             f"padding:1px 7px;border-radius:4px;font-size:10.5px;font-weight:600;"
             f"text-transform:uppercase;letter-spacing:0.04em;margin-right:6px;'>{pt}</span>"
             if pt else ""
         )
-        status_html = (
-            f"<span title='{label}' style='font-size:14px;margin-right:4px;'>{icon}</span>"
-        )
+        status_html = _tag_html(status_label, status_tone) if status_label else ""
         date_html = (
             f"<span style='color:var(--ink-3);font-variant-numeric:tabular-nums;"
-            f"font-size:12px;margin-right:8px;'>{date_disp}</span>"
+            f"font-size:12px;margin-right:10px;'>{date_disp}</span>"
         )
         if url and isinstance(url, str) and url.startswith("http"):
             title_html = (
@@ -1723,8 +1717,12 @@ def _render_publications_with_status(ticker: str):
             title_html = title
         st.markdown(
             f"<div style='padding:6px 0;border-bottom:1px solid var(--border);"
-            f"font-size:13px;line-height:1.5;'>"
-            f"{status_html}{date_html}{badge}{title_html}"
+            f"font-size:13px;line-height:1.5;display:flex;align-items:center;"
+            f"gap:8px;flex-wrap:wrap;'>"
+            f"<span style='min-width:78px;'>{date_html}</span>"
+            f"{type_badge}"
+            f"<span style='flex:1;'>{title_html}</span>"
+            f"{status_html}"
             f"</div>",
             unsafe_allow_html=True,
         )

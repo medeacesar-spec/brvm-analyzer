@@ -1,13 +1,17 @@
 """Helpers d'analyse des publications (richbourse) :
 charge les publications avec leur statut d'intégration en base.
 
-Statuts possibles par publication :
-  - "Nouveau"     : publications.is_new = 1 (jamais vue avant)
+Statuts visibles par publication :
   - "À intégrer"  : annuel dont fiscal_year > max(fundamentals.fiscal_year)
                     OU trimestriel/semestriel non présent dans quarterly_data
   - "Intégré"     : sinon (annuel ou quarterly déjà en base)
-  - ""             : pour les publications informationnelles (gouvernance,
-                    dividende, autre) — pas d'intégration attendue.
+  - ""             : publications informationnelles (gouvernance, dividende,
+                    autre) — pas d'intégration attendue.
+
+Note : `publications.is_new` reste dans le data model (utilisé par la
+bannière du Dashboard pour signaler les nouvelles publications scrapées),
+mais n'est plus exposé comme statut visible dans la table — il ne se
+résout jamais automatiquement et brouillait l'info actionnable.
 """
 from __future__ import annotations
 
@@ -18,10 +22,16 @@ import pandas as pd
 from data.db import read_sql_df
 
 
-_STATUS_NEW = "Nouveau"
 _STATUS_PENDING = "À intégrer"
 _STATUS_INTEGRATED = "Intégré"
 _STATUS_NA = ""
+
+# Tones design system (utils.ui_helpers.tag) pour chaque statut
+STATUS_TONES = {
+    _STATUS_PENDING: "down",      # rouge — action requise
+    _STATUS_INTEGRATED: "up",     # vert — OK
+    _STATUS_NA: "neutral",        # gris — informationnel
+}
 
 
 def get_publications_with_status(
@@ -29,11 +39,9 @@ def get_publications_with_status(
     limit: int = 200,
 ) -> pd.DataFrame:
     """Charge les publications (filtrées par ticker si fourni) enrichies de :
-      - status : "Nouveau" / "À intégrer" / "Intégré" / "" (informationnel)
-      - status_icon : "🆕" / "⏳" / "✅" / "·"
-
-    Colonnes retournées : id, ticker, title, pub_type, fiscal_year, url,
-    pub_date, is_new, status, status_icon.
+      - status      : "À intégrer" / "Intégré" / "" (informationnel)
+      - status_tone : "down" / "up" / "neutral" (design system)
+      - title_pretty: titre reconstruit avec accents et apostrophes
 
     Tri : pub_date DESC NULLS LAST.
     """
@@ -80,8 +88,6 @@ def get_publications_with_status(
                 continue
 
     def _row_status(row) -> str:
-        if row.get("is_new"):
-            return _STATUS_NEW
         pt = (row.get("pub_type") or "").lower()
         fy = row.get("fiscal_year")
         try:
@@ -103,22 +109,19 @@ def get_publications_with_status(
 
     pubs = pubs.copy()
     pubs["status"] = pubs.apply(_row_status, axis=1)
-    icon_map = {
-        _STATUS_NEW: "🆕", _STATUS_PENDING: "⏳",
-        _STATUS_INTEGRATED: "✅", _STATUS_NA: "·",
-    }
-    pubs["status_icon"] = pubs["status"].map(icon_map).fillna("·")
+    pubs["status_tone"] = pubs["status"].map(STATUS_TONES).fillna("neutral")
+
+    # Reconstruction du titre lisible (accents, apostrophes, capitalisation)
+    from utils.text import prettify_publication_title
+    pubs["title_pretty"] = pubs["title"].fillna("").apply(prettify_publication_title)
     return pubs
 
 
 def count_pending_for_ticker(ticker: str) -> dict:
-    """Retourne {pending: int, new: int} pour les publications du ticker.
-    Utilisé pour afficher des KPI compacts (sans devoir recharger toute la table).
+    """Retourne {pending: int} pour les publications du ticker.
+    Utilisé pour afficher des KPI compacts (sans recharger la table complète).
     """
     df = get_publications_with_status(ticker=ticker, limit=200)
     if df.empty:
-        return {"pending": 0, "new": 0}
-    return {
-        "pending": int((df["status"] == _STATUS_PENDING).sum()),
-        "new": int((df["status"] == _STATUS_NEW).sum()),
-    }
+        return {"pending": 0}
+    return {"pending": int((df["status"] == _STATUS_PENDING).sum())}

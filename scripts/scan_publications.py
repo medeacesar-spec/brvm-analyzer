@@ -241,9 +241,14 @@ def scan_richbourse(limit: int = 50) -> list:
         day, mon, year, rest = date_match.groups()
         pub_date = f"{year}-{mon}-{day}"
 
-        # Normalize title
+        # Normalize + prettify title (slug → titre lisible avec accents)
         title = rest.replace("-", " ").strip()
-        title = re.sub(r"\s+", " ", title).capitalize()
+        title = re.sub(r"\s+", " ", title)
+        try:
+            from utils.text import prettify_publication_title
+            title = prettify_publication_title(title)
+        except Exception:
+            title = title.capitalize()
 
         ticker = _detect_ticker_from_slug(rest)
         pub_type, period, is_financial = _detect_pub_type(rest)
