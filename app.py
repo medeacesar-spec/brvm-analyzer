@@ -633,12 +633,15 @@ render_auth_widget()
 # Historique Signaux est reservé aux administrateurs.
 _outils = ["Portefeuille", "Signaux", "Assistant IA"]
 if is_admin():
-    _outils = ["Portefeuille", "Signaux", "Trajectoires signaux",
+    _outils = ["Portefeuille", "Signaux", "Trajectoires Recommandations",
                "Historique Signaux", "Assistant IA"]
 
+# Convention Title Case (chaque mot significatif capitalisé, prépositions
+# de/des/d'un en minuscules) pour uniformité des labels de navigation.
 _NAV_SECTIONS = [
     ("Marché", ["Dashboard", "Infos Marché"]),
-    ("Analyse", ["Analyse d'un titre", "Screening", "Comparateur", "Performance des titres"]),
+    ("Analyse", ["Analyse d'un Titre", "Screening", "Comparateur",
+                 "Performance des Titres"]),
     ("Outils", _outils),
 ]
 _PAGE_OPTIONS = [p for _, pages in _NAV_SECTIONS for p in pages]
@@ -695,7 +698,7 @@ page = _current
 if page == "Dashboard":
     from views.p1_dashboard import render
     render()
-elif page == "Analyse d'un titre":
+elif page == "Analyse d'un Titre":
     from views.p2_stock_analysis import render
     render()
 elif page == "Screening":
@@ -715,10 +718,10 @@ elif page == "Assistant IA":
     if require_login("l'Assistant IA"):
         from views.p7_assistant import render
         render()
-elif page == "Performance des titres":
+elif page == "Performance des Titres":
     from views.p9_performance import render
     render()
-elif page == "Trajectoires signaux":
+elif page == "Trajectoires Recommandations":
     if is_admin():
         from views.p11_analyses import render
         render()

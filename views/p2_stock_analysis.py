@@ -12,7 +12,7 @@ from data.storage import (
     import_from_excel, list_tickers_with_fundamentals,
     get_cached_prices, cache_prices, get_analyzable_tickers,
     get_all_stocks_for_analysis,
-    get_company_profile, get_company_news, get_connection,
+    get_company_profile, get_connection,
     get_qualitative_notes, save_qualitative_note, delete_qualitative_note,
     save_signal_snapshots, save_recommendation_snapshot,
 )
@@ -1662,6 +1662,124 @@ def _render_input_form(ticker, tickers_data):
             st.rerun()
 
 
+def _render_publications_with_status(ticker: str):
+    """Affiche les publications du ticker (depuis `publications` enrichie de
+    richbourse) avec leur date, type et statut d'intégration en base.
+
+    Statuts :
+      - 🆕 nouveau   : pub.is_new = 1 (jamais vue avant)
+      - ⏳ à intégrer : annuel dont fiscal_year > max(fundamentals.fiscal_year),
+                        OU trimestriel/semestriel non présent dans quarterly_data
+      - ✅ intégré    : sinon
+    """
+    pubs = read_sql_df(
+        """SELECT id, title, pub_type, fiscal_year, url, pub_date, is_new
+           FROM publications
+           WHERE ticker = ? AND COALESCE(ignored, 0) = 0
+           ORDER BY pub_date DESC NULLS LAST, created_at DESC
+           LIMIT 20""",
+        params=(ticker,),
+        parse_dates=["pub_date"],
+    )
+    if pubs.empty:
+        return
+
+    # Charge les indicateurs d'intégration pour ce ticker
+    fund_years = read_sql_df(
+        "SELECT fiscal_year FROM fundamentals WHERE ticker = ? AND revenue IS NOT NULL",
+        params=(ticker,),
+    )
+    fund_max = (
+        int(fund_years["fiscal_year"].max())
+        if not fund_years.empty and fund_years["fiscal_year"].notna().any() else None
+    )
+    quart_years = read_sql_df(
+        "SELECT DISTINCT fiscal_year FROM quarterly_data WHERE ticker = ?",
+        params=(ticker,),
+    )
+    quart_set = set(quart_years["fiscal_year"].dropna().astype(int).tolist())
+
+    def _status(row):
+        if row.get("is_new"):
+            return ("🆕", "Nouveau", "warn")
+        pt = (row.get("pub_type") or "").lower()
+        fy = row.get("fiscal_year")
+        try:
+            fy_int = int(fy) if fy and not pd.isna(fy) else None
+        except Exception:
+            fy_int = None
+        if pt == "annuel" and fy_int is not None:
+            if fund_max is None or fy_int > fund_max:
+                return ("⏳", "À intégrer", "down")
+            return ("✅", "Intégré", "up")
+        if pt in ("trimestriel", "semestriel") and fy_int is not None:
+            if fy_int not in quart_set:
+                return ("⏳", "À intégrer", "down")
+            return ("✅", "Intégré", "up")
+        # Types informationnels (gouvernance, dividende, autre) → pas d'intégration attendue
+        return ("·", "", "neutral")
+
+    section_heading("Publications & actualités", spacing="loose")
+
+    # KPI ligne : combien à intégrer ?
+    statuses = [_status(r) for _, r in pubs.iterrows()]
+    n_pending = sum(1 for s in statuses if s[1] == "À intégrer")
+    n_new = sum(1 for s in statuses if s[1] == "Nouveau")
+    if n_pending or n_new:
+        bits = []
+        if n_pending:
+            bits.append(f"⏳ **{n_pending}** à intégrer")
+        if n_new:
+            bits.append(f"🆕 **{n_new}** nouveau{'x' if n_new > 1 else ''}")
+        st.caption(" · ".join(bits))
+
+    for (_, art), (icon, label, _tone) in zip(pubs.iterrows(), statuses):
+        date_raw = art.get("pub_date")
+        if isinstance(date_raw, str):
+            date_disp = date_raw[:10]
+        elif date_raw is not None and not pd.isna(date_raw):
+            try:
+                date_disp = date_raw.strftime("%d/%m/%Y")
+            except Exception:
+                date_disp = str(date_raw)[:10]
+        else:
+            date_disp = "—"
+        title = art.get("title") or ""
+        url = art.get("url") or ""
+        pt = art.get("pub_type") or ""
+        # Badge type
+        badge = (
+            f"<span style='background:var(--bg-sunken);color:var(--ink-3);"
+            f"padding:1px 7px;border-radius:4px;font-size:10.5px;font-weight:600;"
+            f"text-transform:uppercase;letter-spacing:0.04em;margin-right:6px;'>{pt}</span>"
+            if pt else ""
+        )
+        # Status icon
+        status_html = (
+            f"<span title='{label}' style='font-size:14px;margin-right:4px;'>{icon}</span>"
+            if icon else ""
+        )
+        # Date
+        date_html = (
+            f"<span style='color:var(--ink-3);font-variant-numeric:tabular-nums;"
+            f"font-size:12px;margin-right:8px;'>{date_disp}</span>"
+        )
+        if url and isinstance(url, str) and url.startswith("http"):
+            title_html = (
+                f"<a href='{url}' target='_blank' style='color:var(--ink);"
+                f"text-decoration:none;'>{title}</a>"
+            )
+        else:
+            title_html = title
+        st.markdown(
+            f"<div style='padding:6px 0;border-bottom:1px solid var(--border);"
+            f"font-size:13px;line-height:1.5;'>"
+            f"{status_html}{date_html}{badge}{title_html}"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+
 def _render_score_evolution(ticker: str):
     """Affiche l'évolution des scores (hybrid/fond/tech) sur les 90 derniers
     jours pour ce ticker, en bas de l'onglet Recommandation. Les données
@@ -1942,17 +2060,12 @@ def _render_profile(ticker: str, fundamentals: dict):
                 unsafe_allow_html=True,
             )
 
-    # ─── Actualités récentes (pleine largeur) ───
-    news = get_company_news(ticker, limit=8)
-    if not news.empty:
-        section_heading("Actualités récentes", spacing="loose")
-        for _, art in news.iterrows():
-            date_str = f" <span class='muted'>({art['article_date']})</span>" if art.get("article_date") else ""
-            url = art.get("url", "")
-            if url and url.startswith("http"):
-                st.markdown(f"- [{art['title']}]({url}){date_str}", unsafe_allow_html=True)
-            else:
-                st.markdown(f"- {art['title']}{date_str}", unsafe_allow_html=True)
+    # ─── Publications & actualités (pleine largeur) ───
+    # Source = `publications` (richbourse) avec pub_date renseignée, plutôt
+    # que `company_news` (sikafinance) où la date n'est pas extraite par le
+    # scraper. On ajoute aussi un badge de statut d'intégration en base :
+    #   ✅ intégré   ⏳ à intégrer   🆕 nouveau
+    _render_publications_with_status(ticker)
 
     # --- Notes d'analyse (tag catégorie via design kit au lieu d'emojis) ---
     section_heading("Notes d'analyse", spacing="loose")

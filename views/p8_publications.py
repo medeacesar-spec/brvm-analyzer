@@ -333,7 +333,7 @@ def _render_company_overview():
         )
 
     st.caption(
-        "Pour l'analyse détaillée d'un titre, ouvrez Analyse d'un titre → onglet Profil."
+        "Pour l'analyse détaillée d'un titre, ouvrez Analyse d'un Titre → onglet Profil."
     )
 
     # ── Cartes éditoriales ──
@@ -352,13 +352,18 @@ def _render_company_overview():
         price_str = f"{price:,.0f} FCFA" if price else "—"
         mcap_str = f"{mcap/1e3:,.1f} Mds" if mcap else "—"
 
-        with st.expander(""):
-            # Header carte
+        # Label de l'expander : société + ticker + secteur visibles quand
+        # collapsed (auparavant label="" → l'utilisateur ne savait pas
+        # quelle société sans cliquer pour expand).
+        expander_label = (
+            f"{name} · {ticker}"
+            + (f" · {sector}" if sector else "")
+            + (f" · {price_str}" if price else "")
+        )
+        with st.expander(expander_label):
+            # Header carte (sans le nom : déjà dans le label de l'expander)
             st.markdown(
                 f"<div style='margin-top:-4px;'>"
-                f"<span style='font-size:16px;font-weight:600;color:var(--ink);"
-                f"letter-spacing:-0.01em;'>{name}</span> "
-                f"<span class='ticker'>{ticker}</span>"
                 f"<span style='float:right;color:var(--ink-3);font-size:12px;'>"
                 f"{sector}</span>"
                 f"</div>",

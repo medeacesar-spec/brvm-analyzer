@@ -126,7 +126,7 @@ def _color_pct(val):
 
 def render():
     from utils.ui_helpers import section_heading
-    st.title("Performance des titres")
+    st.title("Performance des Titres")
 
     perf_df, from_snapshot = _load_all_performances()
     if perf_df.empty:

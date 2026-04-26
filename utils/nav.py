@@ -4,7 +4,7 @@
 import streamlit as st
 
 
-PAGE_STOCK_ANALYSIS = "Analyse d'un titre"
+PAGE_STOCK_ANALYSIS = "Analyse d'un Titre"
 
 
 def goto_ticker(ticker: str) -> None:
