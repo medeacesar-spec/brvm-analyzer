@@ -119,7 +119,9 @@ def main():
             continue
 
         try:
-            result = download_and_extract(link["url"], use_ocr=False)
+            # OCR=True : necessaire pour les PDFs scannes (NEIC) et slides
+            # type Sonatel ou pdfplumber ne capture pas les chiffres.
+            result = download_and_extract(link["url"], use_ocr=True)
         except Exception as e:
             print(f"{label} ERREUR download/extract : {e}")
             n_err += 1

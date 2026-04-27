@@ -450,7 +450,13 @@ def _extract_bank_chiffres_cles(all_tables: list, mult: float) -> dict:
 # ---------------------------------------------------------------------------
 
 def _extract_from_text(all_text: str, mult: float) -> dict:
-    """Extraction depuis le texte brut."""
+    """Extraction depuis le texte brut.
+
+    Approche conservatrice : on exige un séparateur fort (`:` ou unité
+    explicite type "Mds FCFA") après le label pour éviter les faux positifs
+    sur les rapports en slides où plusieurs chiffres sont juxtaposés sans
+    structure (Sonatel Q1 — voir notes/parser_slides.md).
+    """
     data = {}
     text_lower = all_text.lower()
 
@@ -470,8 +476,31 @@ def _extract_from_text(all_text: str, mult: float) -> dict:
             if val:
                 data[field] = val * mult
 
-    # Extract shares from text
-    match = re.search(r"(\d[\d\s\.]+)\s*actions?\s*(?:d.une\s*valeur|de\s*nominal)", text_lower)
+    # Patterns "label suivi de chiffre + unité explicite" (slides type
+    # Sonatel : "Revenus Consolidés ... 504,2 Mds FCFA"). On exige l'unité
+    # explicite pour éviter les confusions sur PDFs en slides.
+    UNIT_PAT = (
+        r"\s*(\d{1,4}(?:[,.]\d{1,3})?)\s*"
+        r"(mds?|milliards?)\s*(?:fcfa|f\s*cfa)?"
+    )
+    slide_patterns = [
+        (r"revenus?\s*consolid[^.]{0,200}?" + UNIT_PAT, "revenue", 1e9),
+        (r"chiffre\s*d.affaires[^.]{0,200}?" + UNIT_PAT, "revenue", 1e9),
+    ]
+    for pat, field, base_mult in slide_patterns:
+        if field in data:
+            continue
+        m = re.search(pat, text_lower)
+        if m:
+            val = _parse_amount(m.group(1))
+            if val and val > 1:
+                data[field] = val * base_mult
+
+    # Shares
+    match = re.search(
+        r"(\d[\d\s\.]+)\s*actions?\s*(?:d.une\s*valeur|de\s*nominal)",
+        text_lower,
+    )
     if match:
         val = _parse_amount(match.group(1))
         if val and val > 1000:
@@ -658,8 +687,14 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
         data["error"] = str(e)
         return data
 
-    # OCR fallback
-    if is_scanned and use_ocr:
+    # OCR fallback : declenche aussi quand les 5 layers n'ont rien trouve,
+    # meme si le PDF n'est pas detecte comme scanne (cas slides type Sonatel
+    # ou les chiffres sont rendus en grandes typos sans pattern label : value).
+    _has_data = any(
+        data.get(f) is not None
+        for f in ("revenue", "net_income", "ebit", "ebitda", "equity")
+    )
+    if (is_scanned or not _has_data) and use_ocr:
         try:
             ocr_text = _extract_with_ocr(pdf_path)
             if ocr_text and len(ocr_text) > 100:
@@ -673,7 +708,10 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
                     ocr_mult = 1_000
                 data["multiplier"] = ocr_mult
                 ocr_data = _extract_from_text(ocr_text, ocr_mult)
-                for field in ["revenue", "net_income", "equity", "total_assets", "shares"]:
+                # Merge tous les champs extractibles depuis l'OCR (couvre ebit,
+                # ebitda, capex, cfo en plus des 5 fields originaux).
+                for field in ("revenue", "net_income", "equity", "total_assets",
+                               "shares", "ebit", "ebitda", "capex", "cfo"):
                     if data.get(field) is None and ocr_data.get(field):
                         data[field] = ocr_data[field]
                 if data.get("revenue") is None and ocr_data.get("revenue_bank"):
@@ -696,7 +734,7 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
 # Download + extract
 # ---------------------------------------------------------------------------
 
-def download_and_extract(url: str, use_ocr: bool = False) -> dict:
+def download_and_extract(url: str, use_ocr: bool = True) -> dict:
     headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
     try:
         resp = requests.get(url, headers=headers, verify=False, timeout=30)
