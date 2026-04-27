@@ -588,6 +588,25 @@ def build_all() -> dict:
         ingested = ingest_today_prices(conn)
         result["ingested_prices"] = ingested
 
+        # ── Étape 0bis : découverte + intégration des nouveaux PDFs ──
+        # 1. scan_brvm_reports : ajoute à report_links les PDFs fraichement
+        #    publies sur brvm.org pour les 48 societes.
+        # 2. extract_pending_pubs : extract uniquement les PDFs lies aux
+        #    publications encore "À intégrer" (ne re-traite pas tout).
+        # → Idempotent : si rien de nouveau, ces deux scripts sont quasi-no-ops.
+        try:
+            from scripts.scan_brvm_reports import main as _scan_brvm
+            print("  [pdfs] scan brvm.org pour nouveaux PDFs …")
+            _scan_brvm()
+        except Exception as e:
+            print(f"  [pdfs] scan_brvm_reports KO (non bloquant): {e}")
+        try:
+            from scripts.extract_pending_pubs import main as _extract_pending
+            print("  [pdfs] extract pending publications …")
+            _extract_pending()
+        except Exception as e:
+            print(f"  [pdfs] extract_pending_pubs KO (non bloquant): {e}")
+
         # Préchargement batch (réutilisé par les 3 builders)
         print("  [load] all_stocks + all_prices …")
         all_stocks = get_all_stocks_for_analysis()
