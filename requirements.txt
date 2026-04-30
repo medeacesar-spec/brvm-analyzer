@@ -1,8 +1,8 @@
 # Core framework (>= 1.42 requis pour st.login / OAuth natif)
-streamlit>=1.42
+streamlit>=1.42,<1.50
 
 # Authentification OAuth (Google) — requis par st.login()
-Authlib>=1.3.2
+Authlib>=1.3.2,<1.4
 
 # Data
 pandas>=2.0
