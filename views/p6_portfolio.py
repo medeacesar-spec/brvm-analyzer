@@ -132,7 +132,10 @@ def render():
                 col1, col2, col3, col4 = st.columns(4)
                 selection = col1.selectbox("Titre", options)
                 quantity = col2.number_input("Quantité", min_value=1, value=10)
-                avg_price = col3.number_input(f"PRU ({CURRENCY})", min_value=1, value=1000)
+                avg_price = col3.number_input(
+                    f"PRU ({CURRENCY})", min_value=0.01, value=1000.0,
+                    step=0.01, format="%.2f",
+                )
                 purchase_date = col4.date_input("Date d'achat")
                 notes = st.text_input("Notes (optionnel)")
                 col_s, col_c = st.columns(2)
@@ -391,7 +394,7 @@ def render():
             f"<td style='{cell_style}'><span class='ticker'>{pos['ticker']}</span></td>"
             f"<td style='{cell_style};font-weight:500;'>{pos['company_name']}</td>"
             f"<td style='{num_style}'>{pos['quantity']:,.0f}</td>"
-            f"<td style='{num_style}'>{pos['avg_price']:,.0f}</td>"
+            f"<td style='{num_style}'>{pos['avg_price']:,.2f}</td>"
             f"<td style='{num_style}'>{cur_str}</td>"
             f"<td style='{num_style};color:{pnl_color};font-weight:600;'>{pnl_str}</td>"
             f"<td style='{num_style}'>{poids_pct:.1f}%</td>"
@@ -450,9 +453,9 @@ def render():
                         key=f"edit_qty_{pid}",
                     )
                     new_pru = c2.number_input(
-                        f"PRU ({CURRENCY})", min_value=1,
-                        value=int(pos["avg_price"]), step=1,
-                        key=f"edit_pru_{pid}",
+                        f"PRU ({CURRENCY})", min_value=0.01,
+                        value=float(pos["avg_price"]), step=0.01,
+                        format="%.2f", key=f"edit_pru_{pid}",
                     )
                     c_s, c_c = st.columns(2)
                     saved = c_s.form_submit_button(
@@ -1436,8 +1439,8 @@ def _render_extracted_positions(extracted: list, tickers_data: list):
                 key=f"ocr_qty_{i}",
             )
             cmp = col3.number_input(
-                "PRU (CMP)", min_value=0, value=pos["cmp"],
-                key=f"ocr_cmp_{i}",
+                "PRU (CMP)", min_value=0.0, value=float(pos["cmp"]),
+                step=0.01, format="%.2f", key=f"ocr_cmp_{i}",
             )
             cours = col4.number_input(
                 "Cours actuel", min_value=0, value=pos["cours"],
@@ -1469,7 +1472,10 @@ def _render_batch_input(tickers_data):
             col1, col2, col3 = st.columns([3, 1, 1])
             ticker_sel = col1.selectbox(f"Titre {i+1}", options, key=f"batch_ticker_{i}")
             qty = col2.number_input("Qte", min_value=0, value=0, key=f"batch_qty_{i}")
-            pru = col3.number_input("PRU (FCFA)", min_value=0, value=0, key=f"batch_pru_{i}")
+            pru = col3.number_input(
+                "PRU (FCFA)", min_value=0.0, value=0.0,
+                step=0.01, format="%.2f", key=f"batch_pru_{i}",
+            )
             if ticker_sel and qty > 0 and pru > 0:
                 positions.append((ticker_sel, qty, pru))
 
