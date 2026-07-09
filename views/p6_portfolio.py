@@ -132,9 +132,9 @@ def render():
                 col1, col2, col3, col4 = st.columns(4)
                 selection = col1.selectbox("Titre", options)
                 quantity = col2.number_input("Quantité", min_value=1, value=10)
-                avg_price = col3.number_input(
-                    f"PRU ({CURRENCY})", min_value=0.01, value=1000.0,
-                    step=0.01, format="%.2f",
+                avg_price_str = col3.text_input(
+                    f"PRU ({CURRENCY})", value="1000",
+                    help="Accepte les décimales. Virgule ou point (ex : 16508,20 ou 16508.20)",
                 )
                 purchase_date = col4.date_input("Date d'achat")
                 notes = st.text_input("Notes (optionnel)")
@@ -145,11 +145,24 @@ def render():
                     st.session_state["pf_add_open"] = False
                     st.rerun()
                 if submitted:
-                    ticker = selection.split(" - ")[0]
-                    name = selection.split(" - ")[1] if " - " in selection else ""
-                    save_position(ticker, name, quantity, avg_price, str(purchase_date), notes)
-                    st.session_state["pf_add_open"] = False
-                    st.rerun()
+                    try:
+                        avg_price = float(
+                            avg_price_str.replace(" ", "").replace(" ", "")
+                            .replace(",", ".")
+                        )
+                        if avg_price <= 0:
+                            raise ValueError("PRU doit être > 0")
+                    except (ValueError, AttributeError):
+                        st.error(
+                            f"PRU invalide : « {avg_price_str} ». "
+                            f"Exemples valides : 16508 · 16508,20 · 16508.20"
+                        )
+                    else:
+                        ticker = selection.split(" - ")[0]
+                        name = selection.split(" - ")[1] if " - " in selection else ""
+                        save_position(ticker, name, quantity, avg_price, str(purchase_date), notes)
+                        st.session_state["pf_add_open"] = False
+                        st.rerun()
             st.markdown("</div>", unsafe_allow_html=True)
 
     # ─── Panneau Cash (ajouter / ajuster liquidités) ──
