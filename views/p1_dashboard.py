@@ -13,6 +13,7 @@ from data.storage import (
     get_pending_publications, get_data_gaps,
     ignore_publication, delete_publication, mark_publication_integrated,
     ignore_gap,
+    get_dormant_tickers, mark_ticker_inactive,
 )
 from data.db import read_sql_df
 from utils.nav import ticker_analyze_button, ticker_quick_picker
@@ -270,6 +271,101 @@ def _cached_data_gaps():
         return get_data_gaps()
     except Exception:
         return None
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def _cached_dormant_tickers():
+    """Seuil : 12 mois sans publication → candidat au marquage inactif."""
+    try:
+        return get_dormant_tickers(threshold_months=12)
+    except Exception:
+        return None
+
+
+def _render_dormant_tickers_alert():
+    """Section admin : titres n'ayant plus publié depuis 12+ mois OU sans
+    aucune publication en base, avec boutons pour les marquer inactifs."""
+    if not is_admin():
+        return
+    df = _cached_dormant_tickers()
+    if df is None or df.empty:
+        return
+
+    n_stale = int((df["reason"] == "publications_arretees").sum())
+    n_none = int((df["reason"] == "aucune_publication").sum())
+    parts = []
+    if n_stale:
+        parts.append(f"{n_stale} sans pub depuis 12+ mois")
+    if n_none:
+        parts.append(f"{n_none} sans aucune publication en base")
+
+    st.info(
+        f"💤 **{len(df)} titre(s) potentiellement dormant(s)** — "
+        + ", ".join(parts)
+    )
+    with st.expander("Voir la liste et agir", expanded=False):
+        st.caption(
+            "Pour chaque titre : **Marquer inactif** = ignore permanent "
+            "(disparaît des alertes « manque annuel »). **Rester en veille** = "
+            "ne rien faire, ré-alerte le mois prochain."
+        )
+        # En-tête
+        h1, h2, h3, h4, h5, h6, h7 = st.columns(
+            [1.1, 2.2, 1.4, 1.2, 1.5, 1.3, 1.3]
+        )
+        h1.markdown("**Ticker**")
+        h2.markdown("**Nom**")
+        h3.markdown("**Dernière pub.**")
+        h4.markdown("**Mois écoulés**")
+        h5.markdown("**Motif**")
+        h6.markdown("")
+        h7.markdown("")
+
+        REASON_LABEL = {
+            "publications_arretees": "Pub. arrêtées",
+            "aucune_publication": "Aucune pub. en base",
+        }
+
+        for _, row in df.iterrows():
+            ticker = row["ticker"]
+            name = row.get("name") or "—"
+            last_pub = row.get("last_pub_date")
+            months = row.get("months_since")
+            reason = row.get("reason")
+            c1, c2, c3, c4, c5, c6, c7 = st.columns(
+                [1.1, 2.2, 1.4, 1.2, 1.5, 1.3, 1.3]
+            )
+            c1.markdown(f"`{ticker}`")
+            c2.markdown(str(name)[:35])
+            c3.markdown(
+                str(last_pub)[:10] if pd.notna(last_pub) else "—"
+            )
+            c4.markdown(
+                f"{months:.0f}" if pd.notna(months) else "—"
+            )
+            c5.markdown(REASON_LABEL.get(reason, reason))
+            reason_txt = (
+                f"Dormant depuis {months:.0f} mois"
+                if pd.notna(months)
+                else "Aucune publication trouvée en base"
+            )
+            if c6.button("Marquer inactif", key=f"dormant_mark_{ticker}",
+                          use_container_width=True):
+                ok = mark_ticker_inactive(
+                    ticker,
+                    reason=f"{reason_txt} (marqué via tableau de bord)",
+                )
+                if ok:
+                    _cached_dormant_tickers.clear()
+                    _cached_data_gaps.clear()
+                    st.success(f"{ticker} marqué inactif")
+                    st.rerun()
+                else:
+                    st.error(f"Échec du marquage de {ticker}")
+            c7.button("Rester en veille",
+                       key=f"dormant_skip_{ticker}",
+                       help="Ne change rien. Ré-alerte dans un mois.",
+                       use_container_width=True)
 
 
 def _render_pending_publications_alert():
@@ -831,6 +927,9 @@ def render():
 
     # Alerte publications non intégrées (conditionnelle, ne s'affiche que si besoin)
     _render_pending_publications_alert()
+
+    # Alerte titres dormants (>12 mois sans publication) — actions Marquer inactif
+    _render_dormant_tickers_alert()
 
     # KPI row — densité v3 (st.metric compact via CSS)
     positive = quotes[quotes["variation"] > 0.01] if "variation" in quotes.columns else pd.DataFrame()
