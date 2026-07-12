@@ -658,6 +658,19 @@ def save_fundamentals(data: dict) -> int:
     )
     conn.commit()
     row_id = cursor.lastrowid
+
+    # Auto-clearance : marque les publications annuelles/EF correspondantes
+    # comme traitées si les données saisies sont substantielles.
+    ticker = data.get("ticker")
+    fy = data.get("fiscal_year")
+    if ticker and fy and data.get("revenue") is not None:
+        try:
+            _mark_pubs_processed(conn, ticker, fy,
+                                  ("annuel", "etats_financiers"))
+            conn.commit()
+        except Exception:
+            pass  # non bloquant
+
     conn.close()
     return row_id
 
@@ -1655,6 +1668,191 @@ def list_ignored_gaps() -> pd.DataFrame:
     return df
 
 
+# --- Auto-clearance & dormant detection ---
+
+def _mark_pubs_processed(conn, ticker: str, fiscal_year: int,
+                         pub_types: tuple) -> int:
+    """Marque comme traitées (is_new=0) les publications correspondant à
+    (ticker, fiscal_year, pub_type in pub_types). Retourne le nombre marqué.
+    Prend une connexion existante pour rester dans la transaction en cours."""
+    if not ticker or not fiscal_year or not pub_types:
+        return 0
+    placeholders = ",".join(["?"] * len(pub_types))
+    cur = conn.execute(
+        f"""UPDATE publications SET is_new = 0
+            WHERE is_new = 1 AND ticker = ?
+              AND fiscal_year = ?
+              AND pub_type IN ({placeholders})""",
+        (ticker, fiscal_year) + tuple(pub_types),
+    )
+    return cur.rowcount or 0
+
+
+def reconcile_publications(non_financial_cleanup_days: int = 60) -> dict:
+    """Sweep : marque comme traitées les publications déjà intégrées, et
+    archive les publications non-financières anciennes.
+
+    - annuel/etats_financiers → is_new=0 si fundamentals(ticker, fiscal_year) existe
+    - trimestriel/semestriel → is_new=0 si quarterly_data(ticker, fiscal_year) existe
+    - gouvernance/corporate/autre/dividende avec pub_date > N jours → is_new=0
+
+    Idempotent : peut tourner à chaque snapshot quotidien sans effet secondaire.
+    Retourne un résumé des compteurs.
+    """
+    from datetime import datetime, timedelta
+    conn = get_connection()
+    result = {"annual_cleared": 0, "quarterly_cleared": 0,
+              "non_financial_archived": 0}
+    try:
+        # Publications annuelles/EF intégrées → is_new=0
+        cur = conn.execute("""
+            UPDATE publications SET is_new = 0
+            WHERE is_new = 1
+              AND pub_type IN ('annuel', 'etats_financiers')
+              AND fiscal_year IS NOT NULL
+              AND ticker IN (
+                  SELECT ticker FROM fundamentals
+                  WHERE fundamentals.fiscal_year = publications.fiscal_year
+                    AND revenue IS NOT NULL
+              )
+        """)
+        result["annual_cleared"] = cur.rowcount or 0
+
+        # Publications trimestrielles/semestrielles intégrées → is_new=0
+        cur = conn.execute("""
+            UPDATE publications SET is_new = 0
+            WHERE is_new = 1
+              AND pub_type IN ('trimestriel', 'semestriel')
+              AND fiscal_year IS NOT NULL
+              AND ticker IN (
+                  SELECT ticker FROM quarterly_data
+                  WHERE quarterly_data.fiscal_year = publications.fiscal_year
+              )
+        """)
+        result["quarterly_cleared"] = cur.rowcount or 0
+
+        # Publications non-financières anciennes → archivage automatique
+        cutoff = (datetime.now() - timedelta(days=non_financial_cleanup_days)
+                  ).strftime("%Y-%m-%d")
+        cur = conn.execute("""
+            UPDATE publications SET is_new = 0
+            WHERE is_new = 1
+              AND pub_type NOT IN ('annuel', 'etats_financiers',
+                                    'trimestriel', 'semestriel')
+              AND pub_date IS NOT NULL
+              AND pub_date < ?
+        """, (cutoff,))
+        result["non_financial_archived"] = cur.rowcount or 0
+
+        conn.commit()
+    finally:
+        conn.close()
+    return result
+
+
+def get_dormant_tickers(threshold_months: int = 12) -> pd.DataFrame:
+    """Retourne les tickers candidats à un marquage inactif.
+
+    Un ticker est considéré dormant si TOUTES ces conditions sont vraies :
+    - Coté (market_data.price > 0)
+    - Dernier signal de publication (max entre publications.pub_date et
+      report_links proxy-date) date de plus de `threshold_months` mois
+    - Pas de report_links pour l'exercice courant ni l'exercice précédent
+
+    Exclut les tickers déjà marqués inactifs (ignored_gaps avec fiscal_year NULL).
+    Colonnes : ticker, name, last_pub_date, months_since, total_pubs, reason.
+    """
+    from datetime import datetime, timedelta
+    now = datetime.now()
+    cutoff = (now - timedelta(days=int(threshold_months * 30.44))
+              ).strftime("%Y-%m-%d")
+    current_fy = now.year - 1 if now.month >= 5 else now.year - 2
+
+    md = read_sql_df(
+        "SELECT ticker, company_name AS name FROM market_data WHERE price > 0"
+    )
+    if md.empty:
+        return md
+
+    pub_agg = read_sql_df("""
+        SELECT ticker,
+               MAX(pub_date) AS last_pub_date,
+               COUNT(*) AS total_pubs
+        FROM publications
+        GROUP BY ticker
+    """)
+
+    # Signal alternatif : dernière année fiscale ciblée par un report_link.
+    # Approximation : on considère qu'un report FY=Y est publié en avril Y+1.
+    rl_agg = read_sql_df("""
+        SELECT ticker, MAX(fiscal_year) AS max_report_fy
+        FROM report_links
+        WHERE fiscal_year IS NOT NULL
+        GROUP BY ticker
+    """)
+
+    df = md.merge(pub_agg, on="ticker", how="left").merge(
+        rl_agg, on="ticker", how="left"
+    )
+    df["total_pubs"] = df["total_pubs"].fillna(0).astype(int)
+    df["last_pub_date"] = pd.to_datetime(df["last_pub_date"], errors="coerce")
+
+    def _report_proxy(fy):
+        return pd.Timestamp(f"{int(fy) + 1}-04-30") if pd.notna(fy) else pd.NaT
+    df["report_proxy_date"] = df["max_report_fy"].apply(_report_proxy)
+
+    # Signal effectif = plus récent entre pub_date et report_proxy_date
+    df["last_signal"] = df[["last_pub_date", "report_proxy_date"]].max(axis=1)
+
+    cutoff_ts = pd.Timestamp(cutoff)
+    no_signal = df["last_signal"].isna()
+    stale = df["last_signal"].notna() & (df["last_signal"] < cutoff_ts)
+
+    # Filtre supplémentaire : si report_links a un rapport pour l'exercice
+    # courant ou N-1, on considère le titre actif quand même
+    has_recent_reports = df["max_report_fy"].fillna(0) >= (current_fy - 1)
+    df = df[(no_signal | stale) & ~has_recent_reports].copy()
+    if df.empty:
+        return df
+
+    df["reason"] = df.apply(
+        lambda r: "aucune_publication"
+        if pd.isna(r["last_signal"])
+        else "publications_arretees",
+        axis=1,
+    )
+    df["months_since"] = df["last_signal"].apply(
+        lambda d: round((now - d).days / 30.44, 1) if pd.notna(d) else None
+    )
+
+    permanent = read_sql_df("""
+        SELECT DISTINCT ticker FROM ignored_gaps
+        WHERE gap_type = 'annuel' AND fiscal_year IS NULL
+    """)
+    if not permanent.empty:
+        df = df[~df["ticker"].isin(permanent["ticker"])]
+
+    # Colonne de compat : last_pub_date affichée = last_signal
+    df["last_pub_date"] = df["last_signal"]
+    df = df[
+        ["ticker", "name", "last_pub_date", "months_since",
+         "total_pubs", "reason"]
+    ]
+    df = df.sort_values(
+        ["reason", "last_pub_date"],
+        ascending=[True, True],
+        na_position="first",
+    ).reset_index(drop=True)
+    return df
+
+
+def mark_ticker_inactive(ticker: str, reason: str = "Titre dormant") -> bool:
+    """Marque un ticker comme inactif : insère dans ignored_gaps avec
+    fiscal_year=NULL (ignore permanent pour toute future année).
+    Utilisé pour les sociétés qui ne publient plus."""
+    return ignore_gap(ticker, "annuel", fiscal_year=None, reason=reason)
+
+
 # --- Quarterly Data ---
 
 def save_quarterly_data(data: dict) -> int:
@@ -1672,6 +1870,19 @@ def save_quarterly_data(data: dict) -> int:
     )
     conn.commit()
     row_id = cursor.lastrowid
+
+    # Auto-clearance : marque les publications trimestrielles/semestrielles
+    # correspondantes comme traitées.
+    ticker = data.get("ticker")
+    fy = data.get("fiscal_year")
+    if ticker and fy:
+        try:
+            _mark_pubs_processed(conn, ticker, fy,
+                                  ("trimestriel", "semestriel"))
+            conn.commit()
+        except Exception:
+            pass  # non bloquant
+
     conn.close()
     return row_id
 

@@ -607,6 +607,21 @@ def build_all() -> dict:
         except Exception as e:
             print(f"  [pdfs] extract_pending_pubs KO (non bloquant): {e}")
 
+        # ── Étape 0ter : réconciliation des notifications ──
+        # Marque comme traitées (is_new=0) les publications dont les données
+        # correspondantes sont déjà en base (fundamentals/quarterly_data), et
+        # archive les publications non-financières datant de plus de 60 jours.
+        # → Vide progressivement la file d'alertes du tableau de bord.
+        try:
+            from data.storage import reconcile_publications
+            recon = reconcile_publications()
+            print(f"  [reconcile] annuels={recon['annual_cleared']}, "
+                  f"trimestriels={recon['quarterly_cleared']}, "
+                  f"non-financiers archivés={recon['non_financial_archived']}")
+            result["reconcile"] = recon
+        except Exception as e:
+            print(f"  [reconcile] KO (non bloquant): {e}")
+
         # Préchargement batch (réutilisé par les 3 builders)
         print("  [load] all_stocks + all_prices …")
         all_stocks = get_all_stocks_for_analysis()
