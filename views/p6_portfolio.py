@@ -13,6 +13,8 @@ from data.storage import (
     get_portfolio_cash, set_portfolio_cash,
     get_dividends, save_dividend, delete_dividend,
     get_total_dividends_received,
+    save_account_fee, get_account_fees, delete_account_fee,
+    get_total_account_fees, ACCOUNT_FEE_CATEGORIES,
 )
 from data.db import read_sql_df
 from data.scraper import fetch_daily_quotes
@@ -131,14 +133,21 @@ def render():
             tickers_data = load_tickers()
             options = [f"{t['ticker']} - {t['name']}" for t in tickers_data]
             with st.form("add_position"):
-                col1, col2, col3, col4 = st.columns(4)
+                col1, col2, col3 = st.columns([2, 1, 1])
                 selection = col1.selectbox("Titre", options)
                 quantity = col2.number_input("Quantité", min_value=1, value=10)
-                avg_price_str = col3.text_input(
-                    f"PRU ({CURRENCY})", value="1000",
-                    help="Accepte les décimales. Virgule ou point (ex : 16508,20 ou 16508.20)",
+                purchase_date = col3.date_input("Date d'achat")
+                col4, col5 = st.columns(2)
+                avg_price_str = col4.text_input(
+                    f"Cours d'exécution ({CURRENCY})", value="1000",
+                    help="Prix par action, hors frais. Virgule ou point acceptés "
+                         "(ex : 16320 ou 16320,00).",
                 )
-                purchase_date = col4.date_input("Date d'achat")
+                fees_str = col5.text_input(
+                    f"Frais totaux de l'achat ({CURRENCY})", value="0",
+                    help="Somme des frais liés à CET achat : commission + BRVM/DC-BR + TVA. "
+                         "Lisez-les sur votre bordereau SGI. Laissez 0 si inconnus.",
+                )
                 notes = st.text_input("Notes (optionnel)")
                 col_s, col_c = st.columns(2)
                 submitted = col_s.form_submit_button("Enregistrer", type="primary",
@@ -147,24 +156,36 @@ def render():
                     st.session_state["pf_add_open"] = False
                     st.rerun()
                 if submitted:
-                    try:
-                        avg_price = float(
-                            avg_price_str.replace(" ", "").replace(" ", "")
+                    def _parse_amount(s):
+                        return float(
+                            (s or "0").replace(" ", "").replace(" ", "")
                             .replace(",", ".")
                         )
+                    try:
+                        avg_price = _parse_amount(avg_price_str)
                         if avg_price <= 0:
-                            raise ValueError("PRU doit être > 0")
+                            raise ValueError("Cours doit être > 0")
                     except (ValueError, AttributeError):
                         st.error(
-                            f"PRU invalide : « {avg_price_str} ». "
-                            f"Exemples valides : 16508 · 16508,20 · 16508.20"
+                            f"Cours invalide : « {avg_price_str} ». "
+                            f"Exemples : 16320 · 16320,00 · 16320.00"
                         )
                     else:
-                        ticker = selection.split(" - ")[0]
-                        name = selection.split(" - ")[1] if " - " in selection else ""
-                        save_position(ticker, name, quantity, avg_price, str(purchase_date), notes)
-                        st.session_state["pf_add_open"] = False
-                        st.rerun()
+                        try:
+                            fees = _parse_amount(fees_str)
+                            if fees < 0:
+                                raise ValueError("Frais négatifs interdits")
+                        except (ValueError, AttributeError):
+                            st.error(
+                                f"Frais invalides : « {fees_str} ». Mettez 0 si inconnus."
+                            )
+                        else:
+                            ticker = selection.split(" - ")[0]
+                            name = selection.split(" - ")[1] if " - " in selection else ""
+                            save_position(ticker, name, quantity, avg_price,
+                                          str(purchase_date), notes, fees=fees)
+                            st.session_state["pf_add_open"] = False
+                            st.rerun()
             st.markdown("</div>", unsafe_allow_html=True)
 
     # ─── Panneau Cash (ajouter / ajuster liquidités) ──
@@ -293,7 +314,13 @@ def render():
 
     # Enrich portfolio with current prices
     portfolio["current_price"] = portfolio["ticker"].map(price_map)
-    portfolio["invested"] = portfolio["quantity"] * portfolio["avg_price"]
+    # Le coût de revient inclut désormais les frais de transaction (Type 1)
+    if "fees" not in portfolio.columns:
+        portfolio["fees"] = 0
+    portfolio["fees"] = pd.to_numeric(portfolio["fees"], errors="coerce").fillna(0)
+    portfolio["invested"] = (
+        portfolio["quantity"] * portfolio["avg_price"] + portfolio["fees"]
+    )
     portfolio["current_value"] = portfolio.apply(
         lambda r: r["quantity"] * r["current_price"] if pd.notna(r["current_price"]) else r["invested"],
         axis=1,
@@ -302,7 +329,7 @@ def render():
     portfolio["pnl_pct"] = portfolio["pnl"] / portfolio["invested"] * 100
 
     # ═══════════════════════════════════════════════════════════════════
-    # 4 KPI cards : Valeur totale / P&L cumulé / Yield pondéré / Positions
+    # 4 KPI cards : Valeur totale / Total Return / Yield / Positions
     # ═══════════════════════════════════════════════════════════════════
     cash = st.session_state.portfolio_cash
     total_invested = portfolio["invested"].sum()
@@ -311,9 +338,10 @@ def render():
     total_pnl_pct = (total_pnl / total_invested * 100) if total_invested > 0 else 0
     total_portfolio = total_value + cash
 
-    # Dividendes encaissés + Total Return
+    # Dividendes encaissés + frais de compte + Total Return
     total_dividends_received = get_total_dividends_received()
-    total_return = total_pnl + total_dividends_received
+    total_account_fees = get_total_account_fees()
+    total_return = total_pnl + total_dividends_received - total_account_fees
     total_return_pct = (total_return / total_invested * 100) if total_invested > 0 else 0
 
     _stocks_dict = _load_all_stocks_dict()
@@ -355,12 +383,15 @@ def render():
         ret_sign = "−" if total_return < 0 else "+"
         ret_str = f"{ret_sign}{abs(total_return):,.0f}"
         pnl_sign_txt = "−" if total_pnl < 0 else "+"
-        div_sign_txt = "+" if total_dividends_received > 0 else ""
-        ret_sub = (
-            f"{'−' if total_return_pct < 0 else '+'}{abs(total_return_pct):.2f}% "
-            f"· PV {pnl_sign_txt}{abs(total_pnl):,.0f} · "
-            f"Div {div_sign_txt}{total_dividends_received:,.0f}"
-        )
+        parts = [
+            f"{'−' if total_return_pct < 0 else '+'}{abs(total_return_pct):.2f}%",
+            f"PV {pnl_sign_txt}{abs(total_pnl):,.0f}",
+        ]
+        if total_dividends_received > 0:
+            parts.append(f"Div +{total_dividends_received:,.0f}")
+        if total_account_fees > 0:
+            parts.append(f"Frais −{total_account_fees:,.0f}")
+        ret_sub = " · ".join(parts)
         ret_tone = "up" if total_return >= 0 else "down"
         st.markdown(_kpi_card("Total Return", ret_str, ret_sub, ret_tone),
                      unsafe_allow_html=True)
@@ -631,6 +662,152 @@ def render():
                 if dc2.button("Supprimer", key=f"div_del_{div['id']}",
                                 use_container_width=True):
                     delete_dividend(int(div["id"]))
+                    st.rerun()
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Section Frais de compte (Type 2)
+    # ═══════════════════════════════════════════════════════════════════
+    section_heading("Frais de compte", spacing="loose")
+
+    account_fees_df = get_account_fees()
+    _add_fee_key = "pf_fee_add_open"
+    if _add_fee_key not in st.session_state:
+        st.session_state[_add_fee_key] = False
+
+    fhcol, fbcol = st.columns([5, 1])
+    fhcol.caption(
+        f"**{len(account_fees_df)}** frais · Total payé : "
+        f"**{total_account_fees:,.0f} {CURRENCY}** "
+        "(débités automatiquement du cash)"
+    )
+    if fbcol.button("+ Ajouter", key="pf_fee_add_btn",
+                     use_container_width=True):
+        st.session_state[_add_fee_key] = not st.session_state[_add_fee_key]
+
+    if st.session_state[_add_fee_key]:
+        st.markdown(
+            "<div style='background:var(--bg-elev);border:1px solid var(--border);"
+            "border-radius:10px;padding:14px 16px;margin:10px 0;'>",
+            unsafe_allow_html=True,
+        )
+        CATEGORY_LABEL = {
+            "droits_garde": "Droits de garde",
+            "tenue_compte": "Tenue de compte",
+            "virement": "Frais de virement",
+            "commission_dividende": "Commission sur dividende",
+            "conversion": "Conversion de devise",
+            "autre": "Autre",
+        }
+        cat_options = [(c, CATEGORY_LABEL.get(c, c))
+                        for c in ACCOUNT_FEE_CATEGORIES]
+        with st.form("add_account_fee"):
+            fc1, fc2, fc3 = st.columns([1.4, 1.8, 1])
+            fee_date = fc1.date_input("Date", key="fee_date")
+            fee_cat = fc2.selectbox(
+                "Catégorie",
+                options=[c for c, _ in cat_options],
+                format_func=lambda c: CATEGORY_LABEL.get(c, c),
+                key="fee_cat",
+            )
+            fee_amount_str = fc3.text_input(
+                f"Montant ({CURRENCY})", value="0",
+                help="Virgule ou point acceptés",
+                key="fee_amount",
+            )
+            fee_notes = st.text_input("Notes (optionnel)", key="fee_notes")
+
+            cs, cc = st.columns(2)
+            f_saved = cs.form_submit_button(
+                "Enregistrer", type="primary", use_container_width=True,
+            )
+            if cc.form_submit_button("Annuler", use_container_width=True):
+                st.session_state[_add_fee_key] = False
+                st.rerun()
+            if f_saved:
+                try:
+                    amt = float(fee_amount_str.replace(" ", "")
+                                 .replace(" ", "").replace(",", "."))
+                    if amt <= 0:
+                        raise ValueError("Montant doit être positif")
+                except (ValueError, AttributeError):
+                    st.error(
+                        f"Montant invalide : « {fee_amount_str} »."
+                    )
+                else:
+                    save_account_fee({
+                        "fee_date": str(fee_date),
+                        "category": fee_cat,
+                        "amount": amt,
+                        "notes": fee_notes,
+                    })
+                    st.session_state[_add_fee_key] = False
+                    st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    if account_fees_df.empty:
+        st.caption("Aucun frais de compte enregistré.")
+    else:
+        CATEGORY_LABEL_TABLE = {
+            "droits_garde": "Droits de garde",
+            "tenue_compte": "Tenue de compte",
+            "virement": "Frais de virement",
+            "commission_dividende": "Commission sur dividende",
+            "conversion": "Conversion de devise",
+            "autre": "Autre",
+        }
+        header_style = (
+            "font-size:11.5px;color:var(--ink-3);letter-spacing:0.02em;"
+            "text-transform:uppercase;padding:6px 8px;"
+            "border-bottom:1px solid var(--border);"
+        )
+        num_style = (
+            "font-family:var(--font-mono);font-size:14px;padding:8px;"
+            "border-bottom:1px solid var(--border-soft);text-align:right;"
+        )
+        cell_style = (
+            "font-size:14px;padding:8px;border-bottom:1px solid var(--border-soft);"
+        )
+        html = (
+            "<table style='width:100%;border-collapse:collapse;"
+            "background:var(--bg-elev);border-radius:10px;overflow:hidden;"
+            "border:1px solid var(--border);'>"
+            "<thead><tr>"
+            f"<th style='{header_style};text-align:left;'>Date</th>"
+            f"<th style='{header_style};text-align:left;'>Catégorie</th>"
+            f"<th style='{header_style};text-align:right;'>Montant</th>"
+            f"<th style='{header_style};text-align:left;'>Notes</th>"
+            "</tr></thead><tbody>"
+        )
+        for _, fee in account_fees_df.iterrows():
+            date_str = str(fee.get("fee_date") or "")[:10]
+            cat_lbl = CATEGORY_LABEL_TABLE.get(fee.get("category"),
+                                                fee.get("category") or "—")
+            html += (
+                "<tr>"
+                f"<td style='{cell_style}'>{date_str}</td>"
+                f"<td style='{cell_style}'>{cat_lbl}</td>"
+                f"<td style='{num_style};color:var(--down);'>−{float(fee['amount']):,.0f}</td>"
+                f"<td style='{cell_style};color:var(--ink-3);font-size:12.5px;'>"
+                f"{(fee.get('notes') or '')[:60]}</td>"
+                "</tr>"
+            )
+        html += "</tbody></table>"
+        st.markdown(html, unsafe_allow_html=True)
+
+        with st.expander("Supprimer un frais (recrédite le cash)",
+                          expanded=False):
+            for _, fee in account_fees_df.iterrows():
+                fc1, fc2 = st.columns([4, 1.5])
+                cat_lbl = CATEGORY_LABEL_TABLE.get(
+                    fee.get("category"), fee.get("category") or "—"
+                )
+                fc1.markdown(
+                    f"`{cat_lbl}` · {str(fee.get('fee_date') or '')[:10]} · "
+                    f"{float(fee['amount']):,.0f} {CURRENCY}"
+                )
+                if fc2.button("Supprimer", key=f"fee_del_{fee['id']}",
+                                use_container_width=True):
+                    delete_account_fee(int(fee["id"]))
                     st.rerun()
 
     # Allocation

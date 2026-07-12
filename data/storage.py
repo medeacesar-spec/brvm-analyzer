@@ -964,14 +964,19 @@ def get_all_cached_prices() -> dict:
 
 def save_position(ticker: str, company_name: str, quantity: float, avg_price: float,
                   purchase_date: str = None, notes: str = None,
-                  user_id: Optional[str] = None) -> int:
+                  user_id: Optional[str] = None, fees: float = 0) -> int:
+    """Enregistre une position. `fees` = frais totaux liés à cet achat
+    (commission de courtage + frais BRVM + TVA). Le coût de revient réel
+    d'une ligne = quantity × avg_price + fees."""
     uid = _resolve_user(user_id)
     conn = get_connection()
     cursor = conn.execute(
         """INSERT INTO portfolio
-           (user_id, ticker, company_name, quantity, avg_price, purchase_date, notes)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (uid, ticker, company_name, quantity, avg_price, purchase_date, notes),
+           (user_id, ticker, company_name, quantity, avg_price, purchase_date,
+            notes, fees)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (uid, ticker, company_name, quantity, avg_price, purchase_date, notes,
+         float(fees or 0)),
     )
     conn.commit()
     row_id = cursor.lastrowid
@@ -1002,17 +1007,27 @@ def delete_position(position_id: int, user_id: Optional[str] = None):
 
 
 def update_position(position_id: int, quantity: float, avg_price: float,
-                     user_id: Optional[str] = None) -> bool:
-    """Met à jour la quantité et le PRU d'une position existante.
-    Ne change ni le ticker ni la date d'achat. Renvoie True si succès."""
+                     user_id: Optional[str] = None,
+                     fees: Optional[float] = None) -> bool:
+    """Met à jour quantité, PRU et (optionnellement) frais d'une position.
+    Ne change ni le ticker ni la date d'achat. Si `fees` est None, la valeur
+    existante est préservée. Renvoie True si succès."""
     uid = _resolve_user(user_id)
     conn = get_connection()
     try:
-        conn.execute(
-            "UPDATE portfolio SET quantity = ?, avg_price = ? "
-            "WHERE id = ? AND user_id = ?",
-            (float(quantity), float(avg_price), int(position_id), uid),
-        )
+        if fees is None:
+            conn.execute(
+                "UPDATE portfolio SET quantity = ?, avg_price = ? "
+                "WHERE id = ? AND user_id = ?",
+                (float(quantity), float(avg_price), int(position_id), uid),
+            )
+        else:
+            conn.execute(
+                "UPDATE portfolio SET quantity = ?, avg_price = ?, fees = ? "
+                "WHERE id = ? AND user_id = ?",
+                (float(quantity), float(avg_price), float(fees),
+                 int(position_id), uid),
+            )
         conn.commit()
         return True
     except Exception:
@@ -1952,6 +1967,104 @@ def get_total_dividends_received(user_id: Optional[str] = None,
             "WHERE user_id = ?",
             params=(uid,),
         )
+    return float(df["total"].iloc[0]) if not df.empty else 0.0
+
+
+# --- Frais de compte (Type 2 : non liés à un titre spécifique) ---
+
+ACCOUNT_FEE_CATEGORIES = [
+    "droits_garde",
+    "tenue_compte",
+    "virement",
+    "commission_dividende",
+    "conversion",
+    "autre",
+]
+
+
+def save_account_fee(data: dict, debit_cash: bool = True) -> int:
+    """Enregistre un frais de compte (non lié à un titre).
+
+    Si debit_cash=True (défaut), le cash portfolio est débité du montant.
+    data attend : fee_date, category, amount (obligatoires),
+    notes (optionnel), user_id (défaut = current_user_id())."""
+    conn = get_connection()
+    uid = data.get("user_id") or current_user_id()
+    cursor = conn.execute(
+        """INSERT INTO account_fees
+           (user_id, fee_date, category, amount, notes)
+           VALUES (?, ?, ?, ?, ?)""",
+        (uid, data.get("fee_date"), data.get("category"),
+         float(data.get("amount", 0)), data.get("notes")),
+    )
+    conn.commit()
+    row_id = cursor.lastrowid
+    conn.close()
+
+    if debit_cash and data.get("amount"):
+        try:
+            current_cash = get_portfolio_cash(user_id=uid)
+            set_portfolio_cash(current_cash - float(data["amount"]), user_id=uid)
+        except Exception:
+            pass  # non bloquant
+
+    return row_id
+
+
+def get_account_fees(user_id: Optional[str] = None) -> pd.DataFrame:
+    """Retourne les frais de compte de l'utilisateur, triés par date décroissante."""
+    uid = user_id or current_user_id()
+    df = read_sql_df(
+        """SELECT id, fee_date, category, amount, notes, created_at
+           FROM account_fees WHERE user_id = ?
+           ORDER BY fee_date DESC, id DESC""",
+        params=(uid,),
+    )
+    return df
+
+
+def delete_account_fee(fee_id: int, refund_cash: bool = True,
+                        user_id: Optional[str] = None) -> bool:
+    """Supprime un frais. Si refund_cash=True (défaut), recrédite le cash
+    du montant."""
+    uid = user_id or current_user_id()
+    conn = get_connection()
+    amount = 0
+    try:
+        row = conn.execute(
+            "SELECT amount FROM account_fees WHERE id = ? AND user_id = ?",
+            (fee_id, uid),
+        ).fetchone()
+        if row:
+            amount = float(row[0] or 0)
+        conn.execute(
+            "DELETE FROM account_fees WHERE id = ? AND user_id = ?",
+            (fee_id, uid),
+        )
+        conn.commit()
+        ok = True
+    except Exception:
+        ok = False
+    conn.close()
+
+    if ok and refund_cash and amount:
+        try:
+            current_cash = get_portfolio_cash(user_id=uid)
+            set_portfolio_cash(current_cash + amount, user_id=uid)
+        except Exception:
+            pass
+
+    return ok
+
+
+def get_total_account_fees(user_id: Optional[str] = None) -> float:
+    """Somme des frais de compte payés (Type 2 uniquement)."""
+    uid = user_id or current_user_id()
+    df = read_sql_df(
+        "SELECT COALESCE(SUM(amount), 0) AS total FROM account_fees "
+        "WHERE user_id = ?",
+        params=(uid,),
+    )
     return float(df["total"].iloc[0]) if not df.empty else 0.0
 
 
