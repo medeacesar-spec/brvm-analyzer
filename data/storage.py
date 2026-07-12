@@ -1853,6 +1853,108 @@ def mark_ticker_inactive(ticker: str, reason: str = "Titre dormant") -> bool:
     return ignore_gap(ticker, "annuel", fiscal_year=None, reason=reason)
 
 
+# --- Dividendes encaissés ---
+
+def save_dividend(data: dict) -> int:
+    """Enregistre un dividende encaissé.
+
+    data attend : ticker, payment_date, net_amount (obligatoires),
+    gross_amount, withholding_tax, fiscal_year, notes (optionnels),
+    user_id (défaut = current_user_id())."""
+    conn = get_connection()
+    uid = data.get("user_id") or current_user_id()
+    cursor = conn.execute(
+        """INSERT INTO dividends
+           (user_id, ticker, payment_date, net_amount, gross_amount,
+            withholding_tax, fiscal_year, notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (uid, data.get("ticker"), data.get("payment_date"),
+         data.get("net_amount"), data.get("gross_amount"),
+         data.get("withholding_tax"), data.get("fiscal_year"),
+         data.get("notes")),
+    )
+    conn.commit()
+    row_id = cursor.lastrowid
+    conn.close()
+    return row_id
+
+
+def get_dividends(user_id: Optional[str] = None) -> pd.DataFrame:
+    """Retourne les dividendes de l'utilisateur, triés par date décroissante."""
+    uid = user_id or current_user_id()
+    df = read_sql_df(
+        """SELECT id, ticker, payment_date, net_amount, gross_amount,
+                  withholding_tax, fiscal_year, notes, created_at
+           FROM dividends WHERE user_id = ?
+           ORDER BY payment_date DESC, id DESC""",
+        params=(uid,),
+    )
+    return df
+
+
+def update_dividend(dividend_id: int, data: dict,
+                     user_id: Optional[str] = None) -> bool:
+    """Met à jour un dividende. Champs éditables : ticker, payment_date,
+    net_amount, gross_amount, withholding_tax, fiscal_year, notes."""
+    uid = user_id or current_user_id()
+    editable = ["ticker", "payment_date", "net_amount", "gross_amount",
+                "withholding_tax", "fiscal_year", "notes"]
+    updates = [(c, data[c]) for c in editable if c in data]
+    if not updates:
+        return False
+    set_clause = ", ".join([f"{c} = ?" for c, _ in updates])
+    params = tuple(v for _, v in updates) + (dividend_id, uid)
+    conn = get_connection()
+    try:
+        conn.execute(
+            f"""UPDATE dividends SET {set_clause}, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND user_id = ?""",
+            params,
+        )
+        conn.commit()
+        ok = True
+    except Exception:
+        ok = False
+    conn.close()
+    return ok
+
+
+def delete_dividend(dividend_id: int, user_id: Optional[str] = None) -> bool:
+    """Supprime un dividende (uniquement si l'utilisateur en est propriétaire)."""
+    uid = user_id or current_user_id()
+    conn = get_connection()
+    try:
+        conn.execute(
+            "DELETE FROM dividends WHERE id = ? AND user_id = ?",
+            (dividend_id, uid),
+        )
+        conn.commit()
+        ok = True
+    except Exception:
+        ok = False
+    conn.close()
+    return ok
+
+
+def get_total_dividends_received(user_id: Optional[str] = None,
+                                  ticker: Optional[str] = None) -> float:
+    """Somme des dividendes nets encaissés (par ticker ou global)."""
+    uid = user_id or current_user_id()
+    if ticker:
+        df = read_sql_df(
+            "SELECT COALESCE(SUM(net_amount), 0) AS total FROM dividends "
+            "WHERE user_id = ? AND ticker = ?",
+            params=(uid, ticker),
+        )
+    else:
+        df = read_sql_df(
+            "SELECT COALESCE(SUM(net_amount), 0) AS total FROM dividends "
+            "WHERE user_id = ?",
+            params=(uid,),
+        )
+    return float(df["total"].iloc[0]) if not df.empty else 0.0
+
+
 # --- Quarterly Data ---
 
 def save_quarterly_data(data: dict) -> int:
