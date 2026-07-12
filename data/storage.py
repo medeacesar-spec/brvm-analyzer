@@ -1520,11 +1520,26 @@ def get_data_gaps() -> pd.DataFrame:
     pub_trim_map = dict(zip(pub_trim["ticker"], pub_trim["title"])) if not pub_trim.empty else {}
 
     # 5) Gaps ignorés (lecture en masse)
+    # NB : sur Postgres, fiscal_year NULL revient en NaN via pandas.
+    # `is None` ne matche pas les NaN → on utilise pd.isna().
     ignored = read_sql_df("SELECT ticker, gap_type, fiscal_year FROM ignored_gaps")
-    ignored_annual = {(r["ticker"], r["fiscal_year"]) for _, r in ignored.iterrows()
-                      if r.get("gap_type") == "annuel"}
+
+    def _is_permanent(fy) -> bool:
+        return fy is None or pd.isna(fy)
+
+    def _as_int_year(fy):
+        try:
+            return int(fy) if not _is_permanent(fy) else None
+        except (TypeError, ValueError):
+            return None
+
+    ignored_annual = {(r["ticker"], _as_int_year(r["fiscal_year"]))
+                      for _, r in ignored.iterrows()
+                      if r.get("gap_type") == "annuel"
+                      and not _is_permanent(r["fiscal_year"])}
     ignored_annual_any = {r["ticker"] for _, r in ignored.iterrows()
-                          if r.get("gap_type") == "annuel" and (r.get("fiscal_year") is None)}
+                          if r.get("gap_type") == "annuel"
+                          and _is_permanent(r["fiscal_year"])}
     ignored_trim = {r["ticker"] for _, r in ignored.iterrows()
                     if r.get("gap_type") == "trimestriel"}
 
