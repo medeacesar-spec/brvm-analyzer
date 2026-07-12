@@ -11,6 +11,8 @@ from data.storage import (
     save_position, get_portfolio, delete_position, update_position,
     get_fundamentals, get_cached_prices, get_all_stocks_for_analysis,
     get_portfolio_cash, set_portfolio_cash,
+    get_dividends, save_dividend, delete_dividend,
+    get_total_dividends_received,
 )
 from data.db import read_sql_df
 from data.scraper import fetch_daily_quotes
@@ -309,6 +311,11 @@ def render():
     total_pnl_pct = (total_pnl / total_invested * 100) if total_invested > 0 else 0
     total_portfolio = total_value + cash
 
+    # Dividendes encaissés + Total Return
+    total_dividends_received = get_total_dividends_received()
+    total_return = total_pnl + total_dividends_received
+    total_return_pct = (total_return / total_invested * 100) if total_invested > 0 else 0
+
     _stocks_dict = _load_all_stocks_dict()
     total_div = 0
     for _, pos in portfolio.iterrows():
@@ -345,11 +352,17 @@ def render():
         st.markdown(_kpi_card("Valeur totale", f"{total_portfolio:,.0f}", CURRENCY),
                      unsafe_allow_html=True)
     with c2:
-        pnl_sign = "−" if total_pnl < 0 else "+"
-        pnl_str = f"{pnl_sign}{abs(total_pnl):,.0f}"
-        pnl_sub = f"{'−' if total_pnl_pct < 0 else '+'}{abs(total_pnl_pct):.2f}%"
-        pnl_tone = "up" if total_pnl >= 0 else "down"
-        st.markdown(_kpi_card("P&L cumulé", pnl_str, pnl_sub, pnl_tone),
+        ret_sign = "−" if total_return < 0 else "+"
+        ret_str = f"{ret_sign}{abs(total_return):,.0f}"
+        pnl_sign_txt = "−" if total_pnl < 0 else "+"
+        div_sign_txt = "+" if total_dividends_received > 0 else ""
+        ret_sub = (
+            f"{'−' if total_return_pct < 0 else '+'}{abs(total_return_pct):.2f}% "
+            f"· PV {pnl_sign_txt}{abs(total_pnl):,.0f} · "
+            f"Div {div_sign_txt}{total_dividends_received:,.0f}"
+        )
+        ret_tone = "up" if total_return >= 0 else "down"
+        st.markdown(_kpi_card("Total Return", ret_str, ret_sub, ret_tone),
                      unsafe_allow_html=True)
     with c3:
         yield_tone = "up" if yield_weighted >= MARKET_YIELD_REF else "down"
@@ -489,6 +502,136 @@ def render():
                         st.session_state[edit_flag_key] = False
                         st.rerun()
                 st.markdown("</div>", unsafe_allow_html=True)
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Section Dividendes encaissés
+    # ═══════════════════════════════════════════════════════════════════
+    section_heading("Dividendes encaissés", spacing="loose")
+
+    dividends_df = get_dividends()
+    _add_key = "pf_div_add_open"
+    if _add_key not in st.session_state:
+        st.session_state[_add_key] = False
+
+    hcol, bcol = st.columns([5, 1])
+    hcol.caption(
+        f"**{len(dividends_df)}** dividende(s) · Total net encaissé : "
+        f"**{total_dividends_received:,.0f} {CURRENCY}**"
+    )
+    if bcol.button("+ Ajouter", key="pf_div_add_btn",
+                    use_container_width=True):
+        st.session_state[_add_key] = not st.session_state[_add_key]
+
+    # Formulaire d'ajout (repliable)
+    if st.session_state[_add_key]:
+        st.markdown(
+            "<div style='background:var(--bg-elev);border:1px solid var(--border);"
+            "border-radius:10px;padding:14px 16px;margin:10px 0;'>",
+            unsafe_allow_html=True,
+        )
+        tickers_data = load_tickers()
+        div_options = [f"{t['ticker']} - {t['name']}" for t in tickers_data]
+        with st.form("add_dividend"):
+            c1, c2, c3, c4 = st.columns([2.5, 1.4, 1.6, 1])
+            div_sel = c1.selectbox("Titre", div_options, key="div_ticker")
+            div_date = c2.date_input("Date paiement", key="div_date")
+            div_net_str = c3.text_input(
+                f"Net reçu ({CURRENCY})", value="0",
+                help="Virgule ou point acceptés (ex. 19536,00)",
+                key="div_net",
+            )
+            div_fy = c4.number_input(
+                "Exercice", min_value=2015, max_value=2100, value=2025,
+                step=1, key="div_fy",
+            )
+            div_notes = st.text_input("Notes (optionnel)", key="div_notes")
+
+            csave, ccancel = st.columns(2)
+            saved = csave.form_submit_button(
+                "Enregistrer", type="primary", use_container_width=True,
+            )
+            if ccancel.form_submit_button("Annuler", use_container_width=True):
+                st.session_state[_add_key] = False
+                st.rerun()
+            if saved:
+                try:
+                    net_val = float(div_net_str.replace(" ", "")
+                                      .replace(" ", "")
+                                      .replace(",", "."))
+                    if net_val <= 0:
+                        raise ValueError("Le montant doit être positif")
+                except (ValueError, AttributeError):
+                    st.error(
+                        f"Montant net invalide : « {div_net_str} ». "
+                        f"Exemples : 19536 · 19 536,00 · 19536.00"
+                    )
+                else:
+                    ticker = div_sel.split(" - ")[0]
+                    save_dividend({
+                        "ticker": ticker,
+                        "payment_date": str(div_date),
+                        "net_amount": net_val,
+                        "fiscal_year": int(div_fy),
+                        "notes": div_notes,
+                    })
+                    st.session_state[_add_key] = False
+                    st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # Tableau des dividendes
+    if dividends_df.empty:
+        st.caption("Aucun dividende enregistré. Cliquez « + Ajouter » ci-dessus.")
+    else:
+        header_style = (
+            "font-size:11.5px;color:var(--ink-3);letter-spacing:0.02em;"
+            "text-transform:uppercase;padding:6px 8px;border-bottom:1px solid var(--border);"
+        )
+        num_style = (
+            "font-family:var(--font-mono);font-size:14px;padding:8px;"
+            "border-bottom:1px solid var(--border-soft);text-align:right;"
+        )
+        cell_style = (
+            "font-size:14px;padding:8px;border-bottom:1px solid var(--border-soft);"
+        )
+        html = (
+            "<table style='width:100%;border-collapse:collapse;"
+            "background:var(--bg-elev);border-radius:10px;overflow:hidden;"
+            "border:1px solid var(--border);'>"
+            "<thead><tr>"
+            f"<th style='{header_style};text-align:left;'>Date</th>"
+            f"<th style='{header_style};text-align:left;'>Ticker</th>"
+            f"<th style='{header_style};text-align:right;'>Net encaissé</th>"
+            f"<th style='{header_style};text-align:center;'>Exercice</th>"
+            f"<th style='{header_style};text-align:left;'>Notes</th>"
+            "</tr></thead><tbody>"
+        )
+        for _, div in dividends_df.iterrows():
+            date_str = str(div.get("payment_date") or "")[:10]
+            html += (
+                "<tr>"
+                f"<td style='{cell_style}'>{date_str}</td>"
+                f"<td style='{cell_style}'><code>{div['ticker']}</code></td>"
+                f"<td style='{num_style}'>{float(div['net_amount']):,.0f}</td>"
+                f"<td style='{cell_style};text-align:center;'>{div.get('fiscal_year') or ''}</td>"
+                f"<td style='{cell_style};color:var(--ink-3);font-size:12.5px;'>"
+                f"{(div.get('notes') or '')[:60]}</td>"
+                "</tr>"
+            )
+        html += "</tbody></table>"
+        st.markdown(html, unsafe_allow_html=True)
+
+        # Actions par ligne : bouton supprimer sous le tableau (compact)
+        with st.expander("Supprimer un dividende", expanded=False):
+            for _, div in dividends_df.iterrows():
+                dc1, dc2, dc3 = st.columns([3, 1.5, 1.5])
+                dc1.markdown(
+                    f"`{div['ticker']}` · {str(div.get('payment_date') or '')[:10]} · "
+                    f"{float(div['net_amount']):,.0f} {CURRENCY}"
+                )
+                if dc2.button("Supprimer", key=f"div_del_{div['id']}",
+                                use_container_width=True):
+                    delete_dividend(int(div["id"]))
+                    st.rerun()
 
     # Allocation
     section_heading("Allocation", spacing="loose")
