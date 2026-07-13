@@ -243,20 +243,30 @@ def refresh_intraday() -> dict:
 
 def _keep_streamlit_awake():
     """Ping l'app Streamlit Cloud pour éviter la mise en veille automatique
-    (Community Cloud endort après ~12h sans trafic).
+    (Community Cloud endort après ~12h sans activité applicative).
 
-    Ce script tournant 4× par jour ouvré via GitHub Actions
-    (9h/11h/13h/15h UTC), l'app reste éveillée pendant la semaine.
-    Le week-end reste un gap ~66h — pour couverture 7/7 : UptimeRobot.
+    Important : l'app utilise `st.login()` qui redirige les GETs standards vers
+    l'OAuth, ce qui ne compte pas comme activité de l'app. On cible donc
+    `?embed=true` qui bypasse le proxy d'auth Streamlit Cloud et charge
+    directement le processus Streamlit — vrai signal d'activité.
+
+    Ce script tourne 4× par jour ouvré via GitHub Actions
+    (9h/11h/13h/15h UTC). Weekend couvert par UptimeRobot (URL embed).
     """
     import urllib.request
-    url = "https://brvm-analyzer.streamlit.app/"
+    url = "https://brvm-analyzer.streamlit.app/?embed=true"
     try:
         req = urllib.request.Request(
-            url, headers={"User-Agent": "BRVM-KeepAlive/1.0"}
+            url, headers={
+                "User-Agent": "Mozilla/5.0 (compatible; BRVM-KeepAlive/2.0)"
+            }
         )
-        with urllib.request.urlopen(req, timeout=20) as r:
-            print(f"[keep-alive] {url} → HTTP {r.status}")
+        with urllib.request.urlopen(req, timeout=30) as r:
+            content_length = int(r.headers.get("Content-Length", 0) or 0)
+            body = r.read(2000)
+            has_streamlit = b"streamlit" in body.lower()
+            print(f"[keep-alive] {url} → HTTP {r.status} · "
+                  f"{content_length} bytes · streamlit={'oui' if has_streamlit else 'non'}")
     except Exception as e:
         # Non bloquant : le refresh a réussi, ce ping est bonus
         print(f"[keep-alive] {url} → error ignoré: {e}")
