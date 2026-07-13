@@ -241,7 +241,29 @@ def refresh_intraday() -> dict:
     }
 
 
+def _keep_streamlit_awake():
+    """Ping l'app Streamlit Cloud pour éviter la mise en veille automatique
+    (Community Cloud endort après ~12h sans trafic).
+
+    Ce script tournant 4× par jour ouvré via GitHub Actions
+    (9h/11h/13h/15h UTC), l'app reste éveillée pendant la semaine.
+    Le week-end reste un gap ~66h — pour couverture 7/7 : UptimeRobot.
+    """
+    import urllib.request
+    url = "https://brvm-analyzer.streamlit.app/"
+    try:
+        req = urllib.request.Request(
+            url, headers={"User-Agent": "BRVM-KeepAlive/1.0"}
+        )
+        with urllib.request.urlopen(req, timeout=20) as r:
+            print(f"[keep-alive] {url} → HTTP {r.status}")
+    except Exception as e:
+        # Non bloquant : le refresh a réussi, ce ping est bonus
+        print(f"[keep-alive] {url} → error ignoré: {e}")
+
+
 if __name__ == "__main__":
     out = refresh_intraday()
     print(out)
+    _keep_streamlit_awake()
     sys.exit(0 if out.get("status") == "ok" else 1)
