@@ -382,7 +382,12 @@ def render():
         )
 
     # Tabs — labels épurés sans emoji
-    tab1, tab2, tab3, tab4 = st.tabs(["Fondamentale", "Technique", "Recommandation", "Profil"])
+    tab0, tab1, tab2, tab3, tab4 = st.tabs(
+        ["Cours", "Fondamentale", "Technique", "Recommandation", "Profil"]
+    )
+
+    with tab0:
+        _render_price_only(selected_ticker, price_df)
 
     with tab1:
         _render_fundamental(fundamentals, ratios)
@@ -753,6 +758,118 @@ def _render_fundamental(fundamentals, ratios):
             f"<div style='font-size:13px;line-height:1.5;color:var(--ink-2);'>{narrative}</div>"
             f"</div>",
             unsafe_allow_html=True,
+        )
+
+
+def _render_price_only(ticker, price_df):
+    """Onglet Cours : simple courbe de variation + KPI performance
+    sur différentes périodes (1J, 1S, 1M, 3M, 6M, 1A, YTD)."""
+    from datetime import datetime, timedelta
+    import plotly.graph_objects as go
+
+    if price_df.empty or len(price_df) < 2:
+        st.warning("Aucune donnée de prix disponible pour ce titre.")
+        return
+
+    df = price_df.copy()
+    if "date" not in df.columns or "close" not in df.columns:
+        st.warning("Format de données de prix non reconnu.")
+        return
+
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df = df.dropna(subset=["date", "close"]).sort_values("date").reset_index(drop=True)
+    if df.empty:
+        st.warning("Aucune donnée de prix exploitable.")
+        return
+
+    last_price = float(df["close"].iloc[-1])
+    last_date = df["date"].iloc[-1]
+
+    # ── Calcul des variations sur périodes standard ──
+    now = df["date"].max()
+    year_start = pd.Timestamp(datetime(now.year, 1, 1))
+    periods = [
+        ("1J", now - timedelta(days=1)),
+        ("1S", now - timedelta(days=7)),
+        ("1M", now - timedelta(days=30)),
+        ("3M", now - timedelta(days=90)),
+        ("6M", now - timedelta(days=180)),
+        ("1A", now - timedelta(days=365)),
+        ("YTD", year_start),
+    ]
+
+    def _pct_change_since(cutoff):
+        past = df[df["date"] <= cutoff]
+        if past.empty:
+            return None
+        ref_price = float(past["close"].iloc[-1])
+        if ref_price == 0:
+            return None
+        return (last_price - ref_price) / ref_price * 100
+
+    variations = [(label, _pct_change_since(dt)) for label, dt in periods]
+
+    # ── Affichage KPI compact : 7 colonnes ──
+    cols = st.columns(len(variations))
+    for col, (label, pct) in zip(cols, variations):
+        if pct is None:
+            col.metric(label, "—")
+        else:
+            sign = "+" if pct >= 0 else ""
+            col.metric(label, f"{sign}{pct:.2f}%")
+
+    # ── Sélecteur période pour la courbe ──
+    period_options = {
+        "1M": 30, "3M": 90, "6M": 180, "1A": 365,
+        "2A": 730, "3A": 1095, "5A": 1825, "Max": 999999,
+    }
+    selected_label = st.selectbox(
+        "Période affichée",
+        list(period_options.keys()),
+        index=3,  # 1A par défaut
+        key=f"price_only_period_{ticker}",
+    )
+    days_back = period_options[selected_label]
+
+    if days_back < 999999:
+        cutoff_ts = pd.Timestamp(now - timedelta(days=days_back))
+        df_view = df[df["date"] >= cutoff_ts].copy()
+        if df_view.empty:
+            df_view = df
+    else:
+        df_view = df
+
+    # ── Courbe ligne simple ──
+    if not df_view.empty:
+        pct_range = (
+            (float(df_view["close"].iloc[-1]) - float(df_view["close"].iloc[0]))
+            / float(df_view["close"].iloc[0]) * 100
+            if float(df_view["close"].iloc[0]) != 0 else 0
+        )
+        color = "#16a34a" if pct_range >= 0 else "#dc2626"
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=df_view["date"], y=df_view["close"],
+            mode="lines", line=dict(color=color, width=2),
+            hovertemplate="%{x|%d/%m/%Y}<br>%{y:,.0f} FCFA<extra></extra>",
+            name=ticker,
+        ))
+        sign_range = "+" if pct_range >= 0 else ""
+        fig.update_layout(
+            title=f"{ticker} — {selected_label} : {sign_range}{pct_range:.2f}%",
+            xaxis_title=None,
+            yaxis_title="Cours (FCFA)",
+            hovermode="x unified",
+            height=420,
+            margin=dict(l=10, r=10, t=40, b=10),
+            showlegend=False,
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.caption(
+            f"Dernier cours : **{last_price:,.0f} FCFA** au "
+            f"{last_date.strftime('%d/%m/%Y')} · "
+            f"{len(df_view)} points affichés"
         )
 
 
