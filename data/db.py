@@ -323,7 +323,16 @@ def get_connection():
                 "Lancer : pip install 'psycopg[binary]'"
             ) from e
         url = _get_database_url()
-        conn = psycopg.connect(url, row_factory=_hybrid_row_factory, autocommit=False)
+        # prepare_threshold=None désactive les prepared statements psycopg.
+        # Nécessaire avec le Transaction Pooler Supabase (port 6543) qui ne
+        # conserve pas les prepared statements entre requêtes, provoquant
+        # `DuplicatePreparedStatement` sur toute 2e requête similaire.
+        conn = psycopg.connect(
+            url,
+            row_factory=_hybrid_row_factory,
+            autocommit=False,
+            prepare_threshold=None,
+        )
         return _PostgresWrapper(conn)
 
     # SQLite (défaut)

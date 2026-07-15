@@ -342,8 +342,14 @@ def save_publications(publications: list) -> int:
             )
             if cur.rowcount > 0:
                 n_new += 1
-        except sqlite3.Error as e:
+        except Exception as e:
+            # Exception (pas sqlite3.Error seulement) pour catch aussi les
+            # erreurs psycopg — sinon une seule ligne cassée arrêtait tout le batch.
             print(f"[WARN] Failed to insert {p.get('title')}: {e}")
+            try:
+                conn.rollback()
+            except Exception:
+                pass
     conn.commit()
     conn.close()
     return n_new
