@@ -242,34 +242,53 @@ def refresh_intraday() -> dict:
 
 
 def _keep_streamlit_awake():
-    """Ping l'app Streamlit Cloud pour éviter la mise en veille automatique
-    (Community Cloud endort après ~12h sans activité applicative).
+    """Ouvre l'app Streamlit dans Chromium headless pour établir une VRAIE
+    session WebSocket (le simple ping HTTP `?embed=true` ne suffisait pas :
+    Streamlit détecte les sessions actives via WebSocket, pas GET).
 
-    Important : l'app utilise `st.login()` qui redirige les GETs standards vers
-    l'OAuth, ce qui ne compte pas comme activité de l'app. On cible donc
-    `?embed=true` qui bypasse le proxy d'auth Streamlit Cloud et charge
-    directement le processus Streamlit — vrai signal d'activité.
+    Playwright installé au niveau du workflow CI uniquement (pas dans
+    requirements.txt pour ne pas alourdir le deploy Streamlit Cloud).
 
-    Ce script tourne 4× par jour ouvré via GitHub Actions
-    (9h/11h/13h/15h UTC). Weekend couvert par UptimeRobot (URL embed).
+    Fallback silencieux vers un curl basique si Playwright indisponible
+    (ex : run local sans les browsers installés).
     """
-    import urllib.request
     url = "https://brvm-analyzer.streamlit.app/?embed=true"
     try:
-        req = urllib.request.Request(
-            url, headers={
-                "User-Agent": "Mozilla/5.0 (compatible; BRVM-KeepAlive/2.0)"
-            }
-        )
-        with urllib.request.urlopen(req, timeout=30) as r:
-            content_length = int(r.headers.get("Content-Length", 0) or 0)
-            body = r.read(2000)
-            has_streamlit = b"streamlit" in body.lower()
-            print(f"[keep-alive] {url} → HTTP {r.status} · "
-                  f"{content_length} bytes · streamlit={'oui' if has_streamlit else 'non'}")
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        print(f"[keep-alive] Playwright non installé, fallback curl")
+        _basic_curl_ping(url)
+        return
+
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context()
+            page = context.new_page()
+            print(f"[keep-alive] Ouverture {url}")
+            page.goto(url, timeout=45000, wait_until="domcontentloaded")
+            # Attend 20s pour laisser la WebSocket s'ouvrir et Streamlit
+            # enregistrer la session côté serveur
+            page.wait_for_timeout(20000)
+            print(f"[keep-alive] Session WebSocket maintenue 20s, fermeture")
+            context.close()
+            browser.close()
     except Exception as e:
-        # Non bloquant : le refresh a réussi, ce ping est bonus
-        print(f"[keep-alive] {url} → error ignoré: {e}")
+        print(f"[keep-alive] Playwright échec, fallback curl : {e}")
+        _basic_curl_ping(url)
+
+
+def _basic_curl_ping(url):
+    """Ping HTTP simple (fallback si Playwright indisponible)."""
+    import urllib.request
+    try:
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "Mozilla/5.0 (compatible; BRVM-KeepAlive/2.0)"
+        })
+        with urllib.request.urlopen(req, timeout=30) as r:
+            print(f"[keep-alive-curl] {url} → HTTP {r.status}")
+    except Exception as e:
+        print(f"[keep-alive-curl] échec : {e}")
 
 
 if __name__ == "__main__":
