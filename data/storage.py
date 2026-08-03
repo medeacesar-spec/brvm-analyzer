@@ -2264,10 +2264,15 @@ def get_publication_calendar() -> pd.DataFrame:
                 "title": r.get("title"),
             }
 
-    # 3) Intégration annuelle : max(fiscal_year) avec revenue non-null par ticker
+    # 3) Intégration annuelle : max(fiscal_year) avec AU MOINS un chiffre clé
+    # non-null (revenue, net_income ou total_assets). Assouplissement pour les
+    # rapports où l'un des 3 n'a pas pu être extrait mais les autres oui.
     fund = read_sql_df("""
         SELECT ticker, MAX(fiscal_year) AS max_fy
-        FROM fundamentals WHERE revenue IS NOT NULL
+        FROM fundamentals
+        WHERE revenue IS NOT NULL
+           OR net_income IS NOT NULL
+           OR total_assets IS NOT NULL
         GROUP BY ticker
     """)
     fund_max = dict(zip(fund["ticker"], fund["max_fy"])) if not fund.empty else {}
