@@ -2314,12 +2314,18 @@ def get_publication_calendar() -> pd.DataFrame:
 
     def _compute_status(published: bool, integrated: bool,
                          expected_month: int, year_diff: int):
-        """year_diff = 0 si année courante, <0 si passé (retard structurel)."""
-        if published and integrated:
+        """year_diff = 0 si année courante, <0 si passé (retard structurel).
+
+        Règle : si la data est intégrée, c'est « integre » quel que soit
+        l'état de publications (les data peuvent venir d'Excel, saisie
+        manuelle, ou d'un scraper qui n'a pas capturé l'annonce mais a
+        eu le PDF via un autre canal). L'important pour le user, c'est
+        d'avoir la data en base."""
+        if integrated:
             return "integre"
-        if published and not integrated:
+        if published:
             return "a_integrer"
-        # Pas publié : selon date attendue
+        # Ni publié ni intégré : selon date attendue
         if year_diff < 0:
             return "en_retard"  # année passée non publiée = très en retard
         if expected_month < current_month:
