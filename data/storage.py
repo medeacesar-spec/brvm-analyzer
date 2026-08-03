@@ -1396,6 +1396,9 @@ def get_pending_publications(recent_days: Optional[int] = 7) -> pd.DataFrame:
                 FROM fundamentals
                 WHERE revenue IS NOT NULL AND revenue != 0
                 GROUP BY ticker
+            ),
+            quart_present AS (
+                SELECT DISTINCT ticker, fiscal_year FROM quarterly_data
             )
             SELECT p.id, p.ticker, p.title, p.pub_type, p.period,
                    p.fiscal_year, p.url, p.pub_date, p.is_new,
@@ -1406,18 +1409,24 @@ def get_pending_publications(recent_days: Optional[int] = 7) -> pd.DataFrame:
                            AND p.fiscal_year IS NOT NULL
                            AND (fm.latest_year IS NULL OR p.fiscal_year > fm.latest_year)
                            THEN 'annuel_non_integre'
-                      WHEN p.pub_type IN ('trimestriel', 'semestriel') THEN 'trimestriel_a_verifier'
+                      WHEN p.pub_type IN ('trimestriel', 'semestriel')
+                           AND qp.ticker IS NULL
+                           THEN 'trimestriel_a_verifier'
                       ELSE NULL
                    END AS pending_reason
             FROM publications p
             LEFT JOIN fund_max fm ON p.ticker = fm.ticker
+            LEFT JOIN quart_present qp
+                   ON qp.ticker = p.ticker
+                  AND qp.fiscal_year = p.fiscal_year
             WHERE COALESCE(p.ignored, 0) = 0
               AND (
                 p.is_new = 1
                 OR (p.pub_type = 'annuel'
                     AND p.fiscal_year IS NOT NULL
                     AND (fm.latest_year IS NULL OR p.fiscal_year > fm.latest_year))
-                OR p.pub_type IN ('trimestriel', 'semestriel')
+                OR (p.pub_type IN ('trimestriel', 'semestriel')
+                    AND qp.ticker IS NULL)
               )
             {date_filter_sql}
             ORDER BY p.pub_date DESC, p.created_at DESC
@@ -1505,9 +1514,11 @@ def get_data_gaps() -> pd.DataFrame:
     )
     pub_annual_map = dict(zip(pub_annual["ticker"], pub_annual["latest_year"])) if not pub_annual.empty else {}
 
-    # 4) Publications trimestrielles récentes par ticker (la plus récente)
+    # 4) Publications trimestrielles récentes NON encore intégrées.
+    # Filtre : exclut les tickers pour lesquels quarterly_data contient déjà
+    # une ligne pour la même fiscal_year que la publication.
     pub_trim = read_sql_df(
-        """SELECT p.ticker, p.title
+        """SELECT p.ticker, p.title, p.fiscal_year
            FROM publications p
            INNER JOIN (
                SELECT ticker, MAX(pub_date) AS max_dt
@@ -1515,7 +1526,12 @@ def get_data_gaps() -> pd.DataFrame:
                WHERE pub_type IN ('trimestriel','semestriel')
                GROUP BY ticker
            ) mx ON p.ticker = mx.ticker AND p.pub_date = mx.max_dt
-           WHERE p.pub_type IN ('trimestriel','semestriel')"""
+           WHERE p.pub_type IN ('trimestriel','semestriel')
+             AND NOT EXISTS (
+                SELECT 1 FROM quarterly_data qd
+                WHERE qd.ticker = p.ticker
+                  AND qd.fiscal_year = p.fiscal_year
+             )"""
     )
     pub_trim_map = dict(zip(pub_trim["ticker"], pub_trim["title"])) if not pub_trim.empty else {}
 

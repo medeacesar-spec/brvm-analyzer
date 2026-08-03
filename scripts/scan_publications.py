@@ -167,6 +167,11 @@ def _detect_pub_type(text: str) -> tuple:
         return ("corporate", None, False)
     if "franchissement de seuil" in t:
         return ("corporate", None, False)
+    # Meta-publications (avis régulateur BRVM/DC-BR/CREPMR, pas de chiffres)
+    if "respect de diffusion" in t or "societes cotees a la brvm" in t:
+        return ("corporate", None, False)
+    if "avis n" in t and ("brvm" in t or "crepmr" in t or "dc bourse" in t):
+        return ("corporate", None, False)
     if "communique" in t or "communiqué" in t:
         # Communiqués génériques (pas résultats). Exclut si contient un mot fort.
         if not any(k in t for k in ("etats financiers", "états financiers",
