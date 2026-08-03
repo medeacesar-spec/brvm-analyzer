@@ -1456,13 +1456,17 @@ def get_data_gaps() -> pd.DataFrame:
     # Si nous sommes après le 30 avril de l'année N → année N-1 doit être disponible.
     expected_annual = year - 1 if month >= 5 else year - 2
 
-    # Trimestres attendus : Q1 publié vers mai, Q2 vers août, Q3 vers novembre, Q4/annuel vers avril suivant
+    # Trimestres attendus — règle UEMOA : 45 jours après fin de trimestre.
+    # Q1 (fin mars) → attendu vers mi-mai → on l'attend à partir de juin.
+    # Q2/S1 (fin juin) → attendu vers mi-août → on l'attend à partir de septembre.
+    # Q3 (fin sept) → attendu vers mi-nov → on l'attend à partir de décembre.
+    # Q4/annuel (fin déc) → attendu vers avril → géré par expected_annual.
     expected_quarter_year = year
-    if month >= 11:
+    if month >= 12:
         expected_quarter = 3
-    elif month >= 8:
+    elif month >= 9:
         expected_quarter = 2
-    elif month >= 5:
+    elif month >= 6:
         expected_quarter = 1
     else:
         expected_quarter = 4
@@ -1492,18 +1496,29 @@ def get_data_gaps() -> pd.DataFrame:
     )
     latest_map = dict(zip(latest_fund["ticker"], latest_fund["latest"])) if not latest_fund.empty else {}
 
-    # 2) Dernier trimestre en DB par ticker
+    # 2) Dernier trimestre en DB par ticker + set des quarters utilisés
+    # (utile pour détecter la cadence : ticker qui n'a jamais eu Q=1 ou Q=3
+    # publie probablement seulement semestriellement)
     qtr = read_sql_df(
         """SELECT ticker, MAX(fiscal_year * 10 + quarter) AS latest_q
            FROM quarterly_data
            GROUP BY ticker"""
     )
-    # Décodage fiscal_year * 10 + quarter → (year, q)
     qtr_map = {}
     if not qtr.empty:
         for _, qr in qtr.iterrows():
             code = qr["latest_q"] or 0
             qtr_map[qr["ticker"]] = (code // 10, code % 10)
+
+    qtr_hist = read_sql_df(
+        """SELECT ticker, quarter, COUNT(*) AS n
+           FROM quarterly_data GROUP BY ticker, quarter"""
+    )
+    # Pour chaque ticker : set des quarters vus historiquement
+    quarters_seen = {}
+    if not qtr_hist.empty:
+        for _, r in qtr_hist.iterrows():
+            quarters_seen.setdefault(r["ticker"], set()).add(int(r["quarter"]))
 
     # 3) Publications annuelles : dernière année par ticker
     pub_annual = read_sql_df(
@@ -1574,8 +1589,17 @@ def get_data_gaps() -> pd.DataFrame:
                 q_year == expected_quarter_year and q_q >= expected_quarter
             ):
                 has_expected_quarter = True
-        missing_quarter = (f"{expected_quarter_year} Q{expected_quarter}"
-                           if has_quarterly_history and not has_expected_quarter else None)
+        # Détection cadence : si le ticker n'a JAMAIS publié le quarter attendu
+        # historiquement (ex : publie seulement Q=2/S1 et Q=4/S2, jamais Q=1/T1
+        # ni Q=3/T3), on ne l'alerte pas sur ce quarter.
+        seen = quarters_seen.get(ticker, set())
+        publishes_this_quarter = (expected_quarter in seen) if seen else True
+        missing_quarter = (
+            f"{expected_quarter_year} Q{expected_quarter}"
+            if has_quarterly_history and not has_expected_quarter
+            and publishes_this_quarter
+            else None
+        )
 
         pub_gap = pub_annual_map.get(ticker)
         published_but_missing_year = None
