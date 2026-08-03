@@ -1883,6 +1883,56 @@ def mark_ticker_inactive(ticker: str, reason: str = "Titre dormant") -> bool:
     return ignore_gap(ticker, "annuel", fiscal_year=None, reason=reason)
 
 
+# --- Extraction attempts (traçabilité des échecs PDF) ---
+
+def get_recent_extraction_attempts(limit: int = 50,
+                                     status_filter: Optional[str] = None) -> pd.DataFrame:
+    """Retourne les dernières tentatives d'extraction PDF, avec par défaut
+    les échecs uniquement. `status_filter` : 'success', 'no_pdf',
+    'parser_empty', 'error', 'save_error' ou None (tout)."""
+    where = ""
+    params = []
+    if status_filter:
+        where = "WHERE status = ?"
+        params = [status_filter]
+    else:
+        where = "WHERE status != 'success'"
+    query = f"""
+        SELECT a.id, a.publication_id, a.ticker, a.fiscal_year, a.pub_type,
+               a.report_link_url, a.status, a.error_message,
+               a.extracted_summary, a.attempted_at,
+               p.title AS pub_title
+        FROM extraction_attempts a
+        LEFT JOIN publications p ON p.id = a.publication_id
+        {where}
+        ORDER BY a.attempted_at DESC
+        LIMIT ?
+    """
+    params.append(limit)
+    df = read_sql_df(query, params=tuple(params))
+    return df
+
+
+def get_latest_extraction_attempt_per_pub() -> pd.DataFrame:
+    """Pour chaque publication_id, retourne la dernière tentative connue.
+    Utile pour afficher un badge de statut par pub dans le fil d'actualité.
+    Requête portable (fonctionne SQLite + Postgres)."""
+    df = read_sql_df("""
+        SELECT a.publication_id, a.status, a.error_message,
+               a.extracted_summary, a.attempted_at
+        FROM extraction_attempts a
+        INNER JOIN (
+            SELECT publication_id, MAX(attempted_at) AS max_ts
+            FROM extraction_attempts
+            WHERE publication_id IS NOT NULL
+            GROUP BY publication_id
+        ) latest
+        ON latest.publication_id = a.publication_id
+        AND latest.max_ts = a.attempted_at
+    """)
+    return df
+
+
 # --- Dividendes encaissés ---
 
 def save_dividend(data: dict) -> int:

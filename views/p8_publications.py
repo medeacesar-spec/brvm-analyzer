@@ -13,9 +13,12 @@ from data.storage import (
     get_all_company_profiles, get_company_news,
     save_company_news, save_company_profile,
     get_connection, get_publication_calendar,
+    save_fundamentals, save_quarterly_data,
+    get_recent_extraction_attempts,
 )
 from data.db import read_sql_df
 from utils.ui_helpers import section_heading
+from utils.auth import is_admin
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -299,6 +302,191 @@ def _render_news_feed():
         f"<table style='width:100%;border-collapse:collapse;'>{''.join(rows)}</table></div>",
         unsafe_allow_html=True,
     )
+
+    # ── Section diagnostic extraction (admin uniquement) ──
+    if is_admin():
+        _render_extraction_diagnostics(news)
+
+
+def _render_extraction_diagnostics(news_df):
+    """Section admin qui montre les échecs d'extraction récents +
+    formulaire de saisie manuelle pour les publications À intégrer."""
+    section_heading("Diagnostic extraction (admin)", spacing="loose")
+
+    # ── Panneau échecs récents ──
+    try:
+        attempts = get_recent_extraction_attempts(limit=30)
+    except Exception:
+        attempts = pd.DataFrame()
+
+    with st.expander(
+        f"Tentatives d'extraction échouées ({len(attempts) if not attempts.empty else 0})",
+        expanded=False,
+    ):
+        if attempts.empty:
+            st.caption(
+                "Aucun échec récent enregistré. La table `extraction_attempts` "
+                "se remplit à chaque run quotidien de `extract_pending_pubs`."
+            )
+        else:
+            _STATUS_LABELS = {
+                "no_pdf": "Pas de PDF",
+                "parser_empty": "Parser vide",
+                "error": "Erreur téléchargement/parse",
+                "save_error": "Erreur sauvegarde",
+                "no_quarter": "Trimestre non détecté",
+                "skip_unsupported_type": "Type non géré",
+            }
+            for _, a in attempts.iterrows():
+                status_label = _STATUS_LABELS.get(a["status"], a["status"])
+                when = str(a.get("attempted_at") or "")[:16].replace("T", " ")
+                st.markdown(
+                    f"**{a['ticker']}** FY{a.get('fiscal_year') or '?'} "
+                    f"{a.get('pub_type') or ''} · `{status_label}` · {when}"
+                )
+                if a.get("error_message"):
+                    st.caption(f"↳ {a['error_message'][:200]}")
+                if a.get("extracted_summary"):
+                    st.caption(f"↳ extrait : {a['extracted_summary'][:200]}")
+                if a.get("report_link_url"):
+                    st.caption(f"↳ PDF : {a['report_link_url']}")
+                st.markdown("---")
+
+    # ── Formulaire de saisie manuelle ──
+    pending = news_df[news_df["status"] == "À intégrer"].copy() if not news_df.empty else pd.DataFrame()
+
+    with st.expander(
+        f"Saisir manuellement les publications À intégrer ({len(pending)})",
+        expanded=False,
+    ):
+        if pending.empty:
+            st.caption("Aucune publication À intégrer actuellement.")
+            return
+        st.caption(
+            "Sélectionnez une publication, remplissez les valeurs depuis le PDF "
+            "(unités en FCFA bruts, pas en millions/milliards) puis Enregistrer."
+        )
+        # Selectbox pour choisir la pub
+        opts = []
+        pub_map = {}
+        for _, p in pending.iterrows():
+            fy = p.get("fiscal_year")
+            try:
+                fy_int = int(fy) if fy is not None and not pd.isna(fy) else None
+            except (TypeError, ValueError):
+                fy_int = None
+            label = f"{p['ticker']} · FY{fy_int} · {p['pub_type']} · {(p.get('title_pretty') or p.get('title') or '')[:50]}"
+            opts.append(label)
+            pub_map[label] = {"ticker": p["ticker"], "fiscal_year": fy_int,
+                                "pub_type": p["pub_type"], "id": p.get("id"),
+                                "url": p.get("url")}
+
+        chosen = st.selectbox("Publication à saisir", opts, key="manual_pub_sel")
+        pub = pub_map[chosen]
+        is_annual = (pub["pub_type"] or "") == "annuel"
+
+        with st.form("manual_extract_form"):
+            st.markdown(
+                f"**{pub['ticker']}** · FY {pub['fiscal_year']} · "
+                f"{pub['pub_type']}"
+            )
+            if pub.get("url"):
+                st.caption(f"Lien source : {pub['url']}")
+
+            def _parse_num(s):
+                if not s or not s.strip():
+                    return None
+                try:
+                    return float(s.strip().replace(" ", "").replace(" ", "")
+                                  .replace(",", "."))
+                except (ValueError, AttributeError):
+                    return None
+
+            c1, c2 = st.columns(2)
+            revenue_str = c1.text_input(
+                "Revenue / CA / PNB (FCFA bruts)", value="",
+                help="Ex : 113000000000 pour 113 milliards. Virgule ou point acceptés.",
+                key="manual_rev",
+            )
+            ni_str = c2.text_input(
+                "Résultat net (FCFA bruts)", value="",
+                key="manual_ni",
+            )
+            equity_str = None
+            total_assets_str = None
+            ebit_str = None
+            div_total_str = None
+            quarter_val = None
+            if is_annual:
+                c3, c4 = st.columns(2)
+                equity_str = c3.text_input(
+                    "Capitaux propres (FCFA)", value="",
+                    key="manual_eq",
+                )
+                total_assets_str = c4.text_input(
+                    "Total actif (FCFA)", value="",
+                    key="manual_ta",
+                )
+                c5, c6 = st.columns(2)
+                ebit_str = c5.text_input(
+                    "EBIT / Résultat d'exploitation (FCFA)", value="",
+                    key="manual_ebit",
+                )
+                div_total_str = c6.text_input(
+                    "Dividendes totaux (FCFA, optionnel)", value="",
+                    key="manual_div",
+                )
+            else:
+                quarter_val = st.selectbox(
+                    "Trimestre (S1 = 2, S2 = 4)",
+                    options=[1, 2, 3, 4], index=0,
+                    key="manual_quarter",
+                )
+                ebit_str = st.text_input(
+                    "EBIT (FCFA, optionnel)", value="",
+                    key="manual_ebit_q",
+                )
+
+            csave, ccancel = st.columns(2)
+            saved = csave.form_submit_button(
+                "Enregistrer", type="primary", use_container_width=True,
+            )
+            csave2 = ccancel.form_submit_button(
+                "Annuler", use_container_width=True,
+            )
+            if saved:
+                revenue = _parse_num(revenue_str)
+                net_income = _parse_num(ni_str)
+                if revenue is None and net_income is None:
+                    st.error("Au moins revenue ou net_income doit être renseigné.")
+                else:
+                    data = {
+                        "ticker": pub["ticker"],
+                        "fiscal_year": pub["fiscal_year"],
+                        "revenue": revenue,
+                        "net_income": net_income,
+                        "ebit": _parse_num(ebit_str),
+                    }
+                    try:
+                        if is_annual:
+                            data["equity"] = _parse_num(equity_str)
+                            data["total_assets"] = _parse_num(total_assets_str)
+                            data["dividends_total"] = _parse_num(div_total_str)
+                            save_fundamentals(data)
+                            st.success(
+                                f"✓ Fundamentals {pub['ticker']} FY{pub['fiscal_year']} enregistrés"
+                            )
+                        else:
+                            data["quarter"] = int(quarter_val)
+                            data["source"] = "saisie manuelle"
+                            data["notes"] = "Saisi via UI Publications"
+                            save_quarterly_data(data)
+                            st.success(
+                                f"✓ Quarterly {pub['ticker']} Q{quarter_val} FY{pub['fiscal_year']} enregistrés"
+                            )
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erreur d'enregistrement : {e}")
 
 
 # ════════════════════════════════════════════════════════════════════
