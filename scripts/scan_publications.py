@@ -157,6 +157,21 @@ def _detect_pub_type(text: str) -> tuple:
     """Retourne (pub_type, period, is_financial). Accepte texte ou slug (tirets)."""
     # Normaliser : remplacer tirets et underscores par espaces, minuscules
     t = text.lower().replace("-", " ").replace("_", " ")
+    # PRÉ-CHECK : les "Contrat de Liquidité" contiennent souvent "semestriel"
+    # ou "trimestriel" mais ne sont PAS des rapports financiers. À classifier
+    # comme corporate (event de market-making) pour éviter les fausses alertes
+    # dans le dashboard "trimestriels à intégrer".
+    if "contrat de liquidit" in t:
+        return ("corporate", None, False)
+    if "notation financi" in t or "notation cra" in t:
+        return ("corporate", None, False)
+    if "franchissement de seuil" in t:
+        return ("corporate", None, False)
+    if "communique" in t or "communiqué" in t:
+        # Communiqués génériques (pas résultats). Exclut si contient un mot fort.
+        if not any(k in t for k in ("etats financiers", "états financiers",
+                                     "resultats", "résultats", "exercice")):
+            return ("corporate", None, False)
     if ("trimestriel" in t or "1er trimestre" in t or "2eme trimestre" in t
             or "3eme trimestre" in t or "2e trimestre" in t or "3e trimestre" in t
             or "4eme trimestre" in t or "4e trimestre" in t):
