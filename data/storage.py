@@ -2130,69 +2130,208 @@ def get_quarterly_data(ticker: str, fiscal_year: int = None) -> pd.DataFrame:
 
 
 def get_publication_calendar() -> pd.DataFrame:
-    """
-    Genere un calendrier attendu des publications pour chaque titre suivi.
-    Les entreprises BRVM publient generalement:
-    - T1: fin avril / debut mai
-    - S1: fin aout / debut septembre
-    - T3: fin octobre / debut novembre
-    - Annuel: fin mars / debut avril
-    """
-    conn = get_connection()
-    # Get all tracked tickers (deduplicate by ticker, prefer non-null names)
-    tickers = read_sql_df("""SELECT ticker,
-                  MAX(company_name) AS company_name,
-                  MAX(sector) AS sector
-           FROM (
-               SELECT ticker, company_name, sector FROM fundamentals
-               UNION ALL
-               SELECT ticker, company_name, sector FROM market_data
-           )
-           GROUP BY ticker
-           ORDER BY ticker""")
-    conn.close()
+    """Calendrier des publications attendues avec statut RÉEL.
 
+    Croise 4 sources :
+    - Liste des tickers cotés (market_data + fundamentals)
+    - Publications reçues (`publications`)
+    - Données intégrées (`fundamentals`, `quarterly_data`)
+    - Gaps ignorés / titres dormants (`ignored_gaps`)
+
+    Périodes considérées par ticker : Annuel N-1 (avril), T1 N (mai),
+    S1 N (septembre), T3 N (novembre) — cycle standard BRVM/UEMOA.
+    Ajoute aussi Annuel N-2 si toujours pas intégré (retard structurel).
+
+    Statuts retournés :
+    - `integre`        : publication reçue ET données en base → vert
+    - `a_integrer`     : publication reçue mais données pas encore en base → orange
+    - `en_retard`      : mois attendu passé ET aucune publication → rouge
+    - `a_venir`        : mois attendu pas encore atteint → gris
+    (les titres dormants et gaps ignorés sont filtrés en sortie.)
+    """
+    from datetime import datetime
+    now = datetime.now()
+    current_year = now.year
+    current_month = now.month
+
+    # 1) Tickers cotés
+    tickers = read_sql_df("""
+        SELECT ticker,
+               MAX(company_name) AS company_name,
+               MAX(sector) AS sector
+        FROM (
+            SELECT ticker, company_name, sector FROM fundamentals
+            UNION ALL
+            SELECT ticker, company_name, sector FROM market_data
+        ) u
+        GROUP BY ticker
+        ORDER BY ticker
+    """)
     if tickers.empty:
         return pd.DataFrame()
 
-    # Build name/sector fallback from config
     from config import load_tickers
     config_tickers = {t["ticker"]: t for t in load_tickers()}
 
-    from datetime import datetime
-    current_year = datetime.now().year
-    current_month = datetime.now().month
+    # 2) Publications reçues par (ticker, pub_type, fiscal_year)
+    pubs = read_sql_df("""
+        SELECT ticker, pub_type, fiscal_year, MAX(pub_date) AS pub_date,
+               MAX(id) AS pub_id, MAX(url) AS url, MAX(title) AS title
+        FROM publications
+        WHERE COALESCE(ignored, 0) = 0
+          AND pub_type IN ('annuel', 'etats_financiers', 'trimestriel', 'semestriel')
+        GROUP BY ticker, pub_type, fiscal_year
+    """)
+    pubs_by_key = {}
+    if not pubs.empty:
+        for _, r in pubs.iterrows():
+            fy = r.get("fiscal_year")
+            try:
+                fy_int = int(fy) if fy is not None and not pd.isna(fy) else None
+            except (TypeError, ValueError):
+                fy_int = None
+            key = (r["ticker"], (r["pub_type"] or "").lower(), fy_int)
+            pubs_by_key[key] = {
+                "pub_id": r.get("pub_id"),
+                "pub_date": r.get("pub_date"),
+                "url": r.get("url"),
+                "title": r.get("title"),
+            }
+
+    # 3) Intégration annuelle : max(fiscal_year) avec revenue non-null par ticker
+    fund = read_sql_df("""
+        SELECT ticker, MAX(fiscal_year) AS max_fy
+        FROM fundamentals WHERE revenue IS NOT NULL
+        GROUP BY ticker
+    """)
+    fund_max = dict(zip(fund["ticker"], fund["max_fy"])) if not fund.empty else {}
+
+    # 4) Intégration trimestrielle/semestrielle : set(ticker, fy)
+    quart = read_sql_df("SELECT DISTINCT ticker, fiscal_year FROM quarterly_data")
+    quart_set: set = set()
+    if not quart.empty:
+        for _, r in quart.iterrows():
+            try:
+                quart_set.add((r["ticker"], int(r["fiscal_year"])))
+            except (TypeError, ValueError):
+                continue
+
+    # 5) Ignore rules
+    ignored = read_sql_df("SELECT ticker, gap_type, fiscal_year FROM ignored_gaps")
+    ignored_permanent = set()   # ticker → ignore all annual (fiscal_year NULL)
+    ignored_annual_year = set() # (ticker, year) → ignore just this year
+    ignored_trim_permanent = set()
+    if not ignored.empty:
+        for _, r in ignored.iterrows():
+            gt = r.get("gap_type")
+            fy = r.get("fiscal_year")
+            is_null = fy is None or pd.isna(fy)
+            if gt == "annuel":
+                if is_null:
+                    ignored_permanent.add(r["ticker"])
+                else:
+                    try:
+                        ignored_annual_year.add((r["ticker"], int(fy)))
+                    except (TypeError, ValueError):
+                        pass
+            elif gt == "trimestriel":
+                if is_null:
+                    ignored_trim_permanent.add(r["ticker"])
+
+    def _match_pub(ticker: str, pub_types: tuple, fy: int):
+        """Cherche une publication qui matche parmi les types acceptés."""
+        for pt in pub_types:
+            key = (ticker, pt, fy)
+            if key in pubs_by_key:
+                return pubs_by_key[key]
+        return None
+
+    def _compute_status(published: bool, integrated: bool,
+                         expected_month: int, year_diff: int):
+        """year_diff = 0 si année courante, <0 si passé (retard structurel)."""
+        if published and integrated:
+            return "integre"
+        if published and not integrated:
+            return "a_integrer"
+        # Pas publié : selon date attendue
+        if year_diff < 0:
+            return "en_retard"  # année passée non publiée = très en retard
+        if expected_month < current_month:
+            return "en_retard"
+        if expected_month == current_month:
+            return "attendu_ce_mois"
+        return "a_venir"
 
     calendar = []
     for _, row in tickers.iterrows():
         ticker = row["ticker"]
+        if ticker in ignored_permanent:
+            continue  # ticker inactif, on ne l'affiche pas
         cfg = config_tickers.get(ticker, {})
         name = row["company_name"] or cfg.get("name", ticker)
         sector = row["sector"] or cfg.get("sector", "")
 
-        # Expected publication dates
-        expected = [
-            {"period": f"T1 {current_year}", "expected_month": 5, "type": "trimestriel"},
-            {"period": f"S1 {current_year}", "expected_month": 9, "type": "semestriel"},
-            {"period": f"T3 {current_year}", "expected_month": 11, "type": "trimestriel"},
-            {"period": f"Annuel {current_year - 1}", "expected_month": 4, "type": "annuel"},
-        ]
+        # Périodes candidates : Annuel N-2 (si en retard structurel), Annuel N-1,
+        # puis T1/S1/T3 de l'année courante
+        periods = []
+        # Annuel N-2 seulement si pas encore intégré (sinon inutile de le montrer)
+        fy_n2 = current_year - 2
+        if (fund_max.get(ticker) or 0) < fy_n2 and (ticker, fy_n2) not in ignored_annual_year:
+            periods.append(dict(
+                period=f"Annuel {fy_n2}", type="annuel",
+                fy=fy_n2, expected_month=4, year_diff=-2,
+            ))
+        # Annuel N-1
+        fy_n1 = current_year - 1
+        if (ticker, fy_n1) not in ignored_annual_year:
+            periods.append(dict(
+                period=f"Annuel {fy_n1}", type="annuel",
+                fy=fy_n1, expected_month=4, year_diff=-1,
+            ))
+        # Trimestriels/semestriels de l'année courante (skip si ticker ne publie pas)
+        if ticker not in ignored_trim_permanent:
+            for period_label, pt, fy_p, month, ydiff in [
+                (f"T1 {current_year}", "trimestriel", current_year, 5, 0),
+                (f"S1 {current_year}", "semestriel", current_year, 9, 0),
+                (f"T3 {current_year}", "trimestriel", current_year, 11, 0),
+            ]:
+                periods.append(dict(
+                    period=period_label, type=pt, fy=fy_p,
+                    expected_month=month, year_diff=ydiff,
+                ))
 
-        for exp in expected:
-            status = "a_venir"
-            if exp["expected_month"] < current_month:
-                status = "en_retard"
-            elif exp["expected_month"] == current_month:
-                status = "attendu_ce_mois"
+        for p in periods:
+            # Chercher publication (annuel accepte 'annuel' ou 'etats_financiers')
+            if p["type"] == "annuel":
+                pub_types = ("annuel", "etats_financiers")
+                integrated = (fund_max.get(ticker) or 0) >= p["fy"]
+            else:
+                pub_types = (p["type"],)
+                integrated = (ticker, p["fy"]) in quart_set
+            pub = _match_pub(ticker, pub_types, p["fy"])
+            published = pub is not None
+
+            status = _compute_status(published, integrated,
+                                       p["expected_month"], p["year_diff"])
+
+            # Ne pas afficher les "à venir" pour ne pas encombrer le calendrier
+            # (on montre déjà de quoi être occupé). Seul « attendu ce mois »
+            # est utile côté action.
+            if status == "a_venir":
+                continue
 
             calendar.append({
                 "ticker": ticker,
                 "company_name": name,
                 "sector": sector,
-                "period": exp["period"],
-                "type": exp["type"],
-                "expected_month": exp["expected_month"],
+                "period": p["period"],
+                "type": p["type"],
+                "fiscal_year": p["fy"],
+                "expected_month": p["expected_month"],
                 "status": status,
+                "pub_id": pub.get("pub_id") if pub else None,
+                "pub_date": pub.get("pub_date") if pub else None,
+                "pub_url": pub.get("url") if pub else None,
             })
 
     return pd.DataFrame(calendar)

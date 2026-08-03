@@ -489,8 +489,9 @@ def _render_publication_calendar():
 
     status_order = [
         ("en_retard", "En retard", "down"),
+        ("a_integrer", "À intégrer", "ocre"),
         ("attendu_ce_mois", "Attendu ce mois", "ocre"),
-        ("a_venir", "À venir", "neutral"),
+        ("integre", "Intégré", "up"),
     ]
 
     header_style = (
