@@ -898,6 +898,49 @@ def _render_technical(ticker, price_df, result):
                     st.error(f"Erreur: {e}")
         return
 
+    # ═══════════════════════════════════════════════════════════════════
+    # Card "Score technique" — même pattern visuel que Fondamentale
+    # ═══════════════════════════════════════════════════════════════════
+    tech_total = result.get("technical_score") or 0
+
+    def _tone_for_score(score, max_score):
+        pct = score / max_score if max_score else 0
+        if pct >= 0.66: return "var(--up)"
+        if pct >= 0.40: return "var(--ocre)"
+        return "var(--down)"
+
+    # Résumé qualitatif du score (profil "Sain / Prudent / Fragile")
+    if tech_total >= 33:
+        profile_tech = "Momentum favorable"
+    elif tech_total >= 25:
+        profile_tech = "Neutre"
+    elif tech_total >= 15:
+        profile_tech = "Configuration défavorable"
+    else:
+        profile_tech = "Signal faible"
+
+    st.markdown(
+        f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
+        f"border-radius:10px;padding:14px 16px;margin-bottom:12px;"
+        f"max-width:340px;'>"
+        f"<div class='label-xs' style='margin-bottom:4px;'>Score technique</div>"
+        f"<div style='font-size:28px;font-weight:600;letter-spacing:-0.02em;"
+        f"color:var(--ink);font-variant-numeric:tabular-nums;'>"
+        f"{tech_total:.0f} <span style='color:var(--ink-3);font-size:16px;"
+        f"font-weight:400;'>/ 50</span></div>"
+        f"<div style='height:4px;background:var(--bg-sunken);border-radius:999px;"
+        f"margin:8px 0 10px 0;overflow:hidden;'>"
+        f"<div style='width:{min(100, tech_total/50*100):.0f}%;height:100%;"
+        f"background:{_tone_for_score(tech_total, 50)};border-radius:999px;'>"
+        f"</div></div>"
+        f"<div style='font-size:12px;color:var(--ink-3);line-height:1.4;'>"
+        f"Profil <b style='color:var(--ink);'>{profile_tech}</b> "
+        f"<span class='muted'>·</span> détail : tendance, RSI, MACD, Bollinger, "
+        f"volume, momentum</div>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
     # Compute indicators on full dataset
     df = compute_all_indicators(price_df)
     freq = df.attrs.get("frequency", _detect_frequency(price_df))
