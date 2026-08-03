@@ -554,12 +554,30 @@ def _sanitize_fundamentals(data: dict) -> dict:
             data[k] = None
         reasons.append(why)
 
-    # 1. Marge nette absurde : >60% (très haute meme pour banque) ou <-100%
+    # 1. Marge nette absurde. Les banques ont typiquement 40-75% de marge
+    # (PNB - charges d'exploitation / PNB), les industriels 5-25%. On adapte
+    # le seuil selon le secteur si connu (fallback 80% pour être tolérant).
+    sector_str = (data.get("sector") or "").lower()
+    is_bank_sec = "banque" in sector_str or "bank" in sector_str
+    ticker_str = (data.get("ticker") or "")
+    # Heuristique tickers banques BRVM (suffixes .ci/.bj/.tg/.sn courants)
+    # Comparaison sur préfixe uppercase pour être insensible à la casse du suffix.
+    _BANK_PREFIXES = {
+        "BICC", "BICB", "BOAB", "BOABF", "BOAC", "BOAM", "BOAN", "BOAS",
+        "CBIBF", "ECOC", "ETIT", "NSBC", "ORGT", "SAFC", "SGBC", "SIBC",
+    }
+    ticker_prefix = ticker_str.split(".")[0].upper() if ticker_str else ""
+    is_bank = is_bank_sec or ticker_prefix in _BANK_PREFIXES
+
     if rev and ni and rev != 0:
         margin = ni / rev
-        if margin > 0.6 or margin < -1.0:
+        # Banques : jusqu'à 80% possible (BICB à 68%, SIBC à 51%).
+        # Industriels : max 60%.
+        upper_margin = 0.80 if is_bank else 0.60
+        if margin > upper_margin or margin < -1.0:
             _clear("revenue", "net_income",
-                   why=f"Marge absurde {margin*100:.1f}% (rev={rev:,.0f}, ni={ni:,.0f})")
+                   why=f"Marge absurde {margin*100:.1f}% "
+                        f"(rev={rev:,.0f}, ni={ni:,.0f}, banque={is_bank})")
 
     # 2. Revenue < 1 million pour un titre coté → probablement tronqué
     if rev is not None and 0 < abs(rev) < 1e6:
