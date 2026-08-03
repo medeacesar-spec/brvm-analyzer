@@ -26,9 +26,28 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from data.db import read_sql_df  # noqa: E402
+from data.db import read_sql_df, get_connection  # noqa: E402
 from data.pdf_extractor import download_and_extract  # noqa: E402
 from data.storage import save_fundamentals, save_quarterly_data  # noqa: E402
+
+
+def _log_attempt(pub_id, ticker, fy, pt, url, status, error=None, summary=None):
+    """Journalise une tentative d'extraction dans extraction_attempts.
+    Non bloquant : si l'insert échoue, on continue."""
+    try:
+        conn = get_connection()
+        conn.execute(
+            """INSERT INTO extraction_attempts
+               (publication_id, ticker, fiscal_year, pub_type, report_link_url,
+                status, error_message, extracted_summary)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (pub_id, ticker, fy, pt, url, status,
+             (error or "")[:500], (summary or "")[:500]),
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
 
 
 # Map publications.pub_type → liste des report_links.report_type compatibles
@@ -103,12 +122,14 @@ def main():
         tk = p["ticker"]
         fy = int(p["fiscal_year"]) if p["fiscal_year"] else None
         pt = p["pub_type"]
+        pub_id = int(p.get("id")) if p.get("id") is not None else None
         title = p.get("title_pretty") or p.get("title") or ""
         label = f"[{i}/{len(pending)}] {tk:8} {fy} {pt:12}"
 
         if not fy or pt not in TYPE_MAP:
             print(f"{label} SKIP (type/year non gere)")
             n_skip_no_pdf += 1
+            _log_attempt(pub_id, tk, fy, pt, None, "skip_unsupported_type")
             continue
 
         link = _find_report_link(tk, fy, pt)
@@ -116,6 +137,7 @@ def main():
             print(f"{label} SKIP (pas de PDF dans report_links)")
             n_skip_no_pdf += 1
             summary.append((tk, fy, pt, "no_pdf", title))
+            _log_attempt(pub_id, tk, fy, pt, None, "no_pdf")
             continue
 
         try:
@@ -126,12 +148,16 @@ def main():
             print(f"{label} ERREUR download/extract : {e}")
             n_err += 1
             summary.append((tk, fy, pt, f"err: {e}", title))
+            _log_attempt(pub_id, tk, fy, pt, link["url"], "error",
+                          error=f"download/extract: {e}")
             continue
 
         if result.get("error"):
             print(f"{label} ERREUR : {result['error']}")
             n_err += 1
             summary.append((tk, fy, pt, f"err: {result['error']}", title))
+            _log_attempt(pub_id, tk, fy, pt, link["url"], "error",
+                          error=result['error'])
             continue
 
         revenue = result.get("revenue")
@@ -143,7 +169,14 @@ def main():
             print(f"{label} SKIP (parser n'a rien extrait)")
             n_skip_no_data += 1
             summary.append((tk, fy, pt, "no_data", title))
+            _log_attempt(pub_id, tk, fy, pt, link["url"], "parser_empty",
+                          summary=f"multiplier={result.get('multiplier')}")
             continue
+
+        _extracted_summary = (
+            f"rev={revenue or 0:,.0f} ni={net_income or 0:,.0f} "
+            f"ebit={ebit or 0:,.0f} mult={result.get('multiplier')}"
+        )
 
         # Route vers la bonne table
         if pt == "annuel":
@@ -160,10 +193,14 @@ def main():
                 print(f"{label} OK fundamentals (rev={revenue or 0:,.0f}, ni={net_income or 0:,.0f})")
                 n_ok += 1
                 summary.append((tk, fy, pt, "ok", title))
+                _log_attempt(pub_id, tk, fy, pt, link["url"], "success",
+                              summary=_extracted_summary)
             except Exception as e:
                 print(f"{label} SAVE ERR : {e}")
                 n_err += 1
                 summary.append((tk, fy, pt, f"save_err: {e}", title))
+                _log_attempt(pub_id, tk, fy, pt, link["url"], "save_error",
+                              error=str(e))
             continue
 
         # Trimestriel ou semestriel → quarterly_data
@@ -172,6 +209,7 @@ def main():
             print(f"{label} SKIP (quarter non detecte dans URL)")
             n_skip_no_data += 1
             summary.append((tk, fy, pt, "no_quarter", title))
+            _log_attempt(pub_id, tk, fy, pt, link["url"], "no_quarter")
             continue
         try:
             save_quarterly_data({
@@ -182,10 +220,14 @@ def main():
             print(f"{label} OK quarterly_data Q{q} (rev={revenue or 0:,.0f}, ni={net_income or 0:,.0f})")
             n_ok += 1
             summary.append((tk, fy, pt, f"ok Q{q}", title))
+            _log_attempt(pub_id, tk, fy, pt, link["url"], "success",
+                          summary=f"Q{q} {_extracted_summary}")
         except Exception as e:
             print(f"{label} SAVE ERR : {e}")
             n_err += 1
             summary.append((tk, fy, pt, f"save_err: {e}", title))
+            _log_attempt(pub_id, tk, fy, pt, link["url"], "save_error",
+                          error=str(e))
 
     # Résumé
     print()
