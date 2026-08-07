@@ -243,39 +243,61 @@ def refresh_intraday() -> dict:
 
 def _keep_streamlit_awake():
     """Ouvre l'app Streamlit dans Chromium headless pour établir une VRAIE
-    session WebSocket (le simple ping HTTP `?embed=true` ne suffisait pas :
-    Streamlit détecte les sessions actives via WebSocket, pas GET).
+    session WebSocket. Le mode ?embed=true ne semble pas compter comme
+    session côté Streamlit Cloud → on cible la racine.
 
-    Playwright installé au niveau du workflow CI uniquement (pas dans
-    requirements.txt pour ne pas alourdir le deploy Streamlit Cloud).
-
-    Fallback silencieux vers un curl basique si Playwright indisponible
-    (ex : run local sans les browsers installés).
+    Log détaillé pour vérifier ce que la page contient (titre + marqueurs).
     """
-    url = "https://brvm-analyzer.streamlit.app/?embed=true"
+    import sys as _sys
+    import time as _time
+    url = "https://brvm-analyzer.streamlit.app/"
+
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
-        print(f"[keep-alive] Playwright non installé, fallback curl")
-        _basic_curl_ping(url)
+        print("[keep-alive] Playwright indispo, fallback curl", flush=True)
+        _basic_curl_ping(url + "?embed=true")
         return
 
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
-            context = browser.new_context()
+            context = browser.new_context(
+                viewport={"width": 1366, "height": 900},
+                user_agent=("Mozilla/5.0 (X11; Linux x86_64) "
+                             "AppleWebKit/537.36 (KHTML, like Gecko) "
+                             "Chrome/151.0.0.0 Safari/537.36"),
+            )
             page = context.new_page()
-            print(f"[keep-alive] Ouverture {url}")
-            page.goto(url, timeout=45000, wait_until="domcontentloaded")
-            # Attend 20s pour laisser la WebSocket s'ouvrir et Streamlit
-            # enregistrer la session côté serveur
-            page.wait_for_timeout(20000)
-            print(f"[keep-alive] Session WebSocket maintenue 20s, fermeture")
+
+            print(f"[keep-alive] GET {url}", flush=True)
+            t0 = _time.time()
+            try:
+                page.goto(url, timeout=60000, wait_until="load")
+            except Exception as e_nav:
+                print(f"[keep-alive] navigation warning: {e_nav}", flush=True)
+
+            title = page.title()
+            print(f"[keep-alive] page loaded in {_time.time()-t0:.1f}s, "
+                  f"title={title!r}", flush=True)
+
+            # Wait 30s to give Streamlit time to establish WebSocket + register
+            # session. Use time.sleep instead of page.wait_for_timeout because
+            # the latter has been unreliable in some Playwright versions.
+            _time.sleep(30)
+
+            content = page.content()[:3000].lower()
+            is_sleep = "zzzz" in content or "gone to sleep" in content
+            has_streamlit = "stapp" in content or "streamlit" in content
+            print(f"[keep-alive] after 30s: sleep_screen={is_sleep} "
+                  f"streamlit_content={has_streamlit} "
+                  f"total_time={_time.time()-t0:.1f}s", flush=True)
+
             context.close()
             browser.close()
     except Exception as e:
-        print(f"[keep-alive] Playwright échec, fallback curl : {e}")
-        _basic_curl_ping(url)
+        print(f"[keep-alive] Playwright fatal: {e}", flush=True)
+        _basic_curl_ping(url + "?embed=true")
 
 
 def _basic_curl_ping(url):
