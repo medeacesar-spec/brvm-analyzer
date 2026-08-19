@@ -9,7 +9,7 @@ Gere les formats:
 - Banques PCEB/OHADA (PNB, marge d'intermediation, chiffres cles)
 - Rapports du CA bancaires (tableaux chiffres cles)
 
-Inclut un fallback OCR via easyocr pour les PDFs scannes (images).
+Inclut un fallback OCR (pytesseract, ou easyocr si installe) pour les PDFs scannes.
 """
 
 import io
@@ -449,7 +449,27 @@ def _extract_bank_chiffres_cles(all_tables: list, mult: float) -> dict:
 # Text extraction (fallback)
 # ---------------------------------------------------------------------------
 
-def _extract_from_text(all_text: str, mult: float) -> dict:
+# Un montant peut s'ecrire "27 539", "70045 411" (OCR qui fusionne un groupe),
+# "-2 396" ou "1 921,60". Les groupes de 3 chiffres separes par espace ou point
+# sont rattaches au meme nombre ; un groupe plus court ouvre un nouveau nombre,
+# ce qui permet de decouper "27 539 29 062" en deux colonnes.
+# Le lookahead final est indispensable : l'OCR colle parfois deux colonnes
+# ("8 640 318 8656926"), et sans lui le groupe " 865" serait rattache au
+# premier nombre.
+_NUM_TOKEN = re.compile(r"-?\d+(?:[ .]\d{3})*(?:,\d+)?(?!\d)")
+
+_TABLE_LABELS = [
+    (r"chiffre\s+d.affaires", "revenue"),
+    (r"produit\s+net\s+bancaire", "revenue_bank"),
+    (r"r.sultat\s+net", "net_income"),
+    (r"capitaux\s+propres", "equity"),
+    (r"total\s+bilan", "total_assets"),
+    (r"total\s+(?:de\s+l.)?actif", "total_assets"),
+]
+
+
+def _extract_from_text(all_text: str, mult: float,
+                       appliquer_plancher: bool = True) -> dict:
     """Extraction depuis le texte brut.
 
     Approche conservatrice : on exige un séparateur fort (`:` ou unité
@@ -460,13 +480,17 @@ def _extract_from_text(all_text: str, mult: float) -> dict:
     data = {}
     text_lower = all_text.lower()
 
+    # `{0,80}` et non `*` : sans borne de distance, un label allait chercher
+    # le premier `:` du document (souvent un numero de registre en pied de
+    # page) et le prenait pour son montant. La borne laisse passer un retour
+    # a la ligne entre le label et sa valeur, ce qui arrive souvent.
     patterns = [
-        (r"r.sultat\s*net[^:]*?:\s*([\d\s,\.]+)", "net_income"),
-        (r"chiffre\s*d.affaires[^:]*?:\s*([\d\s,\.]+)", "revenue"),
-        (r"capitaux\s*propres[^:]*?:\s*([\d\s,\.]+)", "equity"),
-        (r"produit\s*net\s*bancaire[^:]*?:\s*([\d\s,\.]+)", "revenue_bank"),
-        (r"total\s*(?:de\s*l.)?actif[^:]*?:\s*([\d\s,\.]+)", "total_assets"),
-        (r"total\s*bilan[^:]*?:\s*([\d\s,\.]+)", "total_assets"),
+        (r"r.sultat\s*net[^:]{0,80}?:\s*([\d\s,\.]+)", "net_income"),
+        (r"chiffre\s*d.affaires[^:]{0,80}?:\s*([\d\s,\.]+)", "revenue"),
+        (r"capitaux\s*propres[^:]{0,80}?:\s*([\d\s,\.]+)", "equity"),
+        (r"produit\s*net\s*bancaire[^:]{0,80}?:\s*([\d\s,\.]+)", "revenue_bank"),
+        (r"total\s*(?:de\s*l.)?actif[^:]{0,80}?:\s*([\d\s,\.]+)", "total_assets"),
+        (r"total\s*bilan[^:]{0,80}?:\s*([\d\s,\.]+)", "total_assets"),
     ]
 
     for pattern, field in patterns:
@@ -475,6 +499,47 @@ def _extract_from_text(all_text: str, mult: float) -> dict:
             val = _parse_amount(match.group(1))
             if val:
                 data[field] = val * mult
+
+    # Lignes de tableau : "Chiffre d'affaires 70045 411| 69531684| ..." ou
+    # "Produit Net bancaire 27 539 29 062 -1522". Aucun `:`, plusieurs colonnes.
+    # On retient la PREMIERE colonne chiffree, qui est la periode courante dans
+    # les "Tableau d'activité et de résultats" normalises BRVM.
+    # Etats a double devise (Ecobank : "milliers $eu | millions fcfa") : la
+    # premiere colonne n'est pas en FCFA. Trop risque, on laisse les autres
+    # methodes decider plutot que de lire la mauvaise colonne.
+    devise_etrangere = re.search(r"\$\s*eu|\busd\b|dollars?\s*(?:us|americain)",
+                                 text_lower) is not None
+
+    if not devise_etrangere:
+        for line in text_lower.split("\n"):
+            for label_pat, field in _TABLE_LABELS:
+                if field in data:
+                    continue
+                m = re.match(r"\s*" + label_pat + r"\b", line)
+                if not m:
+                    continue
+                for tok in _NUM_TOKEN.findall(line[m.end():]):
+                    val = _parse_amount(tok)
+                    if val is None or val == 0:
+                        continue
+                    # Moins de 3 chiffres = probablement un fragment de nombre
+                    # mal decoupe par l'extraction ("4 93 630" lu "4"), pas un
+                    # montant de tableau financier.
+                    if len(re.sub(r"\D", "", tok)) < 3:
+                        continue
+                    # Un millesime isole ("2026") n'est pas un montant
+                    if float(val).is_integer() and 1990 <= abs(val) <= 2100:
+                        continue
+                    montant = val * mult
+                    # Plancher de plausibilite : aucune societe cotee a la BRVM
+                    # n'affiche un chiffre d'affaires ou un actif de quelques
+                    # centaines de francs. En dessous, c'est que l'unite du
+                    # tableau n'a pas ete identifiee — mieux vaut ne rien
+                    # remonter que de remonter un montant divise par un million.
+                    if appliquer_plancher and abs(montant) < 100_000_000:
+                        continue
+                    data[field] = montant
+                    break
 
     # Patterns "label suivi de chiffre + unité explicite" (slides type
     # Sonatel : "Revenus Consolidés ... 504,2 Mds FCFA"). On exige l'unité
@@ -509,6 +574,97 @@ def _extract_from_text(all_text: str, mult: float) -> dict:
     return data
 
 
+_MULT_WORDS = (
+    (r"milliards?", 1_000_000_000),
+    (r"millions?", 1_000_000),
+    (r"milliers?", 1_000),
+)
+
+
+def _detect_multiplier(text: str):
+    """Detecte l'unite dans laquelle les montants sont libelles.
+
+    Trois niveaux, du plus fiable au plus permissif :
+      1. abreviation collee — "Indicateurs en MFCFA" (BOA), KFCFA, MdFCFA
+      2. declaration explicite — "en milliers de FCFA", "(en millions)"
+      3. simple mention du mot, en dernier recours
+
+    Dans les niveaux 2 et 3 on retient la mention la PLUS PRECOCE du document :
+    l'en-tete du tableau fait foi, pas un commentaire situe plus bas. Sans
+    cette regle, le rapport SITAB ("Indicateurs en milliers FCFA" dans le
+    tableau, "70,0 milliards de FCFA" dans le commentaire) etait lu avec un
+    facteur 1 000 000 de trop.
+    """
+    low = (text or "").lower()
+
+    m = re.search(r"\ben\s+(md|m|k)\s*f\s*\.?\s*cfa\b", low)
+    if m:
+        return {"md": 1_000_000_000, "m": 1_000_000, "k": 1_000}[m.group(1)], True
+
+    def _declaration(match):
+        """Ecarte les mentions precedees d'un nombre : dans "1 268 milliards
+        fcfa" l'unite decrit une phrase, pas l'en-tete d'une colonne."""
+        avant = low[max(0, match.start() - 10):match.start()].rstrip()
+        return not (avant and avant[-1].isdigit())
+
+    # Le filtre _declaration ne s'applique pas au dernier niveau : c'est
+    # justement lui qui doit rattraper les tournures en toutes lettres du type
+    # "totalise 27 539 millions de FCFA".
+    for patterns, exiger_declaration, fiable in (
+        ((r"\b{w}\s*(?:de\s*)?f\s*\.?\s*cfa\b",), True, True),   # unite + devise
+        ((r"\((?:en\s+)?{w}\b", r"\ben\s+{w}\b"), True, True),    # declaration
+        ((r"\b{w}\s*(?:de\s*)?f\s*\.?\s*cfa\b",
+          r"\b{w}\s+de\s+francs",), False, False),                  # prose
+    ):
+        best = None
+        for word, mult in _MULT_WORDS:
+            for pat in patterns:
+                for m in re.finditer(pat.format(w=word), low):
+                    if exiger_declaration and not _declaration(m):
+                        continue
+                    if best is None or m.start() < best[0]:
+                        best = (m.start(), mult)
+                    break
+        if best is not None:
+            return best[1], fiable
+
+    return 1, True
+
+
+_MONEY_FIELDS = ("revenue", "revenue_bank", "net_income", "equity", "total_assets")
+
+
+def _resolve_multiplier(text: str) -> int:
+    """Multiplicateur a appliquer, indice faible arbitre par l'ordre de grandeur.
+
+    Un en-tete ("Indicateurs en MFCFA") fait foi. Une tournure en prose
+    ("s'etablit a 11 528 millions de FCFA") est bien plus fragile : SOGB
+    l'ecrit alors que son tableau est deja en FCFA pleins, et l'appliquer
+    multipliait le chiffre d'affaires par un million. On ne la suit donc que
+    si les montants bruts sont trop petits pour etre des FCFA.
+    """
+    mult, fiable = _detect_multiplier(text)
+    if mult == 1:
+        return mult
+
+    brut = _extract_from_text(text, 1, appliquer_plancher=False)
+    valeurs = [abs(v) for k, v in brut.items() if k in _MONEY_FIELDS and v]
+    maxi = max(valeurs) if valeurs else 0
+
+    # Indice faible + montants deja en FCFA pleins : on ignore l'indice.
+    if not fiable and maxi >= 100_000_000:
+        return 1
+
+    # Plafond de vraisemblance : la capitalisation de toute la BRVM tourne
+    # autour de 18 000 milliards FCFA. Un poste a 100 000 milliards signale un
+    # multiplicateur de trop, souvent lu dans une tournure ou le nombre est
+    # colle a l'unite ("1108milliards fcfa" chez Sonatel).
+    while mult > 1 and maxi * mult > 100_000_000_000_000:
+        mult //= 1000
+
+    return mult
+
+
 # ---------------------------------------------------------------------------
 # OCR for scanned PDFs
 # ---------------------------------------------------------------------------
@@ -517,60 +673,104 @@ _ocr_reader = None
 
 
 def _get_ocr_reader():
+    """Reader easyocr si la lib est installee. Optionnelle : easyocr tire torch,
+    trop lourd pour Streamlit Cloud free tier — pytesseract prend le relais."""
     global _ocr_reader
     if _ocr_reader is None:
         try:
             import easyocr
             _ocr_reader = easyocr.Reader(['fr', 'en'], gpu=False, verbose=False)
-        except ImportError:
+        except Exception:
             return None
     return _ocr_reader
 
 
+def ocr_available() -> bool:
+    """True si au moins un moteur OCR est utilisable."""
+    try:
+        import pytesseract
+        pytesseract.get_tesseract_version()
+        return True
+    except Exception:
+        pass
+    try:
+        import easyocr  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def _ocr_image(img) -> str:
+    """OCR d'une image PIL. easyocr si dispo, sinon pytesseract (tesseract-ocr
+    + packs fra/eng au niveau OS, cf packages.txt)."""
+    reader = _get_ocr_reader()
+    if reader is not None:
+        try:
+            import numpy as np
+            results = reader.readtext(np.array(img), detail=0, paragraph=True)
+            text = "\n".join(results)
+            if text.strip():
+                return text
+        except Exception as e:
+            print(f"OCR easyocr error: {e}")
+
+    try:
+        import pytesseract
+    except ImportError:
+        return ""
+
+    gray = img.convert("L")
+    # Tesseract lit mal en dessous de ~1500px de large sur du tableau financier
+    w, h = gray.size
+    if w < 1500:
+        from PIL import Image as _Image
+        scale = 1500 / w
+        gray = gray.resize((int(w * scale), int(h * scale)), _Image.LANCZOS)
+
+    for lang in ("fra+eng", "fra", "eng", None):
+        try:
+            if lang is None:
+                return pytesseract.image_to_string(gray, config="--psm 6")
+            return pytesseract.image_to_string(gray, lang=lang, config="--psm 6")
+        except Exception as e:
+            # Pack de langue absent → on retente avec le suivant
+            last_err = e
+            continue
+    print(f"OCR pytesseract error: {last_err}")
+    return ""
+
+
 def _extract_with_ocr(pdf_path: str) -> str:
-    """Convert scanned PDF pages to images via PyMuPDF, then OCR with easyocr."""
+    """Rend chaque page en image via PyMuPDF puis l'OCR.
+
+    300 dpi : en dessous, les chiffres des tableaux scannes passent mal.
+    """
     try:
         import fitz  # PyMuPDF
-        reader = _get_ocr_reader()
-        if reader is None:
-            return ""
+    except ImportError as e:
+        print(f"OCR error: PyMuPDF indisponible ({e})")
+        return ""
+
+    try:
         doc = fitz.open(pdf_path)
-        all_text = ""
+    except Exception as e:
+        print(f"OCR error: ouverture PDF ({e})")
+        return ""
+
+    all_text = ""
+    try:
+        from PIL import Image
         max_pages = min(len(doc), 15)
         for i in range(max_pages):
-            page = doc[i]
-            pix = page.get_pixmap(dpi=200)
-            import numpy as np
-            from PIL import Image
-            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-            img_array = np.array(img)
-            results = reader.readtext(img_array, detail=0, paragraph=True)
-            page_text = "\n".join(results)
-            all_text += page_text + "\n\n"
+            try:
+                pix = doc[i].get_pixmap(dpi=300)
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                all_text += _ocr_image(img) + "\n\n"
+            except Exception as e:
+                print(f"OCR error page {i + 1}: {e}")
+    finally:
         doc.close()
-        return all_text
-    except ImportError:
-        # Fallback to pdf2image if PyMuPDF not available
-        try:
-            from pdf2image import convert_from_path
-            reader = _get_ocr_reader()
-            if reader is None:
-                return ""
-            images = convert_from_path(pdf_path, dpi=200, first_page=1, last_page=15)
-            all_text = ""
-            for img in images:
-                import numpy as np
-                img_array = np.array(img)
-                results = reader.readtext(img_array, detail=0, paragraph=True)
-                page_text = "\n".join(results)
-                all_text += page_text + "\n\n"
-            return all_text
-        except Exception as e:
-            print(f"OCR error: {e}")
-            return ""
-    except Exception as e:
-        print(f"OCR error: {e}")
-        return ""
+    return all_text
 
 
 # ---------------------------------------------------------------------------
@@ -616,13 +816,7 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
 
             if not is_scanned:
                 # Detect multiplier
-                text_lower = all_text.lower()
-                if "en milliards" in text_lower or "(milliards" in text_lower:
-                    data["multiplier"] = 1_000_000_000
-                elif "en millions" in text_lower or "(millions" in text_lower or "millions de francs" in text_lower:
-                    data["multiplier"] = 1_000_000
-                elif "en milliers" in text_lower or "(milliers" in text_lower:
-                    data["multiplier"] = 1_000
+                data["multiplier"] = _resolve_multiplier(all_text)
 
                 mult = data["multiplier"]
 
@@ -698,14 +892,7 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
         try:
             ocr_text = _extract_with_ocr(pdf_path)
             if ocr_text and len(ocr_text) > 100:
-                ocr_lower = ocr_text.lower()
-                ocr_mult = 1
-                if "milliards" in ocr_lower:
-                    ocr_mult = 1_000_000_000
-                elif "millions" in ocr_lower:
-                    ocr_mult = 1_000_000
-                elif "milliers" in ocr_lower:
-                    ocr_mult = 1_000
+                ocr_mult = _resolve_multiplier(ocr_text)
                 data["multiplier"] = ocr_mult
                 ocr_data = _extract_from_text(ocr_text, ocr_mult)
                 # Merge tous les champs extractibles depuis l'OCR (couvre ebit,
@@ -725,6 +912,23 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
               "ebit", "ebitda", "interest_expense", "cfo", "capex", "dividends_total"]:
         v = data.get(k)
         if v is not None and abs(v) > 1e16:
+            data[k] = None
+
+    # Plancher de sortie : sous ces seuils, la valeur ne vient pas d'un etat
+    # financier de societe cotee mais d'une unite non identifiee (tableau en
+    # millions lu comme des francs) ou d'un fragment de nombre. Mieux vaut un
+    # trou, comble par la saisie manuelle, qu'un chiffre faux d'un facteur
+    # 1 000 000 dans les ratios.
+    # Plafond : la BRVM entiere capitalise ~18 000 milliards FCFA et le plus
+    # gros bilan bancaire de la cote tourne autour de 28 000 milliards. Au-dela
+    # de 50 000 milliards on lit un numero de registre, pas un montant.
+    for k, plancher in (("revenue", 1e8), ("revenue_bank", 1e8),
+                        ("total_assets", 1e8), ("equity", 1e8),
+                        ("net_income", 1e6)):
+        v = data.get(k)
+        if v is not None and 0 < abs(v) < plancher:
+            data[k] = None
+        elif v is not None and abs(v) > 5e13:
             data[k] = None
 
     return data
