@@ -146,6 +146,11 @@ def compare_to_sector(ratio_name: str, value: float, benchmarks: dict,
     }
 
 
+# Cout des capitaux propres retenu pour la BRVM : taux sans risque regional
+# (emprunts d'Etat UEMOA ~6 %) augmente d'une prime de risque actions de ~7 %.
+COUT_CAPITAUX_PROPRES = 0.13
+
+
 def compute_ratios(data: dict) -> dict:
     """
     Calcule tous les ratios fondamentaux à partir des données financières.
@@ -236,6 +241,26 @@ def compute_ratios(data: dict) -> dict:
     # --- EPS ---
     ratios["eps"] = net_income / shares if shares != 0 else None
 
+    # --- BNPA normalise ---
+    # Le benefice d'un seul exercice est un mauvais socle de valorisation quand
+    # il est gonfle par de l'exceptionnel. FILTISAC 2024 : 18,6 Mds de resultat
+    # net dont 18,86 Mds de resultat HAO, pour 4,34 Mds d'activites ordinaires.
+    # Son BNPA affiche 1 318 pour un pouvoir beneficiaire ordinaire de ~308, et
+    # l'exercice suivant retombe a 33. La mediane des exercices connus lisse ces
+    # a-coups sans effacer une tendance de fond.
+    serie_ni = [data.get(f"net_income_{s}") for s in ("n3", "n2", "n1", "n0")]
+    serie_eps = sorted(v / shares for v in serie_ni
+                       if v not in (None, 0) and shares) if shares else []
+    ratios["eps_serie"] = serie_eps
+    if len(serie_eps) >= 3:
+        milieu = len(serie_eps) // 2
+        ratios["eps_normalise"] = (
+            serie_eps[milieu] if len(serie_eps) % 2
+            else (serie_eps[milieu - 1] + serie_eps[milieu]) / 2
+        )
+    else:
+        ratios["eps_normalise"] = None
+
     # --- DPS (utilisé) ---
     if dps:
         ratios["dps"] = dps
@@ -258,6 +283,7 @@ def compute_ratios(data: dict) -> dict:
 
     # --- P/B (Price to Book) ---
     book_value_per_share = equity / shares if shares != 0 else 0
+    ratios["bvps"] = book_value_per_share or None
     ratios["pb"] = price / book_value_per_share if book_value_per_share != 0 else None
 
     # --- Couverture du dividende (cash) ---
@@ -591,22 +617,39 @@ def _compute_fundamental_breakdown(ratios: dict, is_bank: bool) -> dict:
 
 def compute_target_price(ratios: dict, sector: Optional[str] = None,
                           benchmarks: Optional[dict] = None) -> dict:
-    """Calcule un prix cible simple à partir de deux méthodes transparentes :
+    """Prix cible par croisement de methodes complementaires.
 
-    - **PER fair** : min(PER médian secteur, 15) × EPS
-      (borne haute 15 pour rester Value ; utile quand EPS > 0)
-    - **Yield fair** : DPS / max(yield médian secteur, 5%)
-      (borne basse 5% qui est l'ancre BRVM pour un investisseur revenus)
+    Aucune methode n'est fiable seule sur la BRVM : on les croise et on lit
+    leur dispersion comme un indicateur de confiance.
 
-    Si les deux méthodes sont disponibles, moyenne simple (pondération 1:1).
-    Retourne dict avec target_price, components (liste de méthodes utilisées
-    avec détail), current_price, delta_abs, delta_pct, confidence.
+    - **PER sectoriel** : min(PER median du secteur, 15) x BNPA. Le BNPA retenu
+      est le BNPA NORMALISE (mediane des exercices connus) des qu'il existe :
+      valoriser sur le benefice d'une seule annee revient a extrapoler un
+      exercice exceptionnel (FILTISAC 2024 : BNPA 1 318 dont l'essentiel en
+      resultat HAO, puis 33 l'annee suivante).
+    - **Rendement cible** : DPS / max(rendement median, 5 %). La BRVM est un
+      marche de rendement, c'est le poids le plus fort.
+    - **PBR justifie** : (ROE / cout des capitaux propres) x valeur comptable
+      par action. Ancre solide pour les banques, qui pesent le tiers de la cote.
+    - **Valeur comptable** : servie comme PLANCHER, pas comme cible. Une societe
+      qui cote sous ses fonds propres n'est pas forcement une bonne affaire,
+      mais l'ecart merite d'etre signale.
+
+    Retourne aussi une fourchette (methode la plus basse / la plus haute), qui
+    dit bien plus qu'un point unique.
     """
     price = ratios.get("price") or 0
-    eps = ratios.get("eps")
     dps = ratios.get("dps") or 0
+    roe = ratios.get("roe")
+    bvps = ratios.get("bvps")
 
-    # Résout les benchmarks si non fournis
+    # BNPA normalise si disponible, sinon le dernier connu
+    eps_normalise = ratios.get("eps_normalise")
+    eps_annuel = ratios.get("eps")
+    eps = eps_normalise or eps_annuel
+    eps_lisse = bool(eps_normalise)
+
+    # Resout les benchmarks si non fournis
     if benchmarks is None:
         try:
             benchmarks = get_sector_benchmarks(sector)
@@ -615,60 +658,61 @@ def compute_target_price(ratios: dict, sector: Optional[str] = None,
     sec_key = sector if sector and benchmarks and sector in benchmarks else "global"
     sec_b = benchmarks.get(sec_key, {}) if benchmarks else {}
 
+    def _mediane(champ):
+        if not isinstance(sec_b, dict):
+            return None
+        stats = sec_b.get(champ) or {}
+        return stats.get("median") if isinstance(stats, dict) else None
+
     components = []
 
-    # ── Méthode 1 : PER sectoriel borné à 15 ──
-    per_med = None
-    if isinstance(sec_b, dict):
-        per_stats = sec_b.get("per") or {}
-        per_med = per_stats.get("median") if isinstance(per_stats, dict) else None
-    fair_per = None
-    if per_med and per_med > 0:
-        fair_per = min(per_med, 15)
-    elif not per_med:
-        fair_per = 12  # défaut prudent si pas de benchmark
+    def _ajouter(methode, formule, valeur, poids):
+        """Enregistre une methode, plafonnee a 3x le cours.
 
-    if eps and eps > 0 and fair_per:
-        price_per_raw = fair_per * eps
-        # Cap anti-aberration : si le marché décote structurellement un titre
-        # (ex. ETIT PER 1.6× vs sectoriel 10×), la méthode PER donnerait un
-        # target 10× le prix, physiquement peu crédible. On borne à 3× le
-        # prix actuel pour rester dans une fourchette d'upside réaliste.
-        price_per_capped = min(price_per_raw, 3 * price) if price else price_per_raw
-        capped = price_per_capped < price_per_raw
-        formula = f"PER {fair_per:.1f}× × EPS {eps:,.0f}"
-        if capped:
-            formula += " (plafonné à 3× cours)"
+        Le marche decote structurellement certains titres (ETIT se paie 3,7x ses
+        benefices quand le secteur est a 10x) : sans plafond, une methode
+        proposerait une cible a dix fois le cours, ce qui n'a aucun sens
+        operationnel.
+        """
+        if not valeur or valeur <= 0:
+            return
+        plafonne = min(valeur, 3 * price) if price else valeur
         components.append({
-            "method": "PER sectoriel",
-            "formula": formula,
-            "price": price_per_capped,
-            "raw_price": price_per_raw,
-            "capped": capped,
+            "method": methode,
+            "formula": formule + (" (plafonné à 3× cours)" if plafonne < valeur else ""),
+            "price": plafonne,
+            "raw_price": valeur,
+            "capped": plafonne < valeur,
+            "poids": poids,
         })
 
-    # ── Méthode 2 : Yield cible ≥ 5% ──
-    y_med = None
-    if isinstance(sec_b, dict):
-        y_stats = sec_b.get("dividend_yield") or {}
-        y_med = y_stats.get("median") if isinstance(y_stats, dict) else None
+    # ── Methode 1 : PER sectoriel borne a 15 ──
+    per_med = _mediane("per")
+    fair_per = min(per_med, 15) if per_med and per_med > 0 else 12
+    if eps and eps > 0:
+        libelle_eps = "BNPA normalisé" if eps_lisse else "BNPA"
+        _ajouter("PER sectoriel",
+                 f"PER {fair_per:.1f}× × {libelle_eps} {eps:,.0f}",
+                 fair_per * eps, 0.35)
+
+    # ── Methode 2 : rendement cible >= 5 % ──
+    y_med = _mediane("dividend_yield")
     fair_yield = max(y_med, 0.05) if y_med else 0.06
+    if dps and dps > 0:
+        _ajouter("Rendement cible",
+                 f"DPS {dps:,.0f} / rendement {fair_yield*100:.1f}%",
+                 dps / fair_yield, 0.40)
 
-    if dps and dps > 0 and fair_yield:
-        price_yield_raw = dps / fair_yield
-        # Même cap anti-aberration côté upper bound
-        price_yield_capped = min(price_yield_raw, 3 * price) if price else price_yield_raw
-        capped_y = price_yield_capped < price_yield_raw
-        formula_y = f"DPS {dps:,.0f} / yield {fair_yield*100:.1f}%"
-        if capped_y:
-            formula_y += " (plafonné à 3× cours)"
-        components.append({
-            "method": "Yield cible",
-            "formula": formula_y,
-            "price": price_yield_capped,
-            "raw_price": price_yield_raw,
-            "capped": capped_y,
-        })
+    # ── Methode 3 : PBR justifie par la rentabilite ──
+    # Un PBR se justifie par le ROE rapporte au cout des capitaux propres :
+    # une societe qui rentabilise ses fonds propres au-dela de ce que l'actionnaire
+    # exige vaut plus que sa valeur comptable, et inversement.
+    if roe and roe > 0 and bvps and bvps > 0:
+        pbr_justifie = roe / COUT_CAPITAUX_PROPRES
+        _ajouter("PBR justifié",
+                 f"ROE {roe*100:.1f}% / {COUT_CAPITAUX_PROPRES*100:.0f}% "
+                 f"× VC {bvps:,.0f}",
+                 pbr_justifie * bvps, 0.25)
 
     if not components:
         return {
@@ -678,18 +722,27 @@ def compute_target_price(ratios: dict, sector: Optional[str] = None,
             "delta_pct": None,
             "components": [],
             "confidence": "indéterminée",
+            "fourchette_basse": None,
+            "fourchette_haute": None,
+            "plancher": bvps,
+            "eps_lisse": eps_lisse,
         }
 
-    target = sum(c["price"] for c in components) / len(components)
+    poids_total = sum(c["poids"] for c in components)
+    target = sum(c["price"] * c["poids"] for c in components) / poids_total
+    basse = min(c["price"] for c in components)
+    haute = max(c["price"] for c in components)
     delta_abs = target - price if price else None
     delta_pct = (delta_abs / price * 100) if price else None
 
-    # Confiance : dispersion faible entre méthodes → élevée
-    if len(components) == 2:
-        spread = abs(components[0]["price"] - components[1]["price"]) / target
-        confidence = "élevée" if spread < 0.20 else ("moyenne" if spread < 0.50 else "faible")
+    # Confiance : c'est l'ECART ENTRE METHODES qui la fonde. Deux methodes qui
+    # convergent valent mieux que quatre qui se contredisent.
+    if len(components) >= 2 and target:
+        dispersion = (haute - basse) / target
+        confidence = ("élevée" if dispersion < 0.20
+                      else "moyenne" if dispersion < 0.50 else "faible")
     else:
-        confidence = "moyenne"  # une seule méthode disponible
+        confidence = "moyenne"
 
     return {
         "target_price": target,
@@ -698,6 +751,10 @@ def compute_target_price(ratios: dict, sector: Optional[str] = None,
         "delta_pct": delta_pct,
         "components": components,
         "confidence": confidence,
+        "fourchette_basse": basse,
+        "fourchette_haute": haute,
+        "plancher": bvps,
+        "eps_lisse": eps_lisse,
     }
 
 

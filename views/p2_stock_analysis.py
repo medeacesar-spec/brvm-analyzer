@@ -1429,9 +1429,40 @@ def _render_recommendation(result, fundamentals):
         f"<td style='padding:4px 0;color:var(--ink);font-size:13px;font-weight:600;"
         f"font-variant-numeric:tabular-nums;text-align:right;'>"
         f"{c['price']:,.0f} FCFA</td>"
+        f"<td style='padding:4px 0 4px 10px;color:var(--ink-3);font-size:11px;"
+        f"font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap;'>"
+        f"{c.get('poids', 0):.0%}</td>"
         f"</tr>"
         for c in comps
     )
+
+    # Fourchette et plancher : un point unique laisse croire a une precision
+    # que le modele n'a pas. L'ecart entre methodes est l'information utile.
+    _basse = tgt.get("fourchette_basse")
+    _haute = tgt.get("fourchette_haute")
+    _plancher = tgt.get("plancher")
+    encadre = ""
+    if _basse and _haute and _haute > _basse:
+        encadre += (
+            f"<div style='margin-top:10px;font-size:12px;color:var(--ink-2);'>"
+            f"Fourchette des méthodes : <b>{_basse:,.0f}</b> à <b>{_haute:,.0f}</b> FCFA</div>"
+        )
+    if _plancher:
+        _cours = tgt.get("current_price") or 0
+        sous = _cours and _cours < _plancher
+        encadre += (
+            f"<div style='font-size:12px;color:{'var(--up)' if sous else 'var(--ink-3)'};"
+            f"margin-top:3px;'>"
+            f"Plancher valeur comptable : {_plancher:,.0f} FCFA"
+            + (" — le cours est <b>sous</b> les fonds propres" if sous else "")
+            + "</div>"
+        )
+    if tgt.get("eps_lisse"):
+        encadre += (
+            f"<div style='font-size:11.5px;color:var(--ink-3);margin-top:3px;'>"
+            f"BNPA normalisé (médiane des exercices connus) pour neutraliser "
+            f"les résultats exceptionnels.</div>"
+        )
 
     # ── Cas 1 : pas de données ──
     if not tp:
@@ -1479,6 +1510,7 @@ def _render_recommendation(result, fundamentals):
             f"</div>"
             f"<table style='margin-top:12px;border-top:1px solid var(--border);"
             f"padding-top:10px;width:100%;border-collapse:collapse;'>{comps_rows}</table>"
+            f"{encadre}"
             f"</div>",
             unsafe_allow_html=True,
         )
@@ -1532,6 +1564,7 @@ def _render_recommendation(result, fundamentals):
             # Détail des méthodes
             f"<table style='margin-top:12px;border-top:1px solid var(--border);"
             f"padding-top:10px;width:100%;border-collapse:collapse;'>{comps_rows}</table>"
+            f"{encadre}"
             f"</div>",
             unsafe_allow_html=True,
         )
