@@ -778,26 +778,36 @@ def get_fundamentals(ticker: str, fiscal_year: Optional[int] = None) -> Optional
 
     result = dict(row)
 
-    # Enrich with market data if price/market_cap/dps missing
-    if not result.get("price") or not result.get("market_cap"):
-        md_row = conn if False else None  # need new connection
-        conn2 = get_connection()
-        md = conn2.execute(
-            "SELECT price, market_cap, dps, shares, dividend_yield FROM market_data WHERE ticker=?",
-            (ticker,),
-        ).fetchone()
-        conn2.close()
-        if md:
-            md_dict = dict(md)
-            if not result.get("price") and md_dict.get("price"):
-                result["price"] = md_dict["price"]
-            if not result.get("market_cap") and md_dict.get("market_cap"):
-                result["market_cap"] = md_dict["market_cap"]
-            if not result.get("shares") and md_dict.get("shares"):
-                result["shares"] = md_dict["shares"]
-            # Use latest DPS from market_data if fundamentals DPS is missing
-            if not result.get("dps") and md_dict.get("dps"):
-                result["dps"] = md_dict["dps"]
+    # Enrichissement depuis market_data.
+    #
+    # Le cours porte par `fundamentals` est celui du jour ou la fiche a ete
+    # scrapee, pas un cours d'exercice : il vieillit sans jamais etre rafraichi.
+    # Tant qu'on ne le consultait qu'a defaut, il masquait le cours reel — 36
+    # tickers sur 48 s'en trouvaient decales de plus de 10 %, et jusqu'a 55 %
+    # pour ETIT (32 F en base contre 71 F au marche). Comme PER, P/B et
+    # rendement se calculent tous sur le cours du jour, market_data fait
+    # desormais foi des qu'il a une valeur.
+    conn2 = get_connection()
+    md = conn2.execute(
+        "SELECT price, market_cap, dps, shares, dividend_yield FROM market_data WHERE ticker=?",
+        (ticker,),
+    ).fetchone()
+    conn2.close()
+    if md:
+        md_dict = dict(md)
+        if md_dict.get("price"):
+            result["price"] = md_dict["price"]
+        # La capitalisation suit le cours : la reprendre aussi, sinon elle
+        # resterait coherente avec l'ancien cours et plus avec le nouveau.
+        if md_dict.get("market_cap"):
+            result["market_cap"] = md_dict["market_cap"]
+        elif md_dict.get("price") and result.get("shares"):
+            result["market_cap"] = md_dict["price"] * result["shares"]
+        if not result.get("shares") and md_dict.get("shares"):
+            result["shares"] = md_dict["shares"]
+        # Use latest DPS from market_data if fundamentals DPS is missing
+        if not result.get("dps") and md_dict.get("dps"):
+            result["dps"] = md_dict["dps"]
 
     return result
 
