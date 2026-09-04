@@ -146,6 +146,11 @@ def compare_to_sector(ratio_name: str, value: float, benchmarks: dict,
     }
 
 
+# Cout des capitaux propres retenu pour la BRVM : taux sans risque regional
+# (emprunts d'Etat UEMOA ~6 %) augmente d'une prime de risque actions de ~7 %.
+COUT_CAPITAUX_PROPRES = 0.13
+
+
 def compute_ratios(data: dict) -> dict:
     """
     Calcule tous les ratios fondamentaux à partir des données financières.
@@ -236,6 +241,26 @@ def compute_ratios(data: dict) -> dict:
     # --- EPS ---
     ratios["eps"] = net_income / shares if shares != 0 else None
 
+    # --- BNPA normalise ---
+    # Le benefice d'un seul exercice est un mauvais socle de valorisation quand
+    # il est gonfle par de l'exceptionnel. FILTISAC 2024 : 18,6 Mds de resultat
+    # net dont 18,86 Mds de resultat HAO, pour 4,34 Mds d'activites ordinaires.
+    # Son BNPA affiche 1 318 pour un pouvoir beneficiaire ordinaire de ~308, et
+    # l'exercice suivant retombe a 33. La mediane des exercices connus lisse ces
+    # a-coups sans effacer une tendance de fond.
+    serie_ni = [data.get(f"net_income_{s}") for s in ("n3", "n2", "n1", "n0")]
+    serie_eps = sorted(v / shares for v in serie_ni
+                       if v not in (None, 0) and shares) if shares else []
+    ratios["eps_serie"] = serie_eps
+    if len(serie_eps) >= 3:
+        milieu = len(serie_eps) // 2
+        ratios["eps_normalise"] = (
+            serie_eps[milieu] if len(serie_eps) % 2
+            else (serie_eps[milieu - 1] + serie_eps[milieu]) / 2
+        )
+    else:
+        ratios["eps_normalise"] = None
+
     # --- DPS (utilisé) ---
     if dps:
         ratios["dps"] = dps
@@ -258,6 +283,7 @@ def compute_ratios(data: dict) -> dict:
 
     # --- P/B (Price to Book) ---
     book_value_per_share = equity / shares if shares != 0 else 0
+    ratios["bvps"] = book_value_per_share or None
     ratios["pb"] = price / book_value_per_share if book_value_per_share != 0 else None
 
     # --- Couverture du dividende (cash) ---
@@ -698,6 +724,154 @@ def compute_target_price(ratios: dict, sector: Optional[str] = None,
         "delta_pct": delta_pct,
         "components": components,
         "confidence": confidence,
+    }
+
+
+def compute_valorisation_croisee(ratios: dict, sector: Optional[str] = None,
+                                  benchmarks: Optional[dict] = None) -> dict:
+    """Valorisation croisee — lecture ENRICHIE, affichee A COTE de l'historique.
+
+    `compute_target_price` reste la reference et n'est pas modifiee : c'est elle
+    qui a produit tout l'historique de suivi, et la remplacer rendrait les
+    cibles d'hier incomparables avec celles d'aujourd'hui. Cette fonction
+    propose une seconde lecture, plus complete, sans rien ecraser.
+
+    Aucune methode n'est fiable seule sur la BRVM : on les croise et on lit
+    leur dispersion comme un indicateur de confiance.
+
+    - **PER sectoriel** : min(PER median du secteur, 15) x BNPA. Le BNPA retenu
+      est le BNPA NORMALISE (mediane des exercices connus) des qu'il existe :
+      valoriser sur le benefice d'une seule annee revient a extrapoler un
+      exercice exceptionnel (FILTISAC 2024 : BNPA 1 318 dont l'essentiel en
+      resultat HAO, puis 33 l'annee suivante).
+    - **Rendement cible** : DPS / max(rendement median, 5 %). La BRVM est un
+      marche de rendement, c'est le poids le plus fort.
+    - **PBR justifie** : (ROE / cout des capitaux propres) x valeur comptable
+      par action. Ancre solide pour les banques, qui pesent le tiers de la cote.
+    - **Valeur comptable** : servie comme PLANCHER, pas comme cible. Une societe
+      qui cote sous ses fonds propres n'est pas forcement une bonne affaire,
+      mais l'ecart merite d'etre signale.
+
+    Retourne aussi une fourchette (methode la plus basse / la plus haute), qui
+    dit bien plus qu'un point unique.
+    """
+    price = ratios.get("price") or 0
+    dps = ratios.get("dps") or 0
+    roe = ratios.get("roe")
+    bvps = ratios.get("bvps")
+
+    # BNPA normalise si disponible, sinon le dernier connu
+    eps_normalise = ratios.get("eps_normalise")
+    eps_annuel = ratios.get("eps")
+    eps = eps_normalise or eps_annuel
+    eps_lisse = bool(eps_normalise)
+
+    # Resout les benchmarks si non fournis
+    if benchmarks is None:
+        try:
+            benchmarks = get_sector_benchmarks(sector)
+        except Exception:
+            benchmarks = {}
+    sec_key = sector if sector and benchmarks and sector in benchmarks else "global"
+    sec_b = benchmarks.get(sec_key, {}) if benchmarks else {}
+
+    def _mediane(champ):
+        if not isinstance(sec_b, dict):
+            return None
+        stats = sec_b.get(champ) or {}
+        return stats.get("median") if isinstance(stats, dict) else None
+
+    components = []
+
+    def _ajouter(methode, formule, valeur, poids):
+        """Enregistre une methode, plafonnee a 3x le cours.
+
+        Le marche decote structurellement certains titres (ETIT se paie 3,7x ses
+        benefices quand le secteur est a 10x) : sans plafond, une methode
+        proposerait une cible a dix fois le cours, ce qui n'a aucun sens
+        operationnel.
+        """
+        if not valeur or valeur <= 0:
+            return
+        plafonne = min(valeur, 3 * price) if price else valeur
+        components.append({
+            "method": methode,
+            "formula": formule + (" (plafonné à 3× cours)" if plafonne < valeur else ""),
+            "price": plafonne,
+            "raw_price": valeur,
+            "capped": plafonne < valeur,
+            "poids": poids,
+        })
+
+    # ── Methode 1 : PER sectoriel borne a 15 ──
+    per_med = _mediane("per")
+    fair_per = min(per_med, 15) if per_med and per_med > 0 else 12
+    if eps and eps > 0:
+        libelle_eps = "BNPA normalisé" if eps_lisse else "BNPA"
+        _ajouter("PER sectoriel",
+                 f"PER {fair_per:.1f}× × {libelle_eps} {eps:,.0f}",
+                 fair_per * eps, 0.35)
+
+    # ── Methode 2 : rendement cible >= 5 % ──
+    y_med = _mediane("dividend_yield")
+    fair_yield = max(y_med, 0.05) if y_med else 0.06
+    if dps and dps > 0:
+        _ajouter("Rendement cible",
+                 f"DPS {dps:,.0f} / rendement {fair_yield*100:.1f}%",
+                 dps / fair_yield, 0.40)
+
+    # ── Methode 3 : PBR justifie par la rentabilite ──
+    # Un PBR se justifie par le ROE rapporte au cout des capitaux propres :
+    # une societe qui rentabilise ses fonds propres au-dela de ce que l'actionnaire
+    # exige vaut plus que sa valeur comptable, et inversement.
+    if roe and roe > 0 and bvps and bvps > 0:
+        pbr_justifie = roe / COUT_CAPITAUX_PROPRES
+        _ajouter("PBR justifié",
+                 f"ROE {roe*100:.1f}% / {COUT_CAPITAUX_PROPRES*100:.0f}% "
+                 f"× VC {bvps:,.0f}",
+                 pbr_justifie * bvps, 0.25)
+
+    if not components:
+        return {
+            "target_price": None,
+            "current_price": price,
+            "delta_abs": None,
+            "delta_pct": None,
+            "components": [],
+            "confidence": "indéterminée",
+            "fourchette_basse": None,
+            "fourchette_haute": None,
+            "plancher": bvps,
+            "eps_lisse": eps_lisse,
+        }
+
+    poids_total = sum(c["poids"] for c in components)
+    target = sum(c["price"] * c["poids"] for c in components) / poids_total
+    basse = min(c["price"] for c in components)
+    haute = max(c["price"] for c in components)
+    delta_abs = target - price if price else None
+    delta_pct = (delta_abs / price * 100) if price else None
+
+    # Confiance : c'est l'ECART ENTRE METHODES qui la fonde. Deux methodes qui
+    # convergent valent mieux que quatre qui se contredisent.
+    if len(components) >= 2 and target:
+        dispersion = (haute - basse) / target
+        confidence = ("élevée" if dispersion < 0.20
+                      else "moyenne" if dispersion < 0.50 else "faible")
+    else:
+        confidence = "moyenne"
+
+    return {
+        "target_price": target,
+        "current_price": price,
+        "delta_abs": delta_abs,
+        "delta_pct": delta_pct,
+        "components": components,
+        "confidence": confidence,
+        "fourchette_basse": basse,
+        "fourchette_haute": haute,
+        "plancher": bvps,
+        "eps_lisse": eps_lisse,
     }
 
 

@@ -21,7 +21,7 @@ from data.scraper import fetch_historical_prices, fetch_historical_prices_page
 from analysis.fundamental import (
     compute_ratios, format_ratio,
     get_sector_benchmarks, compare_to_sector,
-    compute_target_price,
+    compute_target_price, compute_valorisation_croisee,
 )
 from analysis.technical import compute_all_indicators, detect_trend, detect_support_resistance, generate_signals
 from analysis.scoring import compute_hybrid_score
@@ -1532,6 +1532,67 @@ def _render_recommendation(result, fundamentals):
             # Détail des méthodes
             f"<table style='margin-top:12px;border-top:1px solid var(--border);"
             f"padding-top:10px;width:100%;border-collapse:collapse;'>{comps_rows}</table>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+    # ── Seconde lecture : valorisation croisée (méthode enrichie) ──
+    # Affichée A COTE de la cible historique, jamais à sa place : l'historique
+    # de suivi a été construit avec la méthode ci-dessus, la remplacer rendrait
+    # les cibles d'hier incomparables avec celles d'aujourd'hui.
+    vc = compute_valorisation_croisee(ratios_src, sector=fundamentals.get("sector"))
+    if vc.get("target_price"):
+        _cible = vc["target_price"]
+        _basse, _haute = vc.get("fourchette_basse"), vc.get("fourchette_haute")
+        _dpct = vc.get("delta_pct") or 0
+        _ton = "var(--up)" if _dpct > 0 else ("var(--down)" if _dpct < 0 else "var(--ink-3)")
+
+        _lignes = "".join(
+            f"<tr>"
+            f"<td style='padding:4px 14px 4px 0;color:var(--ink-3);font-size:11px;"
+            f"text-transform:uppercase;letter-spacing:0.05em;font-weight:600;"
+            f"white-space:nowrap;'>{c['method']}</td>"
+            f"<td style='padding:4px 14px 4px 0;color:var(--ink-2);font-size:12px;'>"
+            f"{c['formula']}</td>"
+            f"<td style='padding:4px 10px 4px 0;color:var(--ink);font-size:13px;"
+            f"font-weight:600;font-variant-numeric:tabular-nums;text-align:right;'>"
+            f"{c['price']:,.0f}</td>"
+            f"<td style='padding:4px 0;color:var(--ink-3);font-size:11px;"
+            f"font-variant-numeric:tabular-nums;text-align:right;'>"
+            f"{c.get('poids', 0):.0%}</td>"
+            f"</tr>"
+            for c in vc.get("components", [])
+        )
+
+        _complements = ""
+        if _basse and _haute and _haute > _basse:
+            _complements += (f"Fourchette des méthodes {_basse:,.0f} – {_haute:,.0f} FCFA. ")
+        _plancher = vc.get("plancher")
+        if _plancher:
+            _sous = cur and cur < _plancher
+            _complements += (
+                f"Plancher valeur comptable {_plancher:,.0f} FCFA"
+                + (" — <b>le cours est sous les fonds propres</b>." if _sous else ".")
+            )
+        if vc.get("eps_lisse"):
+            _complements += (" BNPA normalisé (médiane des exercices connus) "
+                             "pour neutraliser les résultats exceptionnels.")
+
+        st.markdown(
+            f"<div style='background:var(--bg-elev);border:1px dashed var(--border);"
+            f"border-radius:10px;padding:14px 18px;margin-top:10px;'>"
+            f"<div style='display:flex;justify-content:space-between;align-items:baseline;'>"
+            f"<div class='label-xs'>Seconde lecture · valorisation croisée</div>"
+            f"<div style='font-size:11px;color:var(--ink-3);'>confiance {vc.get('confidence')}</div>"
+            f"</div>"
+            f"<div style='margin-top:6px;font-size:20px;font-weight:600;color:{_ton};"
+            f"font-variant-numeric:tabular-nums;'>{_cible:,.0f} FCFA "
+            f"<span style='font-size:13px;'>({_dpct:+.0f}%)</span></div>"
+            f"<table style='margin-top:10px;width:100%;border-collapse:collapse;'>{_lignes}</table>"
+            f"<div style='margin-top:8px;font-size:11.5px;color:var(--ink-3);'>{_complements}</div>"
+            f"<div style='margin-top:6px;font-size:11px;color:var(--ink-3);font-style:italic;'>"
+            f"Méthode enrichie, proposée en complément. La cible ci-dessus reste "
+            f"la référence du suivi historique.</div>"
             f"</div>",
             unsafe_allow_html=True,
         )
