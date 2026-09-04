@@ -627,12 +627,60 @@ def _sanitize_fundamentals(data: dict) -> dict:
     return data
 
 
+def _net_income_coherent(data: dict) -> dict:
+    """Refuse un resultat net entrant qui contredit le BNPA deja en base.
+
+    L'extraction PDF a plusieurs fois ecrase de bons chiffres : Orange CI 2024
+    est passe de 158,2 Mds a 112,8 Mds, PALM CI d'un benefice de 15,9 Mds a une
+    perte de 619 M. A chaque fois, le BNPA de la fiche societe et le nombre de
+    titres — inchanges — disaient le contraire.
+
+    Regle : si la base porte un BNPA et un nombre de titres coherents entre eux,
+    et que le resultat net entrant s'en ecarte de plus de 15 %, on ne l'ecrit
+    pas. Il n'est pas remplace par un calcul : il est simplement ignore, et
+    l'ecart journalise. Un vrai correctif passera par la saisie manuelle ou par
+    un rescraping de la fiche.
+    """
+    ni = data.get("net_income")
+    ticker, annee = data.get("ticker"), data.get("fiscal_year")
+    if ni is None or not ticker or not annee:
+        return data
+
+    try:
+        conn = get_connection()
+        row = conn.execute(
+            "SELECT eps, shares, net_income FROM fundamentals "
+            "WHERE ticker = ? AND fiscal_year = ?",
+            (ticker, annee),
+        ).fetchone()
+        conn.close()
+    except Exception:
+        return data
+
+    if not row:
+        return data
+    existant = dict(row)
+    eps, shares = existant.get("eps"), existant.get("shares")
+    if not eps or not shares:
+        return data
+
+    attendu = eps * shares
+    if attendu and abs(ni - attendu) / abs(attendu) > 0.15:
+        print(f"[coherence] {ticker} {annee} : resultat net entrant "
+              f"{ni:,.0f} contredit BNPA x titres ({attendu:,.0f}) — ignore",
+              flush=True)
+        data = dict(data)
+        data["net_income"] = None
+    return data
+
+
 def save_fundamentals(data: dict) -> int:
     """Insère ou met à jour les données fondamentales d'un titre.
     Les valeurs clairement aberrantes sont mises à NULL avant insertion.
     En UPDATE, les champs NULL (non fournis) n'écrasent PAS les valeurs existantes :
     on complète seulement ce qui manque (COALESCE)."""
     data = _sanitize_fundamentals(data)
+    data = _net_income_coherent(data)
     conn = get_connection()
     cols = [
         "ticker", "company_name", "sector", "currency", "fiscal_year",
