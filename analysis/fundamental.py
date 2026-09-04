@@ -617,7 +617,124 @@ def _compute_fundamental_breakdown(ratios: dict, is_bank: bool) -> dict:
 
 def compute_target_price(ratios: dict, sector: Optional[str] = None,
                           benchmarks: Optional[dict] = None) -> dict:
-    """Prix cible par croisement de methodes complementaires.
+    """Calcule un prix cible simple à partir de deux méthodes transparentes :
+
+    - **PER fair** : min(PER médian secteur, 15) × EPS
+      (borne haute 15 pour rester Value ; utile quand EPS > 0)
+    - **Yield fair** : DPS / max(yield médian secteur, 5%)
+      (borne basse 5% qui est l'ancre BRVM pour un investisseur revenus)
+
+    Si les deux méthodes sont disponibles, moyenne simple (pondération 1:1).
+    Retourne dict avec target_price, components (liste de méthodes utilisées
+    avec détail), current_price, delta_abs, delta_pct, confidence.
+    """
+    price = ratios.get("price") or 0
+    eps = ratios.get("eps")
+    dps = ratios.get("dps") or 0
+
+    # Résout les benchmarks si non fournis
+    if benchmarks is None:
+        try:
+            benchmarks = get_sector_benchmarks(sector)
+        except Exception:
+            benchmarks = {}
+    sec_key = sector if sector and benchmarks and sector in benchmarks else "global"
+    sec_b = benchmarks.get(sec_key, {}) if benchmarks else {}
+
+    components = []
+
+    # ── Méthode 1 : PER sectoriel borné à 15 ──
+    per_med = None
+    if isinstance(sec_b, dict):
+        per_stats = sec_b.get("per") or {}
+        per_med = per_stats.get("median") if isinstance(per_stats, dict) else None
+    fair_per = None
+    if per_med and per_med > 0:
+        fair_per = min(per_med, 15)
+    elif not per_med:
+        fair_per = 12  # défaut prudent si pas de benchmark
+
+    if eps and eps > 0 and fair_per:
+        price_per_raw = fair_per * eps
+        # Cap anti-aberration : si le marché décote structurellement un titre
+        # (ex. ETIT PER 1.6× vs sectoriel 10×), la méthode PER donnerait un
+        # target 10× le prix, physiquement peu crédible. On borne à 3× le
+        # prix actuel pour rester dans une fourchette d'upside réaliste.
+        price_per_capped = min(price_per_raw, 3 * price) if price else price_per_raw
+        capped = price_per_capped < price_per_raw
+        formula = f"PER {fair_per:.1f}× × EPS {eps:,.0f}"
+        if capped:
+            formula += " (plafonné à 3× cours)"
+        components.append({
+            "method": "PER sectoriel",
+            "formula": formula,
+            "price": price_per_capped,
+            "raw_price": price_per_raw,
+            "capped": capped,
+        })
+
+    # ── Méthode 2 : Yield cible ≥ 5% ──
+    y_med = None
+    if isinstance(sec_b, dict):
+        y_stats = sec_b.get("dividend_yield") or {}
+        y_med = y_stats.get("median") if isinstance(y_stats, dict) else None
+    fair_yield = max(y_med, 0.05) if y_med else 0.06
+
+    if dps and dps > 0 and fair_yield:
+        price_yield_raw = dps / fair_yield
+        # Même cap anti-aberration côté upper bound
+        price_yield_capped = min(price_yield_raw, 3 * price) if price else price_yield_raw
+        capped_y = price_yield_capped < price_yield_raw
+        formula_y = f"DPS {dps:,.0f} / yield {fair_yield*100:.1f}%"
+        if capped_y:
+            formula_y += " (plafonné à 3× cours)"
+        components.append({
+            "method": "Yield cible",
+            "formula": formula_y,
+            "price": price_yield_capped,
+            "raw_price": price_yield_raw,
+            "capped": capped_y,
+        })
+
+    if not components:
+        return {
+            "target_price": None,
+            "current_price": price,
+            "delta_abs": None,
+            "delta_pct": None,
+            "components": [],
+            "confidence": "indéterminée",
+        }
+
+    target = sum(c["price"] for c in components) / len(components)
+    delta_abs = target - price if price else None
+    delta_pct = (delta_abs / price * 100) if price else None
+
+    # Confiance : dispersion faible entre méthodes → élevée
+    if len(components) == 2:
+        spread = abs(components[0]["price"] - components[1]["price"]) / target
+        confidence = "élevée" if spread < 0.20 else ("moyenne" if spread < 0.50 else "faible")
+    else:
+        confidence = "moyenne"  # une seule méthode disponible
+
+    return {
+        "target_price": target,
+        "current_price": price,
+        "delta_abs": delta_abs,
+        "delta_pct": delta_pct,
+        "components": components,
+        "confidence": confidence,
+    }
+
+
+def compute_valorisation_croisee(ratios: dict, sector: Optional[str] = None,
+                                  benchmarks: Optional[dict] = None) -> dict:
+    """Valorisation croisee — lecture ENRICHIE, affichee A COTE de l'historique.
+
+    `compute_target_price` reste la reference et n'est pas modifiee : c'est elle
+    qui a produit tout l'historique de suivi, et la remplacer rendrait les
+    cibles d'hier incomparables avec celles d'aujourd'hui. Cette fonction
+    propose une seconde lecture, plus complete, sans rien ecraser.
 
     Aucune methode n'est fiable seule sur la BRVM : on les croise et on lit
     leur dispersion comme un indicateur de confiance.
