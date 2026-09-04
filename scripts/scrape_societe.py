@@ -52,6 +52,40 @@ def parse_number(text):
         return None
 
 
+def _bnpa_coherent(fin, shares, ticker, year):
+    """Ecarte un BNPA de la source incoherent avec resultat net / nb de titres.
+
+    Constate le 2026-09-04 : sikafinance publiait un BNPA 2025 de 10,00 pour
+    ETIT alors que son propre resultat net (345 523 M) rapporte aux 18,084 Mds
+    de titres donne 19,11. Les quatre exercices precedents tombaient juste au
+    centime pres. Recopier ce chiffre faisait afficher un PER de 7,10 au lieu
+    de 3,7 sur une des lignes suivies.
+
+    On ne remplace jamais un chiffre de la source par un calcul en silence :
+    l'ecart est journalise.
+    """
+    eps_source = fin.get("eps")
+    ni = fin.get("net_income")
+    if not eps_source or not ni or not shares:
+        return fin
+
+    eps_calcule = ni / shares
+    if eps_calcule == 0:
+        return fin
+
+    ecart = abs(eps_source - eps_calcule) / abs(eps_calcule)
+    if ecart > 0.15:
+        print(f"  [BNPA] {ticker} {year} : source {eps_source:.2f} vs calcul "
+              f"{eps_calcule:.2f} ({ecart*100:.0f}% d'ecart) — on garde le calcul",
+              flush=True)
+        fin = dict(fin)
+        fin["eps"] = round(eps_calcule, 2)
+        # Le PER de la source repose sur son BNPA : il tombe avec lui.
+        if fin.get("per"):
+            fin["per"] = None
+    return fin
+
+
 def scrape_societe(session, ticker):
     """
     Scrape /marches/societe/{ticker} pour recuperer:
@@ -281,6 +315,7 @@ def main():
         sector = ticker_info.get("sector", "")
 
         for year, fin in r["financials"].items():
+            fin = _bnpa_coherent(fin, r.get("shares"), ticker, year)
             # Check if row exists
             existing = conn.execute(
                 "SELECT id, revenue, net_income, dps, shares FROM fundamentals WHERE ticker = ? AND fiscal_year = ?",

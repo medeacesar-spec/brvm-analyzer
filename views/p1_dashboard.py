@@ -70,8 +70,10 @@ def _load_quotes_from_db() -> pd.DataFrame:
                WHERE f.shares IS NOT NULL AND f.shares > 0""")
         if not shares_df.empty:
             shares_map = dict(zip(shares_df["ticker"], shares_df["shares"]))
+            # market_data stocke la capitalisation en FRANCS : le repli doit
+            # rester dans la meme unite, sinon la colonne melange deux echelles.
             df["market_cap"] = df.apply(
-                lambda r: r["last"] * shares_map.get(r["ticker"], 0) / 1e6, axis=1  # En millions
+                lambda r: r["last"] * shares_map.get(r["ticker"], 0), axis=1
             )
 
     conn.close()
@@ -940,9 +942,11 @@ def render():
     col1.metric("Hausses", f"{len(positive)}")
     col2.metric("Baisses", f"{len(negative)}")
     col3.metric("Stables", f"{len(quotes) - len(positive) - len(negative)}")
+    # La capitalisation est stockee en FRANCS : diviser par 1e3 affichait
+    # 18 390 570 100 "Mds" au lieu de 18 391 Mds.
     col4.metric(
         "Capitalisation",
-        f"{total_mcap/1e3:,.0f} Mds" if total_mcap > 0 else "—",
+        f"{total_mcap/1e9:,.0f} Mds" if total_mcap > 0 else "—",
     )
 
     # Tabs Jour / Semaine / Mois — labels avec date explicite dans chaque caption
@@ -1001,7 +1005,7 @@ def render():
         # Format display columns — keep numeric for sorting
         fmt_df = display_df.copy()
         fmt_df["market_cap"] = fmt_df["market_cap"].apply(
-            lambda x: round(x / 1e3, 1) if pd.notna(x) and x > 0 else None
+            lambda x: round(x / 1e9, 1) if pd.notna(x) and x > 0 else None
         )
         fmt_df["variation"] = fmt_df["variation"].apply(
             lambda x: round(x, 2) if pd.notna(x) else 0.0

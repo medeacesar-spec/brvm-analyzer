@@ -2027,13 +2027,43 @@ def _render_profile(ticker: str, fundamentals: dict):
                 )
 
         # Historique financier — table compacte (5 dernières années)
+        #
+        # BNPA et PER sont RECALCULES, jamais repris tels quels : la fiche
+        # societe sikafinance publiait pour ETIT 2025 un BNPA de 10,00 quand
+        # son propre resultat net rapporte au nombre de titres donne 19,11, et
+        # son PER est fige au jour du scraping. On recoupe malgre tout avec la
+        # valeur de la source et on signale les ecarts sous la table.
         fund = read_sql_df(
-            "SELECT fiscal_year, revenue, net_income, dps, eps, per FROM fundamentals "
-            "WHERE ticker = ? ORDER BY fiscal_year DESC LIMIT 5",
+            "SELECT fiscal_year, revenue, net_income, dps, eps, per, shares "
+            "FROM fundamentals WHERE ticker = ? ORDER BY fiscal_year DESC LIMIT 5",
             params=(ticker,),
         )
         if not fund.empty:
             section_heading("Historique financier", spacing="tight")
+
+            cours = fundamentals.get("price") or 0
+            nb_titres = fundamentals.get("shares") or 0
+            desaccords = []
+
+            def _bnpa_calcule(row):
+                titres = row.get("shares") or nb_titres
+                ni = row.get("net_income")
+                if not titres or ni is None or pd.isna(ni):
+                    return row.get("eps")
+                calcule = ni / titres
+                source = row.get("eps")
+                if (source and not pd.isna(source) and calcule
+                        and abs(source - calcule) / abs(calcule) > 0.15):
+                    desaccords.append(
+                        f"{int(row['fiscal_year'])} · BNPA source {source:,.2f} "
+                        f"vs calcul {calcule:,.2f}"
+                    )
+                return calcule
+
+            def _per_calcule(row, bnpa):
+                if not cours or not bnpa or bnpa <= 0:
+                    return None
+                return cours / bnpa
 
             def _money(v):
                 if v is None or pd.isna(v) or not v:
@@ -2077,14 +2107,16 @@ def _render_profile(ticker: str, fundamentals: dict):
             )
             # Tri ascendant par année (plus récente en bas, comme dans la capture user)
             for _, row in fund.sort_values("fiscal_year", ascending=False).iterrows():
+                bnpa = _bnpa_calcule(row)
+                per = _per_calcule(row, bnpa)
                 rows_html += (
                     f"<tr>"
                     f"<td style='{cell};text-align:left;font-weight:500;'>{int(row['fiscal_year'])}</td>"
                     f"<td style='{cell}'>{_money(row['revenue'])}</td>"
                     f"<td style='{cell}'>{_money(row['net_income'])}</td>"
                     f"<td style='{cell}'>{_int(row['dps'])}</td>"
-                    f"<td style='{cell}'>{_int(row['eps'])}</td>"
-                    f"<td style='{cell}'>{_dec(row['per'])}</td>"
+                    f"<td style='{cell}'>{_int(bnpa)}</td>"
+                    f"<td style='{cell}'>{_dec(per)}</td>"
                     f"</tr>"
                 )
             st.markdown(
@@ -2094,6 +2126,14 @@ def _render_profile(ticker: str, fundamentals: dict):
                 f"</div>",
                 unsafe_allow_html=True,
             )
+            st.caption(
+                f"BNPA recalculé (résultat net ÷ {nb_titres:,.0f} titres) et PER "
+                f"sur le cours du jour ({cours:,.0f} FCFA)."
+                if nb_titres and cours else
+                "BNPA et PER recalculés à partir du résultat net et du cours du jour."
+            )
+            if desaccords:
+                st.caption("⚠ Écart avec la fiche sikafinance — " + " · ".join(desaccords))
 
     with col_right:
         # Actionnariat (Nb titres, Flottant, Secteur, Actionnaire)

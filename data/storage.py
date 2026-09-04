@@ -627,12 +627,60 @@ def _sanitize_fundamentals(data: dict) -> dict:
     return data
 
 
+def _net_income_coherent(data: dict) -> dict:
+    """Refuse un resultat net entrant qui contredit le BNPA deja en base.
+
+    L'extraction PDF a plusieurs fois ecrase de bons chiffres : Orange CI 2024
+    est passe de 158,2 Mds a 112,8 Mds, PALM CI d'un benefice de 15,9 Mds a une
+    perte de 619 M. A chaque fois, le BNPA de la fiche societe et le nombre de
+    titres — inchanges — disaient le contraire.
+
+    Regle : si la base porte un BNPA et un nombre de titres coherents entre eux,
+    et que le resultat net entrant s'en ecarte de plus de 15 %, on ne l'ecrit
+    pas. Il n'est pas remplace par un calcul : il est simplement ignore, et
+    l'ecart journalise. Un vrai correctif passera par la saisie manuelle ou par
+    un rescraping de la fiche.
+    """
+    ni = data.get("net_income")
+    ticker, annee = data.get("ticker"), data.get("fiscal_year")
+    if ni is None or not ticker or not annee:
+        return data
+
+    try:
+        conn = get_connection()
+        row = conn.execute(
+            "SELECT eps, shares, net_income FROM fundamentals "
+            "WHERE ticker = ? AND fiscal_year = ?",
+            (ticker, annee),
+        ).fetchone()
+        conn.close()
+    except Exception:
+        return data
+
+    if not row:
+        return data
+    existant = dict(row)
+    eps, shares = existant.get("eps"), existant.get("shares")
+    if not eps or not shares:
+        return data
+
+    attendu = eps * shares
+    if attendu and abs(ni - attendu) / abs(attendu) > 0.15:
+        print(f"[coherence] {ticker} {annee} : resultat net entrant "
+              f"{ni:,.0f} contredit BNPA x titres ({attendu:,.0f}) — ignore",
+              flush=True)
+        data = dict(data)
+        data["net_income"] = None
+    return data
+
+
 def save_fundamentals(data: dict) -> int:
     """Insère ou met à jour les données fondamentales d'un titre.
     Les valeurs clairement aberrantes sont mises à NULL avant insertion.
     En UPDATE, les champs NULL (non fournis) n'écrasent PAS les valeurs existantes :
     on complète seulement ce qui manque (COALESCE)."""
     data = _sanitize_fundamentals(data)
+    data = _net_income_coherent(data)
     conn = get_connection()
     cols = [
         "ticker", "company_name", "sector", "currency", "fiscal_year",
@@ -778,26 +826,36 @@ def get_fundamentals(ticker: str, fiscal_year: Optional[int] = None) -> Optional
 
     result = dict(row)
 
-    # Enrich with market data if price/market_cap/dps missing
-    if not result.get("price") or not result.get("market_cap"):
-        md_row = conn if False else None  # need new connection
-        conn2 = get_connection()
-        md = conn2.execute(
-            "SELECT price, market_cap, dps, shares, dividend_yield FROM market_data WHERE ticker=?",
-            (ticker,),
-        ).fetchone()
-        conn2.close()
-        if md:
-            md_dict = dict(md)
-            if not result.get("price") and md_dict.get("price"):
-                result["price"] = md_dict["price"]
-            if not result.get("market_cap") and md_dict.get("market_cap"):
-                result["market_cap"] = md_dict["market_cap"]
-            if not result.get("shares") and md_dict.get("shares"):
-                result["shares"] = md_dict["shares"]
-            # Use latest DPS from market_data if fundamentals DPS is missing
-            if not result.get("dps") and md_dict.get("dps"):
-                result["dps"] = md_dict["dps"]
+    # Enrichissement depuis market_data.
+    #
+    # Le cours porte par `fundamentals` est celui du jour ou la fiche a ete
+    # scrapee, pas un cours d'exercice : il vieillit sans jamais etre rafraichi.
+    # Tant qu'on ne le consultait qu'a defaut, il masquait le cours reel — 36
+    # tickers sur 48 s'en trouvaient decales de plus de 10 %, et jusqu'a 55 %
+    # pour ETIT (32 F en base contre 71 F au marche). Comme PER, P/B et
+    # rendement se calculent tous sur le cours du jour, market_data fait
+    # desormais foi des qu'il a une valeur.
+    conn2 = get_connection()
+    md = conn2.execute(
+        "SELECT price, market_cap, dps, shares, dividend_yield FROM market_data WHERE ticker=?",
+        (ticker,),
+    ).fetchone()
+    conn2.close()
+    if md:
+        md_dict = dict(md)
+        if md_dict.get("price"):
+            result["price"] = md_dict["price"]
+        # La capitalisation suit le cours : la reprendre aussi, sinon elle
+        # resterait coherente avec l'ancien cours et plus avec le nouveau.
+        if md_dict.get("market_cap"):
+            result["market_cap"] = md_dict["market_cap"]
+        elif md_dict.get("price") and result.get("shares"):
+            result["market_cap"] = md_dict["price"] * result["shares"]
+        if not result.get("shares") and md_dict.get("shares"):
+            result["shares"] = md_dict["shares"]
+        # Use latest DPS from market_data if fundamentals DPS is missing
+        if not result.get("dps") and md_dict.get("dps"):
+            result["dps"] = md_dict["dps"]
 
     return result
 
