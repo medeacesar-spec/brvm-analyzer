@@ -281,6 +281,33 @@ def compute_ratios(data: dict) -> dict:
     # --- PER ---
     ratios["per"] = price / ratios["eps"] if ratios.get("eps") and ratios["eps"] != 0 else None
 
+    # --- Part exceptionnelle du resultat ---
+    # Un benefice porte par le HAO ne se reproduira pas : FILTISAC 2024 affiche
+    # 18,6 Mds de resultat net dont 18,86 Mds de HAO, et retombe a 466 M l'annee
+    # suivante. Valoriser sur un tel exercice revient a extrapoler un fusil a un
+    # coup.
+    hao = data.get("hao_income")
+    if hao is not None and net_income:
+        ratios["part_exceptionnelle"] = hao / net_income
+    else:
+        ratios["part_exceptionnelle"] = None
+
+    # --- Resultat des activites ordinaires par action ---
+    rao = data.get("ordinary_income")
+    ratios["ordinary_income"] = rao
+    ratios["eps_ordinaire"] = (rao / shares) if rao and shares else None
+
+    # --- Cout du risque rapporte au PNB (banques) ---
+    # L'analyse « en ciseau » : pour une banque, le resultat net n'est qu'un
+    # symptome. Le diagnostic se lit dans le rapport entre le cout du risque et
+    # le produit net bancaire.
+    cdr = data.get("cost_of_risk")
+    pnb = data.get("revenue_bank") or (revenue if is_bank else None)
+    if cdr is not None and pnb:
+        ratios["cout_risque_pnb"] = abs(cdr) / abs(pnb)
+    else:
+        ratios["cout_risque_pnb"] = None
+
     # --- P/B (Price to Book) ---
     book_value_per_share = equity / shares if shares != 0 else 0
     ratios["bvps"] = book_value_per_share or None
@@ -318,6 +345,31 @@ def compute_ratios(data: dict) -> dict:
 def _compute_flags(ratios: dict, is_bank: bool) -> dict:
     """Calcule les drapeaux (OK/Vigilance/Risque) pour chaque ratio."""
     flags = {}
+
+    # Part exceptionnelle du resultat
+    part = ratios.get("part_exceptionnelle")
+    if part is not None:
+        if abs(part) >= 0.50:
+            flags["part_exceptionnelle"] = (
+                "Risque", f"Résultat porté à {abs(part)*100:.0f}% par l'exceptionnel")
+        elif abs(part) >= 0.25:
+            flags["part_exceptionnelle"] = (
+                "Vigilance", f"{abs(part)*100:.0f}% du résultat est exceptionnel")
+        else:
+            flags["part_exceptionnelle"] = ("OK", "Résultat essentiellement courant")
+
+    # Cout du risque rapporte au PNB (banques) — l'analyse « en ciseau »
+    cdr = ratios.get("cout_risque_pnb")
+    if cdr is not None:
+        if cdr >= 0.30:
+            flags["cout_risque_pnb"] = (
+                "Risque", f"Coût du risque à {cdr*100:.0f}% du PNB")
+        elif cdr >= 0.15:
+            flags["cout_risque_pnb"] = (
+                "Vigilance", f"Coût du risque à {cdr*100:.0f}% du PNB")
+        else:
+            flags["cout_risque_pnb"] = (
+                "OK", f"Coût du risque contenu ({cdr*100:.0f}% du PNB)")
 
     # ROE
     roe = ratios.get("roe")

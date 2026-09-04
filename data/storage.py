@@ -687,6 +687,7 @@ def save_fundamentals(data: dict) -> int:
         "price", "shares", "float_pct", "revenue", "net_income", "equity",
         "total_debt", "ebit", "interest_expense", "cfo", "capex",
         "dividends_total", "dps", "total_assets", "eps", "per",
+        "ordinary_income", "hao_income", "cost_of_risk",
         "revenue_n3", "revenue_n2", "revenue_n1", "revenue_n0",
         "net_income_n3", "net_income_n2", "net_income_n1", "net_income_n0",
         "dps_n3", "dps_n2", "dps_n1", "dps_n0",
