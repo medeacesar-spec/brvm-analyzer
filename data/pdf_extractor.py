@@ -1111,8 +1111,10 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
                 ocr_data = _extract_from_text(ocr_text, ocr_mult)
                 # Merge tous les champs extractibles depuis l'OCR (couvre ebit,
                 # ebitda, capex, cfo en plus des 5 fields originaux).
-                for field in ("revenue", "net_income", "equity", "total_assets",
-                               "shares", "ebit", "ebitda", "capex", "cfo"):
+                for field in ("revenue", "revenue_bank", "net_income", "equity",
+                               "total_assets", "shares", "ebit", "ebitda",
+                               "capex", "cfo", "ordinary_income", "hao_income",
+                               "cost_of_risk"):
                     if data.get(field) is None and ocr_data.get(field):
                         data[field] = ocr_data[field]
                 if data.get("revenue") is None and ocr_data.get("revenue_bank"):
