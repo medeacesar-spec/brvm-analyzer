@@ -471,6 +471,16 @@ _TABLE_LABELS = [
     (r"r.sultat\s+des\s+activit.s(?:\s+ordinaires)?", "ordinary_income"),
     (r"r.sultat\s+hao\b", "hao_income"),
     (r"co.t\s+du\s+risque", "cost_of_risk"),
+    # Lignes du compte de resultat bancaire (plan PCEB) : elles portent le
+    # diagnostic que le seul resultat net ne donne pas.
+    (r"frais\s+g.n.raux", "operating_expenses"),
+    (r"charges\s+g.n.rales\s+d.exploitation", "operating_expenses"),
+    (r"r.sultat\s+brut\s+d.exploitation", "gross_operating_income"),
+    (r"r.sultat\s+avant\s+imp.t", "pretax_income"),
+    (r"d.p.ts?\s+(?:de\s+la\s+)?client[eè]le", "deposits"),
+    (r"ressources\s+client[eè]le", "deposits"),
+    (r"cr.dits?\s+nets?\s+[àa]\s+la\s+client[eè]le", "loans"),
+    (r"cr.dits?\s+[àa]\s+la\s+client[eè]le", "loans"),
     (r"r.sultat\s+net", "net_income"),
     (r"capitaux\s+propres", "equity"),
     (r"total\s+bilan", "total_assets"),
@@ -700,7 +710,7 @@ def _detect_multiplier(text: str):
 _MONEY_FIELDS = ("revenue", "revenue_bank", "net_income", "equity", "total_assets")
 
 
-def _resolve_multiplier(text: str) -> int:
+def _resolve_multiplier(text: str, lignes_cellules: list = None) -> int:
     """Multiplicateur a appliquer, indice faible arbitre par l'ordre de grandeur.
 
     Un en-tete ("Indicateurs en MFCFA") fait foi. Une tournure en prose
@@ -713,7 +723,24 @@ def _resolve_multiplier(text: str) -> int:
     if mult == 1:
         return mult
 
-    brut = _extract_from_text(text, 1, appliquer_plancher=False)
+    # La sonde doit lire les colonnes correctement, sinon deux colonnes fusionnees
+    # ("122 316 132 725") gonflent le maximum et font sauter le multiplicateur.
+    if lignes_cellules:
+        brut = {}
+        for cellules in lignes_cellules:
+            if len(cellules) < 2:
+                continue
+            lib = cellules[0].lower().strip()
+            for motif, champ in _TABLE_LABELS:
+                if champ in brut or not re.match(r"\s*" + motif + r"\b", lib):
+                    continue
+                for cel in cellules[1:]:
+                    v = _parse_amount(cel)
+                    if v and len(re.sub(r"\D", "", cel)) >= 3:
+                        brut[champ] = v
+                        break
+    else:
+        brut = _extract_from_text(text, 1, appliquer_plancher=False)
     valeurs = [abs(v) for k, v in brut.items() if k in _MONEY_FIELDS and v]
     maxi = max(valeurs) if valeurs else 0
 
@@ -890,6 +917,15 @@ _PROSE = [
      r"(milliers|millions|milliards)", "net_income"),
     (r"r.sultat\s+des\s+activit.s\s+ordinaires[^.]{0,100}?([\d][\d\s.,]*)\s*"
      r"(milliers|millions|milliards)", "ordinary_income"),
+    # Encours clientele : les banques BRVM les citent dans leur commentaire, pas
+    # dans le tableau. « Les ressources clientele enregistrent une evolution de
+    # 7,4 % pour s'etablir a 942 692 millions de FCFA ».
+    (r"ressources\s+client[eè]le[^.]{0,120}?([\d][\d\s.,]*)\s*"
+     r"(milliers|millions|milliards)", "deposits"),
+    (r"d[ée]p[oô]ts?\s+(?:de\s+la\s+)?client[eè]le[^.]{0,120}?([\d][\d\s.,]*)\s*"
+     r"(milliers|millions|milliards)", "deposits"),
+    (r"cr[ée]dits?\s+nets?\s+[àa]\s+la\s+client[eè]le[^.]{0,120}?([\d][\d\s.,]*)\s*"
+     r"(milliers|millions|milliards)", "loans"),
 ]
 
 
@@ -968,6 +1004,78 @@ def extract_commentary(texte: str, maxi: int = 1500) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Reconstruction des colonnes par coordonnees
+# ---------------------------------------------------------------------------
+
+def _lignes_par_coordonnees(page, ecart_colonne: float = 12.0) -> list:
+    """Reconstitue les lignes d'un tableau en cellules, a partir des positions.
+
+    Sans cela, « Produit Net Bancaire 122 316 132 725 +8,5% » est illisible :
+    l'espace qui separe deux colonnes est le meme que celui qui separe les
+    milliers, et le tokeniseur fusionne 122 316 et 132 725 en un seul nombre de
+    122 milliards. Le nombre monstrueux fait ensuite sauter le multiplicateur
+    puis le plancher de plausibilite, et toute la ligne est perdue.
+
+    Les coordonnees, elles, ne mentent pas : un blanc large separe deux
+    colonnes, un blanc etroit separe deux groupes de chiffres.
+    """
+    try:
+        mots = page.extract_words(use_text_flow=False, keep_blank_chars=False)
+    except Exception:
+        return []
+
+    lignes = {}
+    for m in mots:
+        cle = round(m["top"] / 3)          # tolerance verticale
+        lignes.setdefault(cle, []).append(m)
+
+    out = []
+    for cle in sorted(lignes):
+        mots_ligne = sorted(lignes[cle], key=lambda m: m["x0"])
+        cellules, courante = [], []
+        precedent = None
+        for m in mots_ligne:
+            if precedent is not None and m["x0"] - precedent["x1"] > ecart_colonne:
+                cellules.append(" ".join(courante))
+                courante = []
+            courante.append(m["text"])
+            precedent = m
+        if courante:
+            cellules.append(" ".join(courante))
+        if cellules:
+            out.append(cellules)
+    return out
+
+
+def _extract_from_cells(lignes: list, mult: float) -> dict:
+    """Lit les libelles connus dans des lignes deja decoupees en cellules."""
+    data = {}
+    for cellules in lignes:
+        if len(cellules) < 2:
+            continue
+        libelle = cellules[0].lower().strip()
+        for motif, champ in _TABLE_LABELS:
+            if champ in data:
+                continue
+            if not re.match(r"\s*" + motif + r"\b", libelle):
+                continue
+            for cel in cellules[1:]:
+                val = _parse_amount(cel)
+                if val is None or val == 0:
+                    continue
+                if len(re.sub(r"\D", "", cel)) < 3:
+                    continue
+                if float(val).is_integer() and 1990 <= abs(val) <= 2100:
+                    continue
+                montant = val * mult
+                if abs(montant) < 100_000_000:
+                    continue
+                data[champ] = montant
+                break
+    return data
+
+
+# ---------------------------------------------------------------------------
 # Main extraction
 # ---------------------------------------------------------------------------
 
@@ -992,6 +1100,11 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
         "ordinary_income": None,
         "hao_income": None,
         "cost_of_risk": None,
+        "operating_expenses": None,
+        "gross_operating_income": None,
+        "pretax_income": None,
+        "deposits": None,
+        "loans": None,
     }
 
     is_scanned = False
@@ -1001,9 +1114,11 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
             all_text = ""
             all_tables = []
 
+            lignes_cellules = []
             for page in pdf.pages[:20]:
                 text = page.extract_text() or ""
                 all_text += text + "\n"
+                lignes_cellules.extend(_lignes_par_coordonnees(page))
                 tables = page.extract_tables()
                 for table in tables:
                     if table and len(table) > 1:
@@ -1020,7 +1135,7 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
 
             if not is_scanned:
                 # Detect multiplier
-                data["multiplier"] = _resolve_multiplier(all_text)
+                data["multiplier"] = _resolve_multiplier(all_text, lignes_cellules)
 
                 mult = data["multiplier"]
 
@@ -1039,6 +1154,10 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
                 # Layer 1: text extraction
                 text_data = _extract_from_text(all_text, mult)
 
+                # Couche coordonnees : elle tranche l'ambiguite des colonnes
+                # separees par des espaces, que le texte brut ne permet pas.
+                cell_data = _extract_from_cells(lignes_cellules, mult)
+
                 # Layer 2: row-by-row label matching
                 label_data = _extract_from_tables_rowlabel(all_tables, mult)
 
@@ -1054,7 +1173,8 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
                 # Merge (higher layers override)
                 # Order: text < bank < label < ifrs < ref (IFRS/SYSCOHADA most reliable)
                 all_extracted = {}
-                for d in [text_data, bank_data, label_data, ifrs_data, ref_data]:
+                for d in [text_data, cell_data, bank_data, label_data,
+                          ifrs_data, ref_data]:
                     all_extracted.update({k: v for k, v in d.items() if v is not None})
 
                 # Map to output
@@ -1074,6 +1194,9 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
                 data["ordinary_income"] = all_extracted.get("ordinary_income")
                 data["hao_income"] = all_extracted.get("hao_income")
                 data["cost_of_risk"] = all_extracted.get("cost_of_risk")
+                for champ in ("operating_expenses", "gross_operating_income",
+                              "pretax_income", "deposits", "loans"):
+                    data[champ] = all_extracted.get(champ)
                 if data.get("revenue_bank") is None:
                     data["revenue_bank"] = all_extracted.get("revenue_bank")
 
@@ -1114,7 +1237,9 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
                 for field in ("revenue", "revenue_bank", "net_income", "equity",
                                "total_assets", "shares", "ebit", "ebitda",
                                "capex", "cfo", "ordinary_income", "hao_income",
-                               "cost_of_risk"):
+                               "cost_of_risk", "operating_expenses",
+                               "gross_operating_income", "pretax_income",
+                               "deposits", "loans"):
                     if data.get(field) is None and ocr_data.get(field):
                         data[field] = ocr_data[field]
                 if data.get("revenue") is None and ocr_data.get("revenue_bank"):
@@ -1155,7 +1280,10 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
     for k, plancher in (("revenue", 1e8), ("revenue_bank", 1e8),
                         ("total_assets", 1e8), ("equity", 1e8),
                         ("net_income", 1e6), ("ordinary_income", 1e6),
-                        ("hao_income", 1e6), ("cost_of_risk", 1e6)):
+                        ("hao_income", 1e6), ("cost_of_risk", 1e6),
+                        ("operating_expenses", 1e6),
+                        ("gross_operating_income", 1e6),
+                        ("pretax_income", 1e6), ("deposits", 1e8), ("loans", 1e8)):
         v = data.get(k)
         if v is not None and 0 < abs(v) < plancher:
             data[k] = None

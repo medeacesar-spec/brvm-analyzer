@@ -308,6 +308,30 @@ def compute_ratios(data: dict) -> dict:
     else:
         ratios["cout_risque_pnb"] = None
 
+    # --- Grille bancaire ---
+    # Pour une banque, le resultat net ne dit rien de la trajectoire. Le
+    # coefficient d'exploitation mesure ce que coute la machine ; le cout du
+    # risque mesure ce que coute le portefeuille. C'est le croisement des deux
+    # — l'analyse « en ciseau » — qui fait le diagnostic.
+    charges = data.get("operating_expenses")
+    rbe = data.get("gross_operating_income")
+    depots = data.get("deposits")
+    credits = data.get("loans")
+    pnb_ref = data.get("revenue_bank") or (revenue if is_bank else None)
+
+    ratios["coefficient_exploitation"] = (
+        abs(charges) / abs(pnb_ref) if charges and pnb_ref else None)
+    ratios["marge_brute_exploitation"] = (
+        rbe / pnb_ref if rbe and pnb_ref else None)
+    ratios["credits_depots"] = (
+        credits / depots if credits and depots else None)
+    ratios["depots"] = depots
+    ratios["credits"] = credits
+    # Rendement des actifs : une banque se juge aussi sur ce que rapporte son
+    # bilan, pas seulement ses fonds propres.
+    ratios["roa"] = (net_income / data["total_assets"]
+                     if data.get("total_assets") and net_income else None)
+
     # --- P/B (Price to Book) ---
     book_value_per_share = equity / shares if shares != 0 else 0
     ratios["bvps"] = book_value_per_share or None
@@ -357,6 +381,34 @@ def _compute_flags(ratios: dict, is_bank: bool) -> dict:
                 "Vigilance", f"{abs(part)*100:.0f}% du résultat est exceptionnel")
         else:
             flags["part_exceptionnelle"] = ("OK", "Résultat essentiellement courant")
+
+    # Coefficient d'exploitation : ce que coute la machine bancaire
+    ce = ratios.get("coefficient_exploitation")
+    if ce is not None:
+        if ce <= 0.50:
+            flags["coefficient_exploitation"] = (
+                "OK", f"Machine efficace ({ce*100:.0f} % du PNB)")
+        elif ce <= 0.65:
+            flags["coefficient_exploitation"] = (
+                "OK", f"Coefficient d'exploitation correct ({ce*100:.0f} %)")
+        elif ce <= 0.75:
+            flags["coefficient_exploitation"] = (
+                "Vigilance", f"Structure de coûts lourde ({ce*100:.0f} % du PNB)")
+        else:
+            flags["coefficient_exploitation"] = (
+                "Risque", f"Coefficient d'exploitation à {ce*100:.0f} % du PNB")
+
+    # Credits / depots : au-dela de 100 %, la banque prete plus qu'elle ne
+    # collecte et depend de ressources de marche, plus cheres et plus volatiles.
+    cd = ratios.get("credits_depots")
+    if cd is not None:
+        if cd <= 0.80:
+            flags["credits_depots"] = ("OK", f"Liquidité confortable ({cd*100:.0f} %)")
+        elif cd <= 1.00:
+            flags["credits_depots"] = ("OK", f"Crédits/dépôts à {cd*100:.0f} %")
+        else:
+            flags["credits_depots"] = (
+                "Vigilance", f"Crédits supérieurs aux dépôts ({cd*100:.0f} %)")
 
     # Cout du risque rapporte au PNB (banques) — l'analyse « en ciseau »
     cdr = ratios.get("cout_risque_pnb")
