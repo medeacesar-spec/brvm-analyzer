@@ -1048,44 +1048,86 @@ def _extract_with_ocr(pdf_path: str) -> str:
 # produit net bancaire totalise 27 539 millions de FCFA ». L'unite est prise
 # DANS la phrase, pas dans le multiplicateur du document : c'est ce qui rend
 # cette lecture independante des autres.
-_ECHELLES = {"milliers": 1_000, "millions": 1_000_000, "milliards": 1_000_000_000}
+_ECHELLES = {
+    "milliers": 1_000, "millier": 1_000,
+    "millions": 1_000_000, "million": 1_000_000, "mio": 1_000_000,
+    "mios": 1_000_000,
+    "milliards": 1_000_000_000, "milliard": 1_000_000_000,
+    # Les emetteurs abregent : Onatel ecrit « 146,18 Mds FCFA », jamais
+    # « 146,18 milliards ». Sans ces formes, la prose restait muette.
+    "mds": 1_000_000_000, "md": 1_000_000_000,
+    "mrds": 1_000_000_000, "mrd": 1_000_000_000,
+}
 
-_PROSE = [
-    (r"produit\s+net\s+bancaire[^.]{0,80}?([\d][\d\s.,]*)\s*"
-     r"(milliers|millions|milliards)", "revenue_bank"),
-    (r"chiffre\s+d.affaires[^.]{0,80}?([\d][\d\s.,]*)\s*"
-     r"(milliers|millions|milliards)", "revenue"),
-    (r"r.sultat\s+net[^.]{0,100}?([\d][\d\s.,]*)\s*"
-     r"(milliers|millions|milliards)", "net_income"),
-    (r"r.sultat\s+des\s+activit.s\s+ordinaires[^.]{0,100}?([\d][\d\s.,]*)\s*"
-     r"(milliers|millions|milliards)", "ordinary_income"),
-    # Encours clientele : les banques BRVM les citent dans leur commentaire, pas
-    # dans le tableau. « Les ressources clientele enregistrent une evolution de
-    # 7,4 % pour s'etablir a 942 692 millions de FCFA ».
-    (r"ressources\s+client[eè]le[^.]{0,120}?([\d][\d\s.,]*)\s*"
-     r"(milliers|millions|milliards)", "deposits"),
-    (r"d[ée]p[oô]ts?\s+(?:de\s+la\s+)?client[eè]le[^.]{0,120}?([\d][\d\s.,]*)\s*"
-     r"(milliers|millions|milliards)", "deposits"),
-    (r"cr[ée]dits?\s+nets?\s+[àa]\s+la\s+client[eè]le[^.]{0,120}?([\d][\d\s.,]*)\s*"
-     r"(milliers|millions|milliards)", "loans"),
+# Les plus longues d'abord, sinon « md » consommerait le debut de « mds ».
+_MOTIF_ECHELLE = "|".join(sorted(_ECHELLES, key=len, reverse=True))
+
+# (etiquette, champ, fenetre de recherche apres l'etiquette)
+_ETIQUETTES_PROSE = [
+    (r"produit\s+net\s+bancaire", "revenue_bank", 80),
+    (r"chiffre\s+d.affaires", "revenue", 80),
+    (r"r.sultat\s+net", "net_income", 100),
+    (r"r.sultat\s+des\s+activit.s\s+ordinaires", "ordinary_income", 100),
+    # Encours clientele : les banques BRVM les citent dans leur commentaire,
+    # pas dans le tableau.
+    (r"ressources\s+client[eè]le", "deposits", 120),
+    (r"d[eé]p[oô]ts?\s+(?:de\s+la\s+)?client[eè]le", "deposits", 120),
+    (r"cr[eé]dits?\s+nets?\s+[aà]\s+la\s+client[eè]le", "loans", 120),
 ]
 
 
 def _extract_from_prose(texte: str) -> dict:
-    """Montants cites en toutes lettres dans le commentaire de l'emetteur."""
+    """Montants cites en toutes lettres dans le commentaire de l'emetteur.
+
+    Deux formes coexistent, et il faut les deux : le montant assorti d'une
+    echelle (« 146,18 Mds FCFA ») et le montant brut en unites (« un resultat
+    net beneficiaire de 15 886 921 152 FCFA »). Onatel emploie les deux dans
+    le meme rapport de gestion.
+    """
     bas = re.sub(r"\s+", " ", (texte or "").lower())
     trouve = {}
-    for motif, champ in _PROSE:
+
+    def _saute_un_autre_libelle(depart: int, arrivee: int, sauf: str) -> bool:
+        """Vrai si un AUTRE poste s'intercale entre l'etiquette et le montant.
+
+        Un titre sans point final laisse la fenetre deborder sur la phrase
+        suivante. Le rapport Onatel enchaine « ... DE RESULTAT NET AU 31
+        DECEMBRE 2025 » puis « le chiffre d'affaires s'etablit a 146,18 Mds » :
+        146,18 Mds se retrouvait enregistre comme resultat net. On refuse donc
+        tout appariement qui saute par-dessus un autre libelle.
+        """
+        entre = bas[depart:arrivee]
+        for autre, champ_autre, _ in _ETIQUETTES_PROSE:
+            if champ_autre != sauf and re.search(autre, entre):
+                return True
+        return False
+
+    for etiquette, champ, fenetre in _ETIQUETTES_PROSE:
         if champ in trouve:
             continue
-        m = re.search(motif, bas)
-        if not m:
-            continue
-        val = _parse_amount(m.group(1))
-        if val is None or val == 0:
-            continue
-        montant = val * _ECHELLES[m.group(2)]
-        if abs(montant) >= 100_000_000:
+        montant = None
+
+        avec_echelle = re.search(
+            etiquette + r"[^.]{0," + str(fenetre) + r"}?([\d][\d\s.,]*?)\s*"
+            r"(" + _MOTIF_ECHELLE + r")\b", bas)
+        if avec_echelle and not _saute_un_autre_libelle(
+                avec_echelle.start(), avec_echelle.start(1), champ):
+            val = _parse_amount(avec_echelle.group(1))
+            if val:
+                montant = val * _ECHELLES[avec_echelle.group(2)]
+
+        if montant is None:
+            # Montant deja exprime en francs : l'echelle vaut 1.
+            brut = re.search(
+                etiquette + r"[^.]{0," + str(fenetre) + r"}?([\d][\d\s.,]*?)\s*"
+                r"f\s?cfa", bas)
+            if brut and not _saute_un_autre_libelle(
+                    brut.start(), brut.start(1), champ):
+                val = _parse_amount(brut.group(1))
+                if val:
+                    montant = val
+
+        if montant and abs(montant) >= 100_000_000:
             trouve[champ] = montant
     return trouve
 
