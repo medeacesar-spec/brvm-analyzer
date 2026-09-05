@@ -31,13 +31,30 @@ from data.storage import get_report_links, save_fundamentals, get_connection
 # ---------------------------------------------------------------------------
 
 def _parse_amount(text: str) -> Optional[float]:
-    """Parse un montant depuis le texte PDF."""
+    """Parse un montant depuis le texte PDF.
+
+    Le point est ambigu en francais : separateur de milliers ou virgule
+    decimale. Une resolution d'AG ecrit « un dividende brut de 1.940 fcfa par
+    action » — lire 1,94 revient a diviser le montant par mille, en silence.
+    On tranche par la forme : un point suivi d'exactement trois chiffres est un
+    separateur de milliers, sauf si une virgule joue deja le role decimal.
+    """
     if not text:
         return None
-    cleaned = text.strip().replace("\xa0", "").replace(" ", "").replace(",", ".")
-    negative = ("(" in cleaned and ")" in cleaned) or cleaned.startswith("-")
-    cleaned = cleaned.replace("(", "").replace(")", "").lstrip("-")
-    cleaned = cleaned.rstrip(".").rstrip("%")
+    brut = text.strip().replace("\xa0", "").replace(" ", "")
+    negative = ("(" in brut and ")" in brut) or brut.startswith("-")
+    brut = brut.replace("(", "").replace(")", "").lstrip("-")
+    brut = brut.rstrip(".").rstrip("%")
+
+    if "," in brut:
+        # La virgule est decimale : les points ne peuvent etre que des milliers.
+        cleaned = brut.replace(".", "").replace(",", ".")
+    elif re.match(r"^\d{1,3}(?:\.\d{3})+$", brut):
+        # 1.940 · 34.837.331.686 -> milliers
+        cleaned = brut.replace(".", "")
+    else:
+        cleaned = brut
+
     if not re.match(r'^[\d.]+$', cleaned):
         return None
     try:
