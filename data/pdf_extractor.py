@@ -1048,44 +1048,94 @@ def _extract_with_ocr(pdf_path: str) -> str:
 # produit net bancaire totalise 27 539 millions de FCFA ». L'unite est prise
 # DANS la phrase, pas dans le multiplicateur du document : c'est ce qui rend
 # cette lecture independante des autres.
-_ECHELLES = {"milliers": 1_000, "millions": 1_000_000, "milliards": 1_000_000_000}
+_ECHELLES = {
+    "milliers": 1_000, "millier": 1_000,
+    "millions": 1_000_000, "million": 1_000_000, "mio": 1_000_000,
+    "mios": 1_000_000,
+    "milliards": 1_000_000_000, "milliard": 1_000_000_000,
+    # Les emetteurs abregent : Onatel ecrit « 146,18 Mds FCFA », jamais
+    # « 146,18 milliards ». Sans ces formes, la prose restait muette.
+    "mds": 1_000_000_000, "md": 1_000_000_000,
+    "mrds": 1_000_000_000, "mrd": 1_000_000_000,
+}
 
-_PROSE = [
-    (r"produit\s+net\s+bancaire[^.]{0,80}?([\d][\d\s.,]*)\s*"
-     r"(milliers|millions|milliards)", "revenue_bank"),
-    (r"chiffre\s+d.affaires[^.]{0,80}?([\d][\d\s.,]*)\s*"
-     r"(milliers|millions|milliards)", "revenue"),
-    (r"r.sultat\s+net[^.]{0,100}?([\d][\d\s.,]*)\s*"
-     r"(milliers|millions|milliards)", "net_income"),
-    (r"r.sultat\s+des\s+activit.s\s+ordinaires[^.]{0,100}?([\d][\d\s.,]*)\s*"
-     r"(milliers|millions|milliards)", "ordinary_income"),
-    # Encours clientele : les banques BRVM les citent dans leur commentaire, pas
-    # dans le tableau. « Les ressources clientele enregistrent une evolution de
-    # 7,4 % pour s'etablir a 942 692 millions de FCFA ».
-    (r"ressources\s+client[eè]le[^.]{0,120}?([\d][\d\s.,]*)\s*"
-     r"(milliers|millions|milliards)", "deposits"),
-    (r"d[ée]p[oô]ts?\s+(?:de\s+la\s+)?client[eè]le[^.]{0,120}?([\d][\d\s.,]*)\s*"
-     r"(milliers|millions|milliards)", "deposits"),
-    (r"cr[ée]dits?\s+nets?\s+[àa]\s+la\s+client[eè]le[^.]{0,120}?([\d][\d\s.,]*)\s*"
-     r"(milliers|millions|milliards)", "loans"),
+# Les plus longues d'abord, sinon « md » consommerait le debut de « mds ».
+_MOTIF_ECHELLE = "|".join(sorted(_ECHELLES, key=len, reverse=True))
+
+# (etiquette, champ, fenetre de recherche apres l'etiquette)
+_ETIQUETTES_PROSE = [
+    (r"produit\s+net\s+bancaire", "revenue_bank", 80),
+    (r"chiffre\s+d.affaires", "revenue", 80),
+    (r"r.sultat\s+net", "net_income", 100),
+    # Les operateurs communiquent en EBITDAaL : « l'EBITDAaL s'etablit a
+    # 424,1 milliards FCFA, soit 35,4 % du chiffre d'affaires ».
+    (r"ebitda\s*a?l?\b", "ebitda", 90),
+    (r"r.sultat\s+des\s+activit.s\s+ordinaires", "ordinary_income", 100),
+    # Encours clientele : les banques BRVM les citent dans leur commentaire,
+    # pas dans le tableau.
+    (r"ressources\s+client[eè]le", "deposits", 120),
+    (r"d[eé]p[oô]ts?\s+(?:de\s+la\s+)?client[eè]le", "deposits", 120),
+    (r"cr[eé]dits?\s+nets?\s+[aà]\s+la\s+client[eè]le", "loans", 120),
 ]
 
 
 def _extract_from_prose(texte: str) -> dict:
-    """Montants cites en toutes lettres dans le commentaire de l'emetteur."""
+    """Montants cites en toutes lettres dans le commentaire de l'emetteur.
+
+    Deux formes coexistent, et il faut les deux : le montant assorti d'une
+    echelle (« 146,18 Mds FCFA ») et le montant brut en unites (« un resultat
+    net beneficiaire de 15 886 921 152 FCFA »). Onatel emploie les deux dans
+    le meme rapport de gestion.
+    """
     bas = re.sub(r"\s+", " ", (texte or "").lower())
     trouve = {}
-    for motif, champ in _PROSE:
+
+    def _saute_un_autre_libelle(depart: int, arrivee: int, sauf: str) -> bool:
+        """Vrai si un AUTRE poste s'intercale entre l'etiquette et le montant.
+
+        Un titre sans point final laisse la fenetre deborder sur la phrase
+        suivante. Le rapport Onatel enchaine « ... DE RESULTAT NET AU 31
+        DECEMBRE 2025 » puis « le chiffre d'affaires s'etablit a 146,18 Mds » :
+        146,18 Mds se retrouvait enregistre comme resultat net. On refuse donc
+        tout appariement qui saute par-dessus un autre libelle.
+        """
+        entre = bas[depart:arrivee]
+        for autre, champ_autre, _ in _ETIQUETTES_PROSE:
+            if champ_autre != sauf and re.search(autre, entre):
+                return True
+        return False
+
+    for etiquette, champ, fenetre in _ETIQUETTES_PROSE:
         if champ in trouve:
             continue
-        m = re.search(motif, bas)
-        if not m:
-            continue
-        val = _parse_amount(m.group(1))
-        if val is None or val == 0:
-            continue
-        montant = val * _ECHELLES[m.group(2)]
-        if abs(montant) >= 100_000_000:
+        montant = None
+
+        # On parcourt TOUTES les occurrences : la premiere est souvent un
+        # titre, dont l'appariement est refuse. S'arreter la ferait perdre la
+        # phrase du corps de texte, qui porte la vraie valeur.
+        for m in re.finditer(
+                etiquette + r"[^.]{0," + str(fenetre) + r"}?([\d][\d\s.,]*?)\s*"
+                r"(" + _MOTIF_ECHELLE + r")\b", bas):
+            if _saute_un_autre_libelle(m.start(), m.start(1), champ):
+                continue
+            val = _parse_amount(m.group(1))
+            if val:
+                montant = val * _ECHELLES[m.group(2)]
+                break
+
+        if montant is None:
+            # Montant deja exprime en francs : l'echelle vaut 1.
+            for m in re.finditer(
+                    etiquette + r"[^.]{0," + str(fenetre)
+                    + r"}?([\d][\d\s.,]*?)\s*f\s?cfa", bas):
+                if _saute_un_autre_libelle(m.start(), m.start(1), champ):
+                    continue
+                val = _parse_amount(m.group(1))
+                if val:
+                    montant = val
+                    break
+
+        if montant and abs(montant) >= 100_000_000:
             trouve[champ] = montant
     return trouve
 
@@ -1210,6 +1260,113 @@ _PARCS = [
     (r"actifs?\s+4g", "parc_4g"),
     (r"parc\s+fmi", "parc_total"),
 ]
+
+# Les operateurs ne presentent pas tous leurs parcs en tableau. Onatel les
+# raconte : « Le nombre d'abonnes actifs passe de 12,14 millions en 2024 a
+# 12,61 millions de clients en 2025 ». Sans lecture de cette prose, un
+# operateur entier restait absent de la comparaison des parcs — alors que le
+# recrutement de clients precede le chiffre d'affaires.
+_FAMILLES_COURTES = [
+    (r"(?:orange|moov|mobile)\s+money", "parc_mobile_money"),
+    (r"data\s+mobile", "parc_data_mobile"),
+    (r"fibre", "parc_fibre"),
+    (r"mobile\b", "parc_mobile"),
+    # « fixe » seul est refuse : dans le rapport integre d'Orange CI, la mise
+    # en page accole « 38,5 M abonnes » et le mot « Fixe » de la puce
+    # suivante, ce qui donnerait plus d'abonnes fixes que mobiles. On exige
+    # une denomination explicite.
+    (r"fixe\s+haut\s+d[eé]bit|internet\s+fixe|fixe\s+broadband",
+     "parc_fixe_broadband"),
+]
+
+_PARCS_PROSE = [
+    (r"(?:abonn[eé]s?\s+actifs?|base\s+clients?|parc\s+(?:global|total)"
+     r"|nombre\s+d.abonn[eé]s?)", "parc_total"),
+    (r"parc\s+(?:clients?\s+)?mobile\b", "parc_mobile"),
+    (r"(?:mobile\s+money|moov\s+money|orange\s+money)", "parc_mobile_money"),
+    (r"parc\s+(?:de\s+la\s+)?fibre|fibre\s+optique", "parc_fibre"),
+    (r"internet\s+fixe|fixe\s+haut\s+d[eé]bit", "parc_fixe_broadband"),
+    (r"parc\s+data\s+mobile", "parc_data_mobile"),
+]
+
+# En deca, ce n'est pas un parc : c'est un numero de colonne, une annee ou un
+# pourcentage pris pour un effectif. Onatel rendait ainsi des « parcs » de 12.
+_PARC_PLANCHER = 1_000
+
+
+def _extract_parcs_prose(texte: str) -> dict:
+    """Parcs clients cites dans la prose du rapport de gestion.
+
+    Deux tournures couvrent l'essentiel :
+      - « passe de 12,14 millions en 2024 a 12,61 millions en 2025 », qui
+        donne la valeur ET la variation, calculee plutot que recopiee ;
+      - « 12,61 millions de clients », qui ne donne que la valeur.
+    """
+    bas = re.sub(r"\s+", " ", (texte or "").lower())
+    unites = "|".join(sorted(_UNITES_PARC, key=len, reverse=True))
+    trouve = {}
+
+    # Forme inverse : le chiffre precede la famille, qui est nommee seule.
+    # Orange CI ecrit « 37,6 M abonnes mobile (+8,6 %) », « 40,4 M clients
+    # Orange money (+10,2 %) ». Le « M » n'est accepte qu'accole a « abonnes »
+    # ou « clients », ou il ne peut signifier que million.
+    for famille, champ in _FAMILLES_COURTES:
+        if champ in trouve:
+            continue
+        m = re.search(
+            r"([\d][\d\s.,]*?)\s*(m|" + unites + r")\b\s*"
+            r"(?:d.)?(?:abonn[eé]s?|clients?)\s+" + famille
+            + r"(?:[^.]{0,25}?\(\s*([+-]?[\d.,]+)\s*%)?", bas)
+        if not m:
+            continue
+        valeur = _parse_amount(m.group(1))
+        if not valeur:
+            continue
+        unite = m.group(2)
+        echelle = 1_000_000 if unite == "m" else _UNITES_PARC[unite]
+        variation = None
+        if m.group(3):
+            brut = m.group(3).strip()
+            variation = _parse_amount(brut.lstrip("+-"))
+            if variation is not None and brut.startswith("-"):
+                variation = -variation
+        trouve[champ] = {"valeur": valeur * echelle, "variation": variation}
+
+    for etiquette, champ in _PARCS_PROSE:
+        if champ in trouve:
+            continue
+
+        evolution = re.search(
+            etiquette + r"[^.]{0,140}?passe\s+de\s+([\d][\d\s.,]*?)\s*"
+            r"(" + unites + r")\b[^.]{0,60}?[aà]\s+([\d][\d\s.,]*?)\s*"
+            r"(" + unites + r")\b", bas)
+        if evolution:
+            avant = _parse_amount(evolution.group(1))
+            apres = _parse_amount(evolution.group(3))
+            if avant and apres:
+                depart = avant * _UNITES_PARC[evolution.group(2)]
+                arrivee = apres * _UNITES_PARC[evolution.group(4)]
+                trouve[champ] = {
+                    "valeur": arrivee,
+                    "variation": ((arrivee - depart) / depart * 100
+                                  if depart else None),
+                }
+                continue
+
+        simple = re.search(
+            etiquette + r"[^.]{0,120}?([\d][\d\s.,]*?)\s*"
+            r"(" + unites + r")\b\s*(?:de\s+)?(?:clients?|abonn[eé]s?)", bas)
+        if simple:
+            valeur = _parse_amount(simple.group(1))
+            if valeur:
+                trouve[champ] = {
+                    "valeur": valeur * _UNITES_PARC[simple.group(2)],
+                    "variation": None,
+                }
+
+    return {c: d for c, d in trouve.items()
+            if d.get("valeur") and d["valeur"] >= _PARC_PLANCHER}
+
 
 _UNITES_PARC = {"millions": 1_000_000, "million": 1_000_000,
                 "milliers": 1_000, "k": 1_000, "millier": 1_000}
@@ -1452,10 +1609,37 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
                 # IFRS et SYSCOHADA restent au-dessus : leurs codes REF ancrent
                 # semantiquement la valeur, ce qu'aucune heuristique de mise en
                 # page ne peut garantir.
+                # La prose de l'emetteur n'etait lue que sur les documents
+                # SCANNES. Les rapports de gestion, en texte natif, n'y
+                # passaient donc jamais — et c'est pourtant la qu'Onatel donne
+                # son resultat net (« 15,89 Mds FCFA »), absent de tout
+                # tableau. Elle vient en PREMIER dans la fusion, donc en
+                # dernier recours : un tableau reste plus precis qu'une phrase.
+                prose_data = _extract_from_prose(all_text)
+
                 all_extracted = {}
-                for d in [text_data, bank_data, label_data, cell_data,
-                          ifrs_data, ref_data]:
+                for d in [prose_data, text_data, bank_data, label_data,
+                          cell_data, ifrs_data, ref_data]:
                     all_extracted.update({k: v for k, v in d.items() if v is not None})
+
+                # Arbitrage des nombres tronques par une frontiere de colonne.
+                # Le rapport integre d'Orange CI annonce « 1 197,1 milliards
+                # FCFA » ; le decoupage en cellules laissait le « 1 » dans la
+                # colonne voisine et le tableau rendait 197,1 — un dixieme du
+                # chiffre d'affaires du groupe, sans que rien ne le signale.
+                # Quand la valeur du tableau est le SUFFIXE en chiffres de
+                # celle annoncee en prose, c'est une troncature et non un
+                # desaccord : la prose l'emporte.
+                for champ, valeur_prose in prose_data.items():
+                    valeur = all_extracted.get(champ)
+                    if valeur is None or valeur == valeur_prose:
+                        continue
+                    if abs(valeur) >= abs(valeur_prose):
+                        continue
+                    chiffres = str(int(abs(valeur)))
+                    complets = str(int(abs(valeur_prose)))
+                    if len(complets) > len(chiffres) and complets.endswith(chiffres):
+                        all_extracted[champ] = valeur_prose
 
                 # Map to output
                 data["revenue"] = all_extracted.get("revenue")
@@ -1474,6 +1658,18 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
                 # Parcs clients : pour un operateur telecom, le chiffre
                 # d'affaires n'est que la consequence du parc.
                 parcs = _extract_parcs(pages_positions)
+                # Un effectif sous le plancher n'est pas un parc : Onatel
+                # rendait des « parcs » de 12 clients, lus dans une colonne
+                # d'annee.
+                parcs = {c: d for c, d in parcs.items()
+                         if (d.get("valeur") if isinstance(d, dict) else d)
+                         and (d.get("valeur") if isinstance(d, dict) else d)
+                         >= _PARC_PLANCHER}
+                # Les rapports de gestion racontent les parcs au lieu de les
+                # tabuler : la prose prend le relais, sans jamais remplacer
+                # une valeur deja lue dans un tableau, plus precise.
+                for champ, detail in _extract_parcs_prose(all_text).items():
+                    parcs.setdefault(champ, detail)
                 if parcs:
                     data["parcs"] = parcs
 
