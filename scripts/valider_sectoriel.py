@@ -100,8 +100,53 @@ def main(dry_run: bool = False) -> None:
         remise = ", ".join(f"{c} = NULL" for c in champs)
         conn.execute(f"UPDATE fundamentals SET {remise} WHERE id = ?", (ligne["id"],))
     conn.commit()
-    print(f"\n{len(annulations)} anomalies annulees.")
+
+    _consigner(conn, annulations)
+    print(f"\n{len(annulations)} anomalies annulees et consignees.")
     conn.close()
+
+
+def _consigner(conn, annulations) -> None:
+    """Garde trace de chaque anomalie, pour permettre une correction ciblee.
+
+    Sans cela, le controle annulait les valeurs impossibles et l'information
+    disparaissait avec elles : on savait qu'il avait mordu, jamais sur quoi.
+    Corriger supposait de relire les journaux d'execution, quand ils
+    existaient encore.
+
+    Une anomalie qui ne reapparait pas au passage suivant est marquee resolue
+    plutot que supprimee : la trace de ce qui a ete repare vaut autant que
+    celle de ce qui reste a reparer.
+    """
+    presentes = {(l["ticker"], l["fiscal_year"], m) for l, _, m in annulations}
+    try:
+        for ligne, champs, motif in annulations:
+            conn.execute(
+                """INSERT INTO controle_anomalies
+                   (ticker, fiscal_year, champs, motif, detectee_le, resolue_le)
+                   VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, NULL)
+                   ON CONFLICT (ticker, fiscal_year, motif) DO UPDATE SET
+                     champs = excluded.champs,
+                     detectee_le = CURRENT_TIMESTAMP,
+                     resolue_le = NULL""",
+                (ligne["ticker"], ligne["fiscal_year"],
+                 ", ".join(champs), motif),
+            )
+
+        # Ce qui ne ressort plus du controle est repare : on le date.
+        ouvertes = [dict(l) for l in conn.execute(
+            "SELECT id, ticker, fiscal_year, motif FROM controle_anomalies "
+            "WHERE resolue_le IS NULL").fetchall()]
+        for a in ouvertes:
+            if (a["ticker"], a["fiscal_year"], a["motif"]) not in presentes:
+                conn.execute(
+                    "UPDATE controle_anomalies SET resolue_le = CURRENT_TIMESTAMP "
+                    "WHERE id = ?", (a["id"],))
+        conn.commit()
+    except Exception as exc:
+        # Le journal ne doit jamais empecher le controle de faire son office.
+        print(f"consignation impossible ({exc}) — les annulations sont faites",
+              flush=True)
 
 
 if __name__ == "__main__":
