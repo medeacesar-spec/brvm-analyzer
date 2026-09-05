@@ -701,3 +701,74 @@ def parcs_du_secteur() -> dict:
                 "periode": f"{d.get('periode') or ''} {d.get('fiscal_year') or ''}".strip(),
             }
     return sortie
+
+
+# ---------------------------------------------------------------------------
+# Avis sur une donnee : les seuils du metier ET la position face aux pairs
+# ---------------------------------------------------------------------------
+
+def avis_indicateur(cle: str, valeur, secteur: str, mediane=None) -> dict:
+    """Juge une valeur sur DEUX axes, qui ne disent pas la meme chose.
+
+    Le premier est le STANDARD du metier : les bornes calibrees secteur par
+    secteur, qui repondent a « ce niveau est-il tenable ? ». Le second est la
+    position face aux PAIRS : la meme valeur peut etre saine dans l'absolu et
+    mediocre au regard de ce que font les concurrents, ou l'inverse.
+
+    Un coefficient d'exploitation de 55 % est acceptable pour une banque —
+    mais si ses pairs sont a 40 %, elle depense un tiers de plus qu'eux pour
+    le meme produit. Le seuil seul ne le dit pas.
+    """
+    sortie = {"niveau": None, "standard": None, "pairs": None}
+    if valeur is None:
+        return sortie
+
+    verdict = juger(cle, valeur, secteur)
+    if verdict:
+        sortie["niveau"], sortie["standard"] = verdict
+
+    if mediane not in (None, 0):
+        sens = (seuils_secteur(secteur).get(cle) or (None,))[0]
+        ecart = (valeur - mediane) / abs(mediane) * 100
+        if abs(ecart) < 10:
+            sortie["pairs"] = "dans la moyenne du secteur"
+        else:
+            mieux = (ecart > 0) if sens != "bas" else (ecart < 0)
+            sortie["pairs"] = (
+                f"{abs(ecart):.0f} % {'au-dessus' if ecart > 0 else 'en dessous'} "
+                f"de la médiane — {'mieux' if mieux else 'moins bien'} que ses pairs")
+            if sortie["niveau"] is None:
+                sortie["niveau"] = "OK" if mieux else "Vigilance"
+    return sortie
+
+
+def alertes_sectorielles(ratios: dict, secteur: str, pairs: dict = None) -> list:
+    """Points d'attention tires de la grille du metier.
+
+    Sert a ATTIRER L'ATTENTION, jamais a noter : le score fondamental garde sa
+    methode et son historique. Un indicateur juge « Risque » par les bornes du
+    secteur, ou nettement en retrait de ses pairs, remonte ici pour que le
+    lecteur le voie sans avoir a parcourir la grille.
+    """
+    profil = profil_secteur(secteur)
+    medianes = (pairs or {}).get("medianes") or {}
+    sortie = []
+    for libelle, cle, forme, _aide in profil.get("grille", []):
+        valeur = ratios.get(cle)
+        if valeur is None:
+            continue
+        avis = avis_indicateur(cle, valeur, secteur, medianes.get(cle))
+        if avis["niveau"] not in ("Risque", "Vigilance"):
+            continue
+        affiche = (f"{valeur:.2f} ×" if forme == "fois"
+                   else f"{valeur*100:.1f} %")
+        sortie.append({
+            "libelle": libelle,
+            "valeur": affiche,
+            "niveau": avis["niveau"],
+            "standard": avis["standard"],
+            "pairs": avis["pairs"],
+        })
+    # Les risques d'abord : c'est ce qu'on doit voir en premier.
+    sortie.sort(key=lambda a: 0 if a["niveau"] == "Risque" else 1)
+    return sortie
