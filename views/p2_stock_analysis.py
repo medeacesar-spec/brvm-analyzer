@@ -626,6 +626,16 @@ def _render_fundamental(fundamentals, ratios):
     )
 
     # ═══════════════════════════════════════════════════════════════════
+    # ── Particularites du secteur ──
+    # Place ici, a la suite des ratios generiques : c'est dans cet onglet
+    # qu'on cherche des ratios. Le bloc vivait auparavant dans l'onglet
+    # Recommandation, sous les cartes de prix cible, ou personne ne le
+    # trouvait.
+    try:
+        _render_bloc_sectoriel(fundamentals, ratios)
+    except Exception as _e:
+        st.caption(f"Grille sectorielle indisponible : {_e}")
+
     # Trajectoire financiere (4 ans) + Structure du bilan (side panel)
     # ═══════════════════════════════════════════════════════════════════
     fiscal_year = fundamentals.get("fiscal_year")
@@ -1330,6 +1340,255 @@ def _render_indicator_explanations(df: pd.DataFrame, sma_labels: dict, freq: str
             )
 
 
+def _exercice_le_plus_complet(fundamentals, ratios_courants):
+    """Choisit l'exercice sur lequel lire la grille sectorielle.
+
+    La fiche affiche le dernier exercice ayant un chiffre d'affaires et un
+    resultat net. Quand cet exercice n'est alimente que par des publications
+    trimestrielles, ses postes de FLUX sont absents — la regle posee pour ne
+    pas melanger les periodes les y interdit — et la grille sort vide alors
+    que la societe a bel et bien publie les chiffres, un ou deux ans plus tot.
+
+    Ecobank Transnational en est l'exemple : la fiche affiche 2026, ou seuls
+    les depots sont connus, tandis que l'exercice 2024 porte le resultat brut
+    d'exploitation, les credits et les depots. On lit donc la grille sur
+    l'exercice le plus complet, et on indique lequel.
+
+    Retourne (ratios, exercice) — l'exercice etant None quand c'est celui que
+    la fiche affiche deja, donc sans rien a signaler.
+    """
+    from analysis.sectors import profil_secteur
+    from analysis.fundamental import compute_ratios
+    from data.storage import get_fundamentals
+
+    grille = profil_secteur(fundamentals.get("sector")).get("grille") or []
+    cles = [cle for _, cle, _, _ in grille]
+
+    def _remplies(ratios):
+        return sum(1 for c in cles if ratios.get(c) is not None)
+
+    meilleur = _remplies(ratios_courants)
+    if meilleur >= len(cles):
+        return ratios_courants, None
+
+    ticker = fundamentals.get("ticker")
+    annee_courante = fundamentals.get("fiscal_year")
+    if not ticker or not annee_courante:
+        return ratios_courants, None
+
+    retenus, annee_retenue = ratios_courants, None
+    for recul in range(1, 4):
+        try:
+            autre = get_fundamentals(ticker, fiscal_year=annee_courante - recul)
+        except Exception:
+            autre = None
+        if not autre:
+            continue
+        try:
+            ratios_autre = compute_ratios(autre)
+        except Exception:
+            continue
+        if _remplies(ratios_autre) > meilleur:
+            meilleur = _remplies(ratios_autre)
+            retenus, annee_retenue = ratios_autre, autre.get("fiscal_year")
+
+    return retenus, annee_retenue
+
+
+def _render_bloc_sectoriel(fundamentals, ratios_src):
+    """Grille propre au secteur, complements metier et comparaison intersecteurs.
+
+    Rendu dans l'onglet Fondamentale : c'est la qu'on cherche des ratios, pas
+    dans Recommandation ou ce bloc se trouvait jusqu'ici, sous les cartes de
+    prix cible. Personne ne l'y trouvait.
+    """
+    from utils.ui_helpers import section_heading
+
+    ratios_src, _exercice_grille = _exercice_le_plus_complet(
+        fundamentals, ratios_src)
+
+    _secteur_bas = (fundamentals.get("sector") or "").lower()
+
+    def _render_grille(titre, definition, source):
+        dispo = [(lib, cle, fmt, aide) for lib, cle, fmt, aide in definition
+                 if source.get(cle) is not None]
+        if not dispo:
+            return
+        section_heading(titre, spacing="loose")
+        drapeaux = source.get("flags") or {}
+        lignes = ""
+        for lib, cle, fmt, aide in dispo:
+            val = source[cle]
+            affiche = f"{val:.2f} ×" if fmt == "fois" else f"{val*100:.1f} %"
+            niveau, commentaire = drapeaux.get(cle, ("", ""))
+            couleur = {"OK": "var(--up)", "Vigilance": "var(--ocre)",
+                       "Risque": "var(--down)"}.get(niveau, "var(--ink-3)")
+            lignes += (
+                f"<tr>"
+                f"<td style='padding:6px 14px 6px 0;font-size:12.5px;color:var(--ink);'>"
+                f"{lib}<div style='font-size:11px;color:var(--ink-3);'>{aide}</div></td>"
+                f"<td style='padding:6px 14px 6px 0;font-size:15px;font-weight:600;"
+                f"text-align:right;font-variant-numeric:tabular-nums;'>{affiche}</td>"
+                f"<td style='padding:6px 0;font-size:11.5px;color:{couleur};'>"
+                f"{commentaire}</td></tr>"
+            )
+        st.markdown(
+            f"<div style='border:1px solid var(--border);border-radius:10px;"
+            f"padding:6px 16px;background:var(--bg-elev);'>"
+            f"<table style='width:100%;border-collapse:collapse;'>{lignes}</table></div>",
+            unsafe_allow_html=True,
+        )
+
+    # ── Grille sectorielle ──
+    # Chaque secteur de la cote a desormais sa grille, et surtout ses propres
+    # bornes de jugement : une marge d'EBITDA de 8 % condamne un operateur
+    # telecoms et n'a rien d'anormal chez un distributeur. Le referentiel
+    # `analysis.sectors` porte les deux. Auparavant seules les banques et les
+    # telecoms etaient servies — les 30 autres societes n'affichaient rien.
+    from analysis.sectors import profil_secteur
+    _profil = profil_secteur(fundamentals.get("sector"))
+    _render_grille(_profil["libelle"], _profil["grille"], ratios_src)
+    if _exercice_grille:
+        st.caption(
+            f"Grille lue sur l'exercice {_exercice_grille} : l'exercice "
+            f"affiché n'est alimenté que par des publications de période, "
+            f"dont les flux ne sont pas repris pour ne pas mélanger un "
+            f"trimestre et une année.")
+    if any(ratios_src.get(cle) is not None for _, cle, _, _ in _profil["grille"]):
+        st.caption(_profil["lecture"])
+
+    # ── Complements propres aux telecoms ──
+    if "telecom" in _secteur_bas or "télécom" in _secteur_bas:
+
+        # Parcs clients : le chiffre d'affaires n'est que la consequence du
+        # parc. Sonatel T1-2026 le montre — le mobile recule de 2,9 % pendant
+        # que la fibre gagne 26,5 % ; un seul chiffre d'affaires en croissance
+        # masquerait entierement ce mouvement.
+        try:
+            from data.storage import get_telecom_parcs, PARCS_LIBELLES
+            _parcs = get_telecom_parcs(fundamentals.get('ticker'))
+        except Exception:
+            _parcs = None
+        if _parcs is not None and not _parcs.empty:
+            _recent = _parcs.iloc[0]
+            _periode = f"{_recent['periode']} {int(_recent['fiscal_year'])}".strip()
+            st.markdown(
+                f"<div class='label-xs' style='margin:14px 0 4px;'>"
+                f"Parcs clients · {_periode}</div>", unsafe_allow_html=True)
+            _cellules = ""
+            for _, r in _parcs[
+                (_parcs["fiscal_year"] == _recent["fiscal_year"])
+                & (_parcs["periode"] == _recent["periode"])
+            ].iterrows():
+                _val = (f"{r['valeur']/1e6:,.1f} M" if r["valeur"] >= 1e6
+                        else f"{r['valeur']:,.0f}")
+                _var, _couleur = "", "var(--ink-3)"
+                if pd.notna(r["variation"]):
+                    _couleur = "var(--up)" if r["variation"] >= 0 else "var(--down)"
+                    _var = f"{r['variation']:+.1f} %"
+                _cellules += (
+                    f"<tr>"
+                    f"<td style='padding:5px 14px 5px 0;font-size:12.5px;'>"
+                    f"{PARCS_LIBELLES.get(r['parc'], r['parc'])}</td>"
+                    f"<td style='padding:5px 14px 5px 0;font-size:14px;font-weight:600;"
+                    f"text-align:right;font-variant-numeric:tabular-nums;'>{_val}</td>"
+                    f"<td style='padding:5px 0;font-size:12px;color:{_couleur};"
+                    f"text-align:right;'>{_var}</td></tr>"
+                )
+            st.markdown(
+                f"<div style='border:1px solid var(--border);border-radius:10px;"
+                f"padding:6px 16px;background:var(--bg-elev);'>"
+                f"<table style='width:100%;border-collapse:collapse;'>{_cellules}</table>"
+                f"</div>", unsafe_allow_html=True)
+            _mob = _parcs[_parcs["parc"] == "parc_mobile"]
+            _ca = ratios_src.get("revenue") or fundamentals.get("revenue")
+            if not _mob.empty and _ca:
+                st.caption(
+                    f"Revenu moyen par client mobile ≈ "
+                    f"{_ca / _mob.iloc[0]['valeur']:,.0f} FCFA sur l'exercice — "
+                    f"ordre de grandeur, le parc étant un stock et le chiffre "
+                    f"d'affaires un flux.")
+
+    # ── Complements propres aux banques ──
+    # La grille elle-meme est rendue plus haut par le referentiel ; il reste
+    # les encours, qui sont des montants et non des ratios.
+    if "banque" in _secteur_bas or "bank" in _secteur_bas:
+        _dep, _cre = ratios_src.get("depots"), ratios_src.get("credits")
+        if _dep or _cre:
+            _bouts = []
+            if _dep:
+                _bouts.append(f"dépôts clientèle {_dep/1e9:,.0f} Mds")
+            if _cre:
+                _bouts.append(f"crédits nets {_cre/1e9:,.0f} Mds")
+            st.caption(" · ".join(_bouts))
+
+    # ── Comparables intersectoriels ──
+    # Les grilles ci-dessus ne se comparent pas entre elles : un coefficient
+    # d'exploitation bancaire et une intensite capitalistique telecoms ne
+    # parlent pas de la meme chose. Ce tableau ne retient donc que les mesures
+    # qui gardent le meme sens partout, et situe le secteur du titre parmi les
+    # autres.
+    try:
+        from analysis.sectors import (medianes_intersecteurs,
+                                      COMPARABLES_INTERSECTEURS,
+                                      MIN_OBSERVATIONS)
+        _inter = medianes_intersecteurs()
+    except Exception:
+        _inter = []
+
+    if _inter:
+        with st.expander("Comparaison entre secteurs", expanded=False):
+            _mien = (fundamentals.get("sector") or "").strip().lower()
+            _entetes = "".join(
+                f"<th style='padding:6px 10px;font-size:11px;font-weight:500;"
+                f"color:var(--ink-3);text-align:right;white-space:nowrap;'>{lib}</th>"
+                for lib, _, _ in COMPARABLES_INTERSECTEURS)
+            _corps = ""
+            for _e in _inter:
+                _actuel = _e["secteur"].strip().lower() == _mien
+                _fond = "background:var(--bg-elev);" if _actuel else ""
+                _gras = "font-weight:600;" if _actuel else ""
+                _cellules = ""
+                for _lib, _cle, _fmt in COMPARABLES_INTERSECTEURS:
+                    _v = _e.get(_cle)
+                    if _v is None:
+                        _txt = "<span style='color:var(--ink-3);'>—</span>"
+                    elif _fmt == "fois":
+                        _txt = f"{_v:.1f} ×"
+                    else:
+                        _txt = f"{_v*100:.1f} %"
+                    _cellules += (
+                        f"<td style='padding:6px 10px;font-size:12.5px;"
+                        f"text-align:right;font-variant-numeric:tabular-nums;"
+                        f"{_gras}'>{_txt}</td>")
+                _corps += (
+                    f"<tr style='{_fond}border-top:1px solid var(--border);'>"
+                    f"<td style='padding:6px 10px;font-size:12.5px;{_gras}'>"
+                    f"{_e['secteur']}</td>"
+                    f"<td style='padding:6px 10px;font-size:11.5px;"
+                    f"color:var(--ink-3);text-align:right;'>{_e['effectif']}</td>"
+                    f"{_cellules}</tr>")
+            st.markdown(
+                f"<div style='overflow-x:auto;'>"
+                f"<table style='width:100%;border-collapse:collapse;'>"
+                f"<thead><tr>"
+                f"<th style='padding:6px 10px;font-size:11px;font-weight:500;"
+                f"color:var(--ink-3);text-align:left;'>Secteur</th>"
+                f"<th style='padding:6px 10px;font-size:11px;font-weight:500;"
+                f"color:var(--ink-3);text-align:right;'>Sociétés</th>"
+                f"{_entetes}</tr></thead><tbody>{_corps}</tbody></table></div>",
+                unsafe_allow_html=True)
+            st.caption(
+                f"Médianes sectorielles, calculées seulement à partir de "
+                f"{MIN_OBSERVATIONS} sociétés renseignées — en deçà, la "
+                f"médiane refléterait une société et non un secteur, et la "
+                f"case reste vide. Pour les banques, la marge nette se "
+                f"rapporte au produit net bancaire et non à un chiffre "
+                f"d'affaires : elle n'est pas comparable telle quelle aux "
+                f"autres secteurs."
+            )
+
+
 def _render_recommendation(result, fundamentals):
     """Onglet Recommandation v3 : verdict card avec composition + 3 score
     cards descriptives + Points forts/Vigilance en tables + Plan d'action
@@ -1596,181 +1855,6 @@ def _render_recommendation(result, fundamentals):
             f"</div>",
             unsafe_allow_html=True,
         )
-
-    _secteur_bas = (fundamentals.get("sector") or "").lower()
-
-    def _render_grille(titre, definition, source):
-        dispo = [(lib, cle, fmt, aide) for lib, cle, fmt, aide in definition
-                 if source.get(cle) is not None]
-        if not dispo:
-            return
-        section_heading(titre, spacing="loose")
-        drapeaux = source.get("flags") or {}
-        lignes = ""
-        for lib, cle, fmt, aide in dispo:
-            val = source[cle]
-            affiche = f"{val:.2f} ×" if fmt == "fois" else f"{val*100:.1f} %"
-            niveau, commentaire = drapeaux.get(cle, ("", ""))
-            couleur = {"OK": "var(--up)", "Vigilance": "var(--ocre)",
-                       "Risque": "var(--down)"}.get(niveau, "var(--ink-3)")
-            lignes += (
-                f"<tr>"
-                f"<td style='padding:6px 14px 6px 0;font-size:12.5px;color:var(--ink);'>"
-                f"{lib}<div style='font-size:11px;color:var(--ink-3);'>{aide}</div></td>"
-                f"<td style='padding:6px 14px 6px 0;font-size:15px;font-weight:600;"
-                f"text-align:right;font-variant-numeric:tabular-nums;'>{affiche}</td>"
-                f"<td style='padding:6px 0;font-size:11.5px;color:{couleur};'>"
-                f"{commentaire}</td></tr>"
-            )
-        st.markdown(
-            f"<div style='border:1px solid var(--border);border-radius:10px;"
-            f"padding:6px 16px;background:var(--bg-elev);'>"
-            f"<table style='width:100%;border-collapse:collapse;'>{lignes}</table></div>",
-            unsafe_allow_html=True,
-        )
-
-    # ── Grille sectorielle ──
-    # Chaque secteur de la cote a desormais sa grille, et surtout ses propres
-    # bornes de jugement : une marge d'EBITDA de 8 % condamne un operateur
-    # telecoms et n'a rien d'anormal chez un distributeur. Le referentiel
-    # `analysis.sectors` porte les deux. Auparavant seules les banques et les
-    # telecoms etaient servies — les 30 autres societes n'affichaient rien.
-    from analysis.sectors import profil_secteur
-    _profil = profil_secteur(fundamentals.get("sector"))
-    _render_grille(_profil["libelle"], _profil["grille"], ratios_src)
-    if any(ratios_src.get(cle) is not None for _, cle, _, _ in _profil["grille"]):
-        st.caption(_profil["lecture"])
-
-    # ── Complements propres aux telecoms ──
-    if "telecom" in _secteur_bas or "télécom" in _secteur_bas:
-
-        # Parcs clients : le chiffre d'affaires n'est que la consequence du
-        # parc. Sonatel T1-2026 le montre — le mobile recule de 2,9 % pendant
-        # que la fibre gagne 26,5 % ; un seul chiffre d'affaires en croissance
-        # masquerait entierement ce mouvement.
-        try:
-            from data.storage import get_telecom_parcs, PARCS_LIBELLES
-            _parcs = get_telecom_parcs(fundamentals.get('ticker'))
-        except Exception:
-            _parcs = None
-        if _parcs is not None and not _parcs.empty:
-            _recent = _parcs.iloc[0]
-            _periode = f"{_recent['periode']} {int(_recent['fiscal_year'])}".strip()
-            st.markdown(
-                f"<div class='label-xs' style='margin:14px 0 4px;'>"
-                f"Parcs clients · {_periode}</div>", unsafe_allow_html=True)
-            _cellules = ""
-            for _, r in _parcs[
-                (_parcs["fiscal_year"] == _recent["fiscal_year"])
-                & (_parcs["periode"] == _recent["periode"])
-            ].iterrows():
-                _val = (f"{r['valeur']/1e6:,.1f} M" if r["valeur"] >= 1e6
-                        else f"{r['valeur']:,.0f}")
-                _var, _couleur = "", "var(--ink-3)"
-                if pd.notna(r["variation"]):
-                    _couleur = "var(--up)" if r["variation"] >= 0 else "var(--down)"
-                    _var = f"{r['variation']:+.1f} %"
-                _cellules += (
-                    f"<tr>"
-                    f"<td style='padding:5px 14px 5px 0;font-size:12.5px;'>"
-                    f"{PARCS_LIBELLES.get(r['parc'], r['parc'])}</td>"
-                    f"<td style='padding:5px 14px 5px 0;font-size:14px;font-weight:600;"
-                    f"text-align:right;font-variant-numeric:tabular-nums;'>{_val}</td>"
-                    f"<td style='padding:5px 0;font-size:12px;color:{_couleur};"
-                    f"text-align:right;'>{_var}</td></tr>"
-                )
-            st.markdown(
-                f"<div style='border:1px solid var(--border);border-radius:10px;"
-                f"padding:6px 16px;background:var(--bg-elev);'>"
-                f"<table style='width:100%;border-collapse:collapse;'>{_cellules}</table>"
-                f"</div>", unsafe_allow_html=True)
-            _mob = _parcs[_parcs["parc"] == "parc_mobile"]
-            _ca = ratios_src.get("revenue") or fundamentals.get("revenue")
-            if not _mob.empty and _ca:
-                st.caption(
-                    f"Revenu moyen par client mobile ≈ "
-                    f"{_ca / _mob.iloc[0]['valeur']:,.0f} FCFA sur l'exercice — "
-                    f"ordre de grandeur, le parc étant un stock et le chiffre "
-                    f"d'affaires un flux.")
-
-    # ── Complements propres aux banques ──
-    # La grille elle-meme est rendue plus haut par le referentiel ; il reste
-    # les encours, qui sont des montants et non des ratios.
-    if "banque" in _secteur_bas or "bank" in _secteur_bas:
-        _dep, _cre = ratios_src.get("depots"), ratios_src.get("credits")
-        if _dep or _cre:
-            _bouts = []
-            if _dep:
-                _bouts.append(f"dépôts clientèle {_dep/1e9:,.0f} Mds")
-            if _cre:
-                _bouts.append(f"crédits nets {_cre/1e9:,.0f} Mds")
-            st.caption(" · ".join(_bouts))
-
-    # ── Comparables intersectoriels ──
-    # Les grilles ci-dessus ne se comparent pas entre elles : un coefficient
-    # d'exploitation bancaire et une intensite capitalistique telecoms ne
-    # parlent pas de la meme chose. Ce tableau ne retient donc que les mesures
-    # qui gardent le meme sens partout, et situe le secteur du titre parmi les
-    # autres.
-    try:
-        from analysis.sectors import (medianes_intersecteurs,
-                                      COMPARABLES_INTERSECTEURS,
-                                      MIN_OBSERVATIONS)
-        _inter = medianes_intersecteurs()
-    except Exception:
-        _inter = []
-
-    if _inter:
-        with st.expander("Comparaison entre secteurs", expanded=False):
-            _mien = (fundamentals.get("sector") or "").strip().lower()
-            _entetes = "".join(
-                f"<th style='padding:6px 10px;font-size:11px;font-weight:500;"
-                f"color:var(--ink-3);text-align:right;white-space:nowrap;'>{lib}</th>"
-                for lib, _, _ in COMPARABLES_INTERSECTEURS)
-            _corps = ""
-            for _e in _inter:
-                _actuel = _e["secteur"].strip().lower() == _mien
-                _fond = "background:var(--bg-elev);" if _actuel else ""
-                _gras = "font-weight:600;" if _actuel else ""
-                _cellules = ""
-                for _lib, _cle, _fmt in COMPARABLES_INTERSECTEURS:
-                    _v = _e.get(_cle)
-                    if _v is None:
-                        _txt = "<span style='color:var(--ink-3);'>—</span>"
-                    elif _fmt == "fois":
-                        _txt = f"{_v:.1f} ×"
-                    else:
-                        _txt = f"{_v*100:.1f} %"
-                    _cellules += (
-                        f"<td style='padding:6px 10px;font-size:12.5px;"
-                        f"text-align:right;font-variant-numeric:tabular-nums;"
-                        f"{_gras}'>{_txt}</td>")
-                _corps += (
-                    f"<tr style='{_fond}border-top:1px solid var(--border);'>"
-                    f"<td style='padding:6px 10px;font-size:12.5px;{_gras}'>"
-                    f"{_e['secteur']}</td>"
-                    f"<td style='padding:6px 10px;font-size:11.5px;"
-                    f"color:var(--ink-3);text-align:right;'>{_e['effectif']}</td>"
-                    f"{_cellules}</tr>")
-            st.markdown(
-                f"<div style='overflow-x:auto;'>"
-                f"<table style='width:100%;border-collapse:collapse;'>"
-                f"<thead><tr>"
-                f"<th style='padding:6px 10px;font-size:11px;font-weight:500;"
-                f"color:var(--ink-3);text-align:left;'>Secteur</th>"
-                f"<th style='padding:6px 10px;font-size:11px;font-weight:500;"
-                f"color:var(--ink-3);text-align:right;'>Sociétés</th>"
-                f"{_entetes}</tr></thead><tbody>{_corps}</tbody></table></div>",
-                unsafe_allow_html=True)
-            st.caption(
-                f"Médianes sectorielles, calculées seulement à partir de "
-                f"{MIN_OBSERVATIONS} sociétés renseignées — en deçà, la "
-                f"médiane refléterait une société et non un secteur, et la "
-                f"case reste vide. Pour les banques, la marge nette se "
-                f"rapporte au produit net bancaire et non à un chiffre "
-                f"d'affaires : elle n'est pas comparable telle quelle aux "
-                f"autres secteurs."
-            )
 
     # ═══════════════════════════════════════════════════════════════════
     # 3 cards : Score fondamental · Score technique · Conviction modèle
