@@ -2396,13 +2396,15 @@ def get_total_account_fees(user_id: Optional[str] = None) -> float:
 def save_quarterly_data(data: dict) -> int:
     conn = get_connection()
     cursor = conn.execute(
-        """INSERT INTO quarterly_data (ticker, fiscal_year, quarter, revenue,
-           net_income, ebit, source, notes)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """INSERT INTO quarterly_data (ticker, fiscal_year, quarter, periode,
+           revenue, net_income, ebit, source, notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(ticker, fiscal_year, quarter) DO UPDATE SET
+           periode=COALESCE(excluded.periode, quarterly_data.periode),
            revenue=excluded.revenue, net_income=excluded.net_income,
            ebit=excluded.ebit, source=excluded.source, notes=excluded.notes""",
         (data.get("ticker"), data.get("fiscal_year"), data.get("quarter"),
+         data.get("periode"),
          data.get("revenue"), data.get("net_income"), data.get("ebit"),
          data.get("source"), data.get("notes")),
     )

@@ -636,6 +636,15 @@ def _render_fundamental(fundamentals, ratios):
     except Exception as _e:
         st.caption(f"Grille sectorielle indisponible : {_e}")
 
+    # ── Tendance lue dans les publications de periode ──
+    # Trimestriels et semestriels ne font pas reference — l'exercice annuel
+    # seul le fait — mais ils disent la tendance, qu'un exercice clos ne
+    # montre qu'un an plus tard.
+    try:
+        _render_tendance_periodes(fundamentals.get("ticker"))
+    except Exception as _e:
+        st.caption(f"Tendance de période indisponible : {_e}")
+
     # Trajectoire financiere (4 ans) + Structure du bilan (side panel)
     # ═══════════════════════════════════════════════════════════════════
     fiscal_year = fundamentals.get("fiscal_year")
@@ -1393,6 +1402,81 @@ def _exercice_le_plus_complet(fundamentals, ratios_courants):
             retenus, annee_retenue = ratios_autre, autre.get("fiscal_year")
 
     return retenus, annee_retenue
+
+
+def _render_tendance_periodes(ticker):
+    """Compare chaque periode publiee a la MEME periode de l'exercice anterieur.
+
+    Regle non negociable : on ne rapproche jamais deux periodes de duree
+    differente. Un premier semestre se compare a un premier semestre — le
+    confronter a un trimestre annoncerait un doublement qui n'existe pas.
+    """
+    from utils.ui_helpers import section_heading
+    from analysis.tendances import tendance_periodes
+
+    if not ticker:
+        return
+    donnees = tendance_periodes(ticker)
+    lignes = donnees.get("lignes") or []
+    if not lignes:
+        return
+
+    section_heading("Tendance · publications de période", spacing="loose")
+
+    def _montant(valeur):
+        if valeur is None:
+            return "<span style='color:var(--ink-3);'>—</span>"
+        if abs(valeur) >= 1e9:
+            return f"{valeur/1e9:,.1f} Md"
+        return f"{valeur/1e6:,.0f} M"
+
+    def _ecart(variation):
+        if variation is None:
+            return "<span style='color:var(--ink-3);'>—</span>"
+        couleur = "var(--up)" if variation >= 0 else "var(--down)"
+        return (f"<span style='color:{couleur};font-weight:600;'>"
+                f"{variation:+.1f} %</span>")
+
+    corps = ""
+    for ligne in lignes:
+        reference = (f"contre {_montant(ligne['revenue_ref'])} en "
+                     f"{ligne['annee_ref']}" if ligne.get("annee_ref")
+                     else "<span style='color:var(--ink-3);'>"
+                          "pas de période comparable</span>")
+        corps += (
+            f"<tr style='border-top:1px solid var(--border);'>"
+            f"<td style='padding:7px 12px 7px 0;font-size:12.5px;"
+            f"white-space:nowrap;'>{ligne['libelle']} {ligne['annee']}</td>"
+            f"<td style='padding:7px 12px;font-size:13px;font-weight:600;"
+            f"text-align:right;font-variant-numeric:tabular-nums;'>"
+            f"{_montant(ligne['revenue'])}</td>"
+            f"<td style='padding:7px 12px;font-size:12.5px;text-align:right;'>"
+            f"{_ecart(ligne['revenue_var'])}</td>"
+            f"<td style='padding:7px 12px;font-size:13px;font-weight:600;"
+            f"text-align:right;font-variant-numeric:tabular-nums;'>"
+            f"{_montant(ligne['net_income'])}</td>"
+            f"<td style='padding:7px 0;font-size:12.5px;text-align:right;'>"
+            f"{_ecart(ligne['net_income_var'])}</td></tr>"
+        )
+
+    entetes = ["Période", "Chiffre d'affaires", "vs N-1", "Résultat net", "vs N-1"]
+    st.markdown(
+        f"<div style='overflow-x:auto;'>"
+        f"<table style='width:100%;border-collapse:collapse;'>"
+        f"<thead><tr>"
+        + "".join(
+            f"<th style='padding:0 12px 4px 0;font-size:11px;font-weight:500;"
+            f"color:var(--ink-3);text-align:{'left' if i == 0 else 'right'};"
+            f"white-space:nowrap;'>{t}</th>"
+            for i, t in enumerate(entetes))
+        + f"</tr></thead><tbody>{corps}</tbody></table></div>",
+        unsafe_allow_html=True)
+    st.caption(
+        "Chaque période est comparée à la **même période** de l'exercice "
+        "précédent : un premier semestre à un premier semestre, jamais à un "
+        "trimestre. Ces publications ne font pas référence — l'exercice annuel "
+        "seul le fait — mais elles montrent la tendance avant lui."
+    )
 
 
 def _render_bloc_sectoriel(fundamentals, ratios_src):
