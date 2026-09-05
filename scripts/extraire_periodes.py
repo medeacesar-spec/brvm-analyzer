@@ -48,7 +48,27 @@ def periode_du_nom(url: str):
     return None, None
 
 
-def main(depuis: int = 2023, ouvriers: int = 4) -> None:
+def _deja_lues(conn) -> set:
+    """Periodes deja enregistrees avec au moins un montant.
+
+    Relire un trimestre deja exploite coute plusieurs minutes d'OCR pour
+    reecrire la meme valeur. La reprise vaut ici encore plus qu'ailleurs : les
+    publications de periode sont quatre fois plus nombreuses que les annuelles.
+    """
+    try:
+        lignes = conn.execute(
+            "SELECT ticker, fiscal_year, periode FROM quarterly_data "
+            "WHERE (revenue IS NOT NULL AND revenue <> 0) "
+            "   OR (net_income IS NOT NULL AND net_income <> 0)"
+        ).fetchall()
+    except Exception:
+        return set()
+    return {(dict(l)["ticker"], dict(l)["fiscal_year"],
+             (dict(l).get("periode") or "").upper()) for l in lignes}
+
+
+def main(depuis: int = 2023, ouvriers: int = 4,
+         lot: int = 0, sur: int = 1, reprendre: bool = True) -> None:
     conn = get_connection()
     rapports = [dict(l) for l in conn.execute(
         """SELECT ticker, fiscal_year, url, report_type FROM report_links
@@ -70,6 +90,22 @@ def main(depuis: int = 2023, ouvriers: int = 4) -> None:
         vus.add(cle)
         r["periode"], r["rang"] = periode, rang
         liste.append(r)
+
+    if reprendre:
+        conn = get_connection()
+        acquises = _deja_lues(conn)
+        conn.close()
+        avant = len(liste)
+        liste = [r for r in liste
+                 if (r["ticker"], r["fiscal_year"], r["periode"]) not in acquises]
+        print(f"deja lues, ecartees : {avant - len(liste)}", flush=True)
+
+    if sur > 1:
+        # Meme decoupage que le rattrapage sectoriel : un document sur `sur`,
+        # en partant du k-ieme. Le tri par exercice decroissant repartit les
+        # scans lourds entre les lots au lieu de les concentrer.
+        liste = [r for i, r in enumerate(liste) if i % sur == lot]
+        print(f"lot {lot + 1}/{sur} : {len(liste)} documents", flush=True)
 
     print(f"publications de periode a lire : {len(liste)}", flush=True)
     compteurs = {"ok": 0, "vide": 0, "err": 0}
@@ -125,8 +161,15 @@ def main(depuis: int = 2023, ouvriers: int = 4) -> None:
 
 
 if __name__ == "__main__":
-    annee = 2023
+    annee, ouvriers, lot, sur = 2023, 4, 0, 1
     for a in sys.argv[1:]:
         if a.isdigit():
             annee = int(a)
-    main(depuis=annee)
+        elif a.startswith("--ouvriers="):
+            ouvriers = int(a.split("=", 1)[1])
+        elif a.startswith("--lot="):
+            lot = int(a.split("=", 1)[1])
+        elif a.startswith("--sur="):
+            sur = int(a.split("=", 1)[1])
+    main(depuis=annee, ouvriers=ouvriers, lot=lot, sur=sur,
+         reprendre="--tout-relire" not in sys.argv)
