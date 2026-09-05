@@ -1345,6 +1345,123 @@ _PARCS_PROSE = [
 _PARC_PLANCHER = 1_000
 
 
+# Certaines societes ne publient pas un rapport mais une PRESENTATION. Sonatel
+# diffuse un jeu de diapositives ou les valeurs sont posees SOUS leurs
+# libelles, centrees, et non dans un tableau :
+#
+#     EBITDAAL      CAPEX     Résultat Net
+#        242,6       83,4        113,8
+#
+# Ni le tableau ni la prose ne les rapprochent. Le critere qui les relie est
+# l'alignement des CENTRES : mesure sur le document, l'ecart entre le centre
+# du libelle et celui de sa valeur vaut 3,2 points pour EBITDAAL, 1,4 pour
+# CAPEX, 0,3 pour « Résultat Net ». Un simple recouvrement, lui, laissait le
+# mot « Ebitda » de la phrase d'introduction capter l'appariement.
+_ETIQUETTES_DIAPO = [
+    (re.compile(r"^r[ée]sultat$", re.I), re.compile(r"^net$", re.I), "net_income"),
+    (re.compile(r"^ebitda\s*a?l?$", re.I), None, "ebitda"),
+    (re.compile(r"^capex$", re.I), None, "capex"),
+]
+
+_NOMBRE_DIAPO = re.compile(r"^-?\d{1,3}(?:[ .]\d{3})*(?:,\d+)?$")
+
+# Au-dela, le nombre appartient a une autre colonne.
+_ECART_CENTRE_MAX = 40.0
+# Au-dela, il appartient a la diapositive suivante.
+_ECART_VERTICAL_MAX = 90.0
+
+
+def _echelle_de_page(texte: str):
+    """Unite declaree sur la diapositive : « en Mds FCFA », « en millions ».
+
+    Sans mention explicite on ne conclut pas : appliquer le multiplicateur du
+    document a une diapositive qui n'en declare aucun reviendrait a inventer
+    un ordre de grandeur.
+    """
+    bas = (texte or "").lower()
+    if re.search(r"\b(?:en\s+)?(?:mds|milliards?)\b", bas):
+        return 1_000_000_000
+    if re.search(r"\b(?:en\s+)?millions?\b", bas):
+        return 1_000_000
+    if re.search(r"\b(?:en\s+)?milliers?\b", bas):
+        return 1_000
+    return None
+
+
+def _extract_depuis_presentation(page, echelle: float) -> dict:
+    """Associe chaque libelle a la valeur centree sous lui.
+
+    Les pourcentages sont ignores : « +9,8% YoY » accompagne la valeur, il ne
+    la remplace pas. Les libelles sont cherches en correspondance EXACTE sur
+    le mot, pour qu'une occurrence en prose ne capte pas l'appariement.
+    """
+    try:
+        mots = page.extract_words(use_text_flow=False, keep_blank_chars=False)
+    except Exception:
+        return {}
+    if not mots:
+        return {}
+
+    nombres = []
+    for m in mots:
+        if "%" in m["text"]:
+            continue
+        brut = m["text"].strip()
+        if not _NOMBRE_DIAPO.match(brut):
+            continue
+        valeur = _parse_amount(brut)
+        if valeur is None or valeur == 0:
+            continue
+        nombres.append({"centre": (m["x0"] + m["x1"]) / 2,
+                        "haut": m["top"], "valeur": valeur})
+    if not nombres:
+        return {}
+
+    trouve = {}
+    for i, mot in enumerate(mots):
+        for motif, motif_suite, champ in _ETIQUETTES_DIAPO:
+            if not motif.match(mot["text"].strip()):
+                continue
+            suite = [mot]
+            if motif_suite is not None:
+                if i + 1 >= len(mots) or not motif_suite.match(
+                        mots[i + 1]["text"].strip()):
+                    continue
+                suite.append(mots[i + 1])
+
+            centre = (min(x["x0"] for x in suite)
+                      + max(x["x1"] for x in suite)) / 2
+            sommet = min(x["top"] for x in suite)
+
+            candidats = []
+            for n in nombres:
+                if n["haut"] <= sommet or n["haut"] - sommet > _ECART_VERTICAL_MAX:
+                    continue
+                ecart = abs(n["centre"] - centre)
+                if ecart > _ECART_CENTRE_MAX:
+                    continue
+                candidats.append((ecart, n["haut"] - sommet, n["valeur"]))
+            if not candidats:
+                continue
+            candidats.sort()
+            trouve.setdefault(champ, candidats[0][2] * echelle)
+
+    # Le chiffre d'affaires echappe a la regle des centres : il est mis en
+    # avant a part, sa valeur posee a DROITE du libelle et non dessous. On
+    # s'appuie alors sur une certitude comptable — un chiffre d'affaires
+    # consolide depasse toujours l'EBITDA, le capex et le resultat net — donc
+    # c'est le plus grand nombre de la diapositive. La regle ne s'applique que
+    # si le libelle est present ET l'EBITDA deja identifie, faute de quoi on
+    # ne conclut pas.
+    if "revenue" not in trouve and trouve.get("ebitda"):
+        texte_page = " ".join(m["text"] for m in mots).lower()
+        if re.search(r"revenus?\s+consolid|chiffre\s+d.affaires", texte_page):
+            plus_grand = max(n["valeur"] for n in nombres)
+            if plus_grand * echelle > trouve["ebitda"]:
+                trouve["revenue"] = plus_grand * echelle
+    return trouve
+
+
 def _extract_parcs_prose(texte: str) -> dict:
     """Parcs clients cites dans la prose du rapport de gestion.
 
@@ -1581,9 +1698,18 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
 
             lignes_cellules = []
             pages_positions = []
+            diapo_data = {}
             for page in pdf.pages[:20]:
                 text = page.extract_text() or ""
                 all_text += text + "\n"
+                # Presentation : les valeurs sont posees sous leurs libelles,
+                # centrees, sans tableau. L'echelle est declaree sur la page
+                # elle-meme (« en Mds FCFA »), pas dans l'en-tete du document.
+                _echelle_page = _echelle_de_page(text)
+                if _echelle_page:
+                    for _champ, _valeur in _extract_depuis_presentation(
+                            page, _echelle_page).items():
+                        diapo_data.setdefault(_champ, _valeur)
                 lignes_cellules.extend(_lignes_par_coordonnees(page))
                 pages_positions.append(
                     _lignes_par_coordonnees(page, avec_positions=True))
@@ -1669,8 +1795,8 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
                 prose_data = _extract_from_prose(all_text)
 
                 all_extracted = {}
-                for d in [prose_data, text_data, bank_data, label_data,
-                          cell_data, ifrs_data, ref_data]:
+                for d in [prose_data, diapo_data, text_data, bank_data,
+                          label_data, cell_data, ifrs_data, ref_data]:
                     all_extracted.update({k: v for k, v in d.items() if v is not None})
 
                 # Arbitrage des nombres tronques par une frontiere de colonne.
