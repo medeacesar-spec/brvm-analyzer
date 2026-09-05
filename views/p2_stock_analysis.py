@@ -2249,6 +2249,7 @@ def _render_recommendation(result, fundamentals):
     # tiers a celui des concurrents, par exemple.
     try:
         from analysis.sectors import comparaison_pairs, alertes_sectorielles
+        from analysis.fundamental import CHANGEMENT_METHODE
         _secteur = fundamentals.get("sector")
         _ratios_grille = result.get("ratios") or {}
         _alertes = alertes_sectorielles(_ratios_grille, _secteur,
@@ -2276,10 +2277,12 @@ def _render_recommendation(result, fundamentals):
         st.markdown(_blocs, unsafe_allow_html=True)
         st.caption(
             "Ces points viennent de la grille propre au secteur, croisée avec "
-            "la position du titre face à ses pairs. Ils **n'entrent pas dans "
-            "le score** — celui-ci conserve sa méthode et son historique — "
-            "mais un score global ne peut pas dire qu'un niveau tenable dans "
-            "l'absolu est en retrait de ce que font les concurrents."
+            "la position du titre face à ses pairs. Depuis le "
+            f"{CHANGEMENT_METHODE}, ils **entrent dans le score "
+            "fondamental**, à hauteur de ±3 points sur 50 : un score global ne "
+            "peut pas ignorer qu'un niveau tenable dans l'absolu est en retrait "
+            "de ce que font les concurrents. Les scores antérieurs restent "
+            "affichés selon la méthode qui les a produits."
         )
 
     # ═══════════════════════════════════════════════════════════════════
