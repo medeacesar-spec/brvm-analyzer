@@ -707,6 +707,47 @@ def champs_extraits(result: dict, selecteur=None) -> dict:
     return sortie
 
 
+_SECTEURS_CACHE = {}
+
+
+def _secteur_connu(ticker: str):
+    """Retrouve le secteur d'un ticker : market_data d'abord, referentiel ensuite.
+
+    Sans cela, chaque ligne creee par une extraction arrivait sans secteur —
+    et l'affichage des grilles sectorielles, qui en depend, restait muet. Le
+    rattrapage du 05/09 a d'ailleurs recree le trou aussitot apres l'avoir
+    comble, en insérant des exercices neufs sans secteur.
+    """
+    if not ticker:
+        return None
+    if not _SECTEURS_CACHE:
+        try:
+            conn = get_connection()
+            for ligne in conn.execute(
+                "SELECT DISTINCT ticker, sector FROM market_data "
+                "WHERE sector IS NOT NULL AND sector <> ''"
+            ).fetchall():
+                d = dict(ligne)
+                _SECTEURS_CACHE[d["ticker"]] = (d["sector"] or "").strip()
+            conn.close()
+        except Exception:
+            pass
+        try:
+            import json as _json
+            chemin = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                  "brvm_tickers.json")
+            with open(chemin, encoding="utf-8") as fh:
+                brut = _json.load(fh)
+            paires = (brut.items() if isinstance(brut, dict)
+                      else [(x.get("ticker"), x) for x in brut])
+            for t, v in paires:
+                if t and not _SECTEURS_CACHE.get(t):
+                    _SECTEURS_CACHE[t] = (v.get("sector") or "").strip()
+        except Exception:
+            pass
+    return _SECTEURS_CACHE.get(ticker) or None
+
+
 def save_fundamentals(data: dict) -> int:
     """Insère ou met à jour les données fondamentales d'un titre.
     Les valeurs clairement aberrantes sont mises à NULL avant insertion.
@@ -714,6 +755,10 @@ def save_fundamentals(data: dict) -> int:
     on complète seulement ce qui manque (COALESCE)."""
     data = _sanitize_fundamentals(data)
     data = _net_income_coherent(data)
+    if not (data.get("sector") or "").strip():
+        _sect = _secteur_connu(data.get("ticker"))
+        if _sect:
+            data["sector"] = _sect
     conn = get_connection()
     cols = [
         "ticker", "company_name", "sector", "currency", "fiscal_year",
