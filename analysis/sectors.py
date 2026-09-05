@@ -507,3 +507,167 @@ def medianes_intersecteurs() -> list:
         sortie.append(entree)
 
     return sorted(sortie, key=lambda e: -e["effectif"])
+
+
+# ---------------------------------------------------------------------------
+# Comparaison aux pairs du secteur
+# ---------------------------------------------------------------------------
+# Comparer une banque a la mediane de toute la cote n'apprend rien : son
+# coefficient d'exploitation n'a de sens que face a celui des autres banques.
+# On compare donc chaque titre a SES pairs, sur les indicateurs de SA grille.
+
+def _exercices_du_secteur(secteur: str) -> dict:
+    """Charge, en deux requetes, tous les exercices des pairs du secteur."""
+    from data.db import get_connection
+
+    cle = _cle_secteur(secteur)
+    if not cle:
+        return {}
+
+    conn = get_connection()
+    marche = {}
+    for ligne in conn.execute(
+        "SELECT ticker, company_name, sector, price, shares, dps FROM market_data"
+    ).fetchall():
+        d = dict(ligne)
+        if _cle_secteur(d.get("sector")) == cle:
+            marche[d["ticker"]] = d
+    if not marche:
+        conn.close()
+        return {}
+
+    exercices = {}
+    for ligne in conn.execute(
+        "SELECT * FROM fundamentals ORDER BY ticker, fiscal_year DESC"
+    ).fetchall():
+        d = dict(ligne)
+        if d["ticker"] not in marche:
+            continue
+        ligne_marche = marche[d["ticker"]]
+        # Le cours et le nombre de titres ne dependent pas de l'exercice :
+        # ils viennent du marche et servent aux ratios de valorisation.
+        for champ in ("price", "shares"):
+            if not d.get(champ):
+                d[champ] = ligne_marche.get(champ)
+        d.setdefault("company_name", ligne_marche.get("company_name"))
+        if not (d.get("sector") or "").strip():
+            d["sector"] = ligne_marche.get("sector") or secteur
+        exercices.setdefault(d["ticker"], []).append(d)
+
+    conn.close()
+    return exercices
+
+
+def comparaison_pairs(secteur: str) -> dict:
+    """Tableau des pairs du secteur sur les indicateurs de leur grille.
+
+    Retourne {"colonnes", "lignes", "medianes"}. Les colonnes sont celles de
+    la grille sectorielle — coefficient d'exploitation et cout du risque pour
+    une banque, marge d'EBITDA et intensite capitalistique pour un operateur —
+    et non des ratios generiques qui gommeraient justement le metier.
+
+    Chaque pair est lu sur UN SEUL exercice, celui qui remplit le mieux la
+    grille. Completer un exercice avec les postes d'un autre reviendrait a
+    rapporter les frais generaux d'une annee au produit net bancaire d'une
+    autre : Ecobank CI ressortait ainsi a 184,9 % de coefficient
+    d'exploitation, ce qui n'existe pas. L'exercice retenu est affiche, faute
+    de quoi la comparaison serait trompeuse.
+    """
+    from analysis.fundamental import compute_ratios
+
+    profil = profil_secteur(secteur)
+    colonnes = [(lib, cle, fmt) for lib, cle, fmt, _ in profil["grille"]]
+    if not colonnes:
+        return {"colonnes": [], "lignes": [], "medianes": {}}
+    cles = [cle for _, cle, _ in colonnes]
+
+    lignes = []
+    for ticker, exercices in _exercices_du_secteur(secteur).items():
+        # Repere d'echelle : la mediane des chiffres d'affaires du titre. Un
+        # exercice qui s'en ecarte d'un facteur cinq porte une periode
+        # partielle rangee dans une ligne annuelle — Orange CI affiche 197 Mds
+        # en 2025 contre 1 084 Mds en 2024 — et fausserait toute comparaison.
+        _ca = sorted(abs(e["revenue"]) for e in exercices
+                     if e.get("revenue") and e["revenue"] == e["revenue"])
+        _repere = _ca[len(_ca) // 2] if _ca else None
+
+        meilleur, meilleur_compte, meilleure_annee = None, 0, None
+        for exercice in exercices[:5]:          # au-dela, l'info est trop vieille
+            _valeur = exercice.get("revenue")
+            if (_repere and _valeur
+                    and (abs(_valeur) * 3 < _repere or abs(_valeur) > 3 * _repere)):
+                continue
+            try:
+                ratios = compute_ratios(exercice)
+            except Exception:
+                continue
+            compte = sum(1 for c in cles if ratios.get(c) is not None)
+            # A egalite, l'exercice le plus recent l'emporte : la liste est
+            # deja triee du plus recent au plus ancien.
+            if compte > meilleur_compte:
+                meilleur, meilleur_compte = ratios, compte
+                meilleure_annee = exercice.get("fiscal_year")
+        if not meilleur or not meilleur_compte:
+            continue
+        lignes.append({
+            "ticker": ticker,
+            "nom": (exercices[0].get("company_name") or ticker),
+            "exercice": meilleure_annee,
+            "valeurs": {c: meilleur.get(c) for c in cles},
+        })
+
+    def _mediane(valeurs):
+        valeurs = sorted(v for v in valeurs if v is not None and v == v)
+        if not valeurs:
+            return None
+        milieu = len(valeurs) // 2
+        if len(valeurs) % 2:
+            return valeurs[milieu]
+        return (valeurs[milieu - 1] + valeurs[milieu]) / 2
+
+    medianes = {}
+    for cle in cles:
+        observees = [l["valeurs"].get(cle) for l in lignes]
+        observees = [v for v in observees if v is not None]
+        # Meme exigence qu'ailleurs : une mediane sur moins de trois
+        # observations decrit une societe, pas un secteur.
+        medianes[cle] = (_mediane(observees)
+                         if len(observees) >= MIN_OBSERVATIONS else None)
+
+    lignes.sort(key=lambda l: -sum(1 for v in l["valeurs"].values() if v is not None))
+    return {"colonnes": colonnes, "lignes": lignes, "medianes": medianes}
+
+
+def parcs_du_secteur() -> dict:
+    """Parcs clients des operateurs telecoms, avec leur variation annuelle.
+
+    Le recrutement de clients precede le chiffre d'affaires : comparer deux
+    operateurs sur leur seul revenu masque celui qui perd des abonnes en
+    facturant plus cher. Retourne {ticker: {parc: (valeur, variation)}}.
+    """
+    from data.db import get_connection
+
+    conn = get_connection()
+    try:
+        lignes = conn.execute(
+            "SELECT ticker, parc, valeur, variation, fiscal_year, periode "
+            "FROM telecom_parcs ORDER BY fiscal_year DESC, periode DESC"
+        ).fetchall()
+    except Exception:
+        conn.close()
+        return {}
+    conn.close()
+
+    sortie = {}
+    for ligne in lignes:
+        d = dict(ligne)
+        par_titre = sortie.setdefault(d["ticker"], {})
+        # Le tri place la periode la plus recente en tete : on ne remplace
+        # jamais une valeur deja retenue.
+        if d["parc"] not in par_titre:
+            par_titre[d["parc"]] = {
+                "valeur": d.get("valeur"),
+                "variation": d.get("variation"),
+                "periode": f"{d.get('periode') or ''} {d.get('fiscal_year') or ''}".strip(),
+            }
+    return sortie

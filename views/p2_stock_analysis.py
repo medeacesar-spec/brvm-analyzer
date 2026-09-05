@@ -1522,71 +1522,142 @@ def _render_bloc_sectoriel(fundamentals, ratios_src):
                 _bouts.append(f"crédits nets {_cre/1e9:,.0f} Mds")
             st.caption(" · ".join(_bouts))
 
-    # ── Comparables intersectoriels ──
-    # Les grilles ci-dessus ne se comparent pas entre elles : un coefficient
-    # d'exploitation bancaire et une intensite capitalistique telecoms ne
-    # parlent pas de la meme chose. Ce tableau ne retient donc que les mesures
-    # qui gardent le meme sens partout, et situe le secteur du titre parmi les
-    # autres.
+    # ── Comparaison aux pairs du secteur ──
+    # Comparer une banque a la mediane de toute la cote n'apprend rien : un
+    # coefficient d'exploitation ne se lit que face a d'autres banques, une
+    # intensite capitalistique que face a d'autres operateurs. On compare donc
+    # le titre a SES pairs, sur les indicateurs de SA grille.
     try:
-        from analysis.sectors import (medianes_intersecteurs,
-                                      COMPARABLES_INTERSECTEURS,
-                                      MIN_OBSERVATIONS)
-        _inter = medianes_intersecteurs()
+        from analysis.sectors import comparaison_pairs, MIN_OBSERVATIONS
+        _pairs = comparaison_pairs(fundamentals.get("sector"))
     except Exception:
-        _inter = []
+        _pairs = None
 
-    if _inter:
-        with st.expander("Comparaison entre secteurs", expanded=False):
-            _mien = (fundamentals.get("sector") or "").strip().lower()
-            _entetes = "".join(
-                f"<th style='padding:6px 10px;font-size:11px;font-weight:500;"
-                f"color:var(--ink-3);text-align:right;white-space:nowrap;'>{lib}</th>"
-                for lib, _, _ in COMPARABLES_INTERSECTEURS)
-            _corps = ""
-            for _e in _inter:
-                _actuel = _e["secteur"].strip().lower() == _mien
-                _fond = "background:var(--bg-elev);" if _actuel else ""
+    _mien = (fundamentals.get("ticker") or "").upper()
+    if _pairs and len(_pairs.get("lignes") or []) > 1:
+        section_heading("Comparaison aux pairs du secteur", spacing="loose")
+        _colonnes = _pairs["colonnes"]
+
+        def _cellule(valeur, forme):
+            if valeur is None:
+                return "<span style='color:var(--ink-3);'>—</span>"
+            return f"{valeur:.2f} ×" if forme == "fois" else f"{valeur*100:.1f} %"
+
+        _corps = ""
+        for _ligne in _pairs["lignes"]:
+            _actuel = (_ligne["ticker"] or "").upper() == _mien
+            _fond = "background:var(--bg-elev);" if _actuel else ""
+            _gras = "font-weight:600;" if _actuel else ""
+            _cases = "".join(
+                f"<td style='padding:6px 10px;font-size:12.5px;text-align:right;"
+                f"font-variant-numeric:tabular-nums;{_gras}'>"
+                f"{_cellule(_ligne['valeurs'].get(_cle), _forme)}</td>"
+                for _, _cle, _forme in _colonnes)
+            _corps += (
+                f"<tr style='{_fond}border-top:1px solid var(--border);'>"
+                f"<td style='padding:6px 10px 6px 0;font-size:12.5px;"
+                f"white-space:nowrap;{_gras}'>{_ligne['ticker']}</td>"
+                f"<td style='padding:6px 10px;font-size:11.5px;color:var(--ink-3);"
+                f"text-align:center;'>{_ligne['exercice'] or '—'}</td>"
+                f"{_cases}</tr>")
+
+        _cases_med = "".join(
+            f"<td style='padding:7px 10px;font-size:12.5px;text-align:right;"
+            f"font-variant-numeric:tabular-nums;color:var(--ink-3);'>"
+            f"{_cellule(_pairs['medianes'].get(_cle), _forme)}</td>"
+            for _, _cle, _forme in _colonnes)
+        _corps += (
+            f"<tr style='border-top:2px solid var(--border);'>"
+            f"<td style='padding:7px 10px 7px 0;font-size:12px;"
+            f"color:var(--ink-3);'>Médiane du secteur</td><td></td>{_cases_med}</tr>")
+
+        _entetes = "".join(
+            f"<th style='padding:0 10px 4px;font-size:11px;font-weight:500;"
+            f"color:var(--ink-3);text-align:right;white-space:nowrap;'>{_lib}</th>"
+            for _lib, _, _ in _colonnes)
+        st.markdown(
+            f"<div style='overflow-x:auto;'>"
+            f"<table style='width:100%;border-collapse:collapse;'>"
+            f"<thead><tr>"
+            f"<th style='text-align:left;font-size:11px;font-weight:500;"
+            f"color:var(--ink-3);padding-bottom:4px;'>Titre</th>"
+            f"<th style='font-size:11px;font-weight:500;color:var(--ink-3);"
+            f"padding:0 10px 4px;'>Exercice</th>{_entetes}"
+            f"</tr></thead><tbody>{_corps}</tbody></table></div>",
+            unsafe_allow_html=True)
+        st.caption(
+            f"Chaque pair est lu sur UN SEUL exercice, celui qui remplit le "
+            f"mieux la grille — mélanger les charges d'une année et le produit "
+            f"d'une autre donnerait un coefficient d'exploitation qui n'existe "
+            f"pas. L'exercice retenu est indiqué, et diffère d'un titre à "
+            f"l'autre. La médiane n'est publiée qu'à partir de "
+            f"{MIN_OBSERVATIONS} valeurs renseignées."
+        )
+
+    # ── Parcs clients des operateurs ──
+    # Le recrutement de clients precede le chiffre d'affaires : comparer deux
+    # operateurs sur leur seul revenu masque celui qui perd des abonnes en
+    # facturant plus cher.
+    if "telecom" in _secteur_bas or "télécom" in _secteur_bas:
+        try:
+            from analysis.sectors import parcs_du_secteur
+            from data.storage import PARCS_LIBELLES
+            _tous_parcs = parcs_du_secteur()
+        except Exception:
+            _tous_parcs = {}
+        if len(_tous_parcs) > 1:
+            section_heading("Recrutement de clients · opérateurs comparés",
+                            spacing="loose")
+            _familles = []
+            for _titre in _tous_parcs.values():
+                for _nom in _titre:
+                    if _nom not in _familles:
+                        _familles.append(_nom)
+            _lignes_p = ""
+            for _tk, _titre in sorted(_tous_parcs.items()):
+                _actuel = _tk.upper() == _mien
                 _gras = "font-weight:600;" if _actuel else ""
-                _cellules = ""
-                for _lib, _cle, _fmt in COMPARABLES_INTERSECTEURS:
-                    _v = _e.get(_cle)
-                    if _v is None:
-                        _txt = "<span style='color:var(--ink-3);'>—</span>"
-                    elif _fmt == "fois":
-                        _txt = f"{_v:.1f} ×"
-                    else:
-                        _txt = f"{_v*100:.1f} %"
-                    _cellules += (
-                        f"<td style='padding:6px 10px;font-size:12.5px;"
-                        f"text-align:right;font-variant-numeric:tabular-nums;"
-                        f"{_gras}'>{_txt}</td>")
-                _corps += (
-                    f"<tr style='{_fond}border-top:1px solid var(--border);'>"
-                    f"<td style='padding:6px 10px;font-size:12.5px;{_gras}'>"
-                    f"{_e['secteur']}</td>"
-                    f"<td style='padding:6px 10px;font-size:11.5px;"
-                    f"color:var(--ink-3);text-align:right;'>{_e['effectif']}</td>"
-                    f"{_cellules}</tr>")
+                _cases = ""
+                for _nom in _familles:
+                    _p = _titre.get(_nom)
+                    if not _p or _p.get("valeur") is None:
+                        _cases += ("<td style='text-align:right;padding:6px 10px;"
+                                   "color:var(--ink-3);'>—</td>")
+                        continue
+                    _v = _p["valeur"]
+                    _txt = (f"{_v/1e6:,.1f} M" if _v >= 1e6 else f"{_v:,.0f}")
+                    _var = _p.get("variation")
+                    if _var is not None and _var == _var:
+                        _coul = "var(--up)" if _var >= 0 else "var(--down)"
+                        _txt += (f"<div style='font-size:11px;color:{_coul};'>"
+                                 f"{_var:+.1f} %</div>")
+                    _cases += (f"<td style='text-align:right;padding:6px 10px;"
+                               f"font-size:12.5px;{_gras}'>{_txt}</td>")
+                _lignes_p += (
+                    f"<tr style='border-top:1px solid var(--border);"
+                    f"{'background:var(--bg-elev);' if _actuel else ''}'>"
+                    f"<td style='padding:6px 10px 6px 0;font-size:12.5px;"
+                    f"{_gras}'>{_tk}</td>{_cases}</tr>")
+            _ent_p = "".join(
+                f"<th style='padding:0 10px 4px;font-size:11px;font-weight:500;"
+                f"color:var(--ink-3);text-align:right;'>"
+                f"{PARCS_LIBELLES.get(_n, _n)}</th>" for _n in _familles)
             st.markdown(
                 f"<div style='overflow-x:auto;'>"
                 f"<table style='width:100%;border-collapse:collapse;'>"
-                f"<thead><tr>"
-                f"<th style='padding:6px 10px;font-size:11px;font-weight:500;"
-                f"color:var(--ink-3);text-align:left;'>Secteur</th>"
-                f"<th style='padding:6px 10px;font-size:11px;font-weight:500;"
-                f"color:var(--ink-3);text-align:right;'>Sociétés</th>"
-                f"{_entetes}</tr></thead><tbody>{_corps}</tbody></table></div>",
+                f"<thead><tr><th style='text-align:left;font-size:11px;"
+                f"font-weight:500;color:var(--ink-3);padding-bottom:4px;'>"
+                f"Opérateur</th>{_ent_p}</tr></thead>"
+                f"<tbody>{_lignes_p}</tbody></table></div>",
                 unsafe_allow_html=True)
+        elif _tous_parcs:
+            _seul = ", ".join(sorted(_tous_parcs))
             st.caption(
-                f"Médianes sectorielles, calculées seulement à partir de "
-                f"{MIN_OBSERVATIONS} sociétés renseignées — en deçà, la "
-                f"médiane refléterait une société et non un secteur, et la "
-                f"case reste vide. Pour les banques, la marge nette se "
-                f"rapporte au produit net bancaire et non à un chiffre "
-                f"d'affaires : elle n'est pas comparable telle quelle aux "
-                f"autres secteurs."
-            )
+                f"Parcs clients disponibles pour {_seul} uniquement : les "
+                f"autres opérateurs ne publient pas ces effectifs dans les "
+                f"documents collectés, la comparaison n'est donc pas possible "
+                f"aujourd'hui.")
+
 
 
 def _render_recommendation(result, fundamentals):

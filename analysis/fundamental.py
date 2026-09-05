@@ -151,6 +151,25 @@ def compare_to_sector(ratio_name: str, value: float, benchmarks: dict,
 COUT_CAPITAUX_PROPRES = 0.13
 
 
+def _charges_credibles(charges, produit) -> bool:
+    """Dit si des frais generaux peuvent servir a un coefficient d'exploitation.
+
+    Aucune banque ne fonctionne avec des frais generaux representant 0,1 % de
+    son produit net bancaire : une telle valeur est un fragment de ligne pris
+    pour un total. Oragroup portait 0,2 Md de charges face a 186,6 Mds de PNB,
+    d'ou un coefficient d'exploitation de 0,1 % la ou le secteur se situe entre
+    35 et 70 %. A l'inverse, des charges superieures a 120 % du produit ne
+    decrivent plus une exploitation mais une erreur de colonne.
+
+    Le test ne juge pas la performance : il ecarte ce qui ne peut pas etre un
+    total de charges.
+    """
+    if not charges or not produit:
+        return False
+    part = abs(charges) / abs(produit)
+    return 0.10 <= part <= 1.20
+
+
 def _actif_fiable(total_actif, fonds_propres, chiffre_affaires, is_bank):
     """Dit si le total de bilan extrait est exploitable.
 
@@ -352,12 +371,19 @@ def compute_ratios(data: dict) -> dict:
     credits = data.get("loans")
     pnb_ref = data.get("revenue_bank") or (revenue if is_bank else None)
 
+    _charges_ok = _charges_credibles(charges, pnb_ref)
     ratios["coefficient_exploitation"] = (
-        abs(charges) / abs(pnb_ref) if charges and pnb_ref else None)
+        abs(charges) / abs(pnb_ref) if _charges_ok else None)
+    # Le resultat brut d'exploitation ne peut pas depasser le produit dont il
+    # est issu : au-dela, c'est que l'un des deux vient d'une autre periode.
     ratios["marge_brute_exploitation"] = (
-        rbe / pnb_ref if rbe and pnb_ref else None)
+        rbe / pnb_ref
+        if rbe and pnb_ref and abs(rbe) <= abs(pnb_ref) else None)
+    # Des encours negatifs n'existent pas : Oragroup ressortait a -45 % de
+    # credits sur depots, un signe capte dans la mauvaise colonne.
     ratios["credits_depots"] = (
-        credits / depots if credits and depots else None)
+        credits / depots
+        if credits and depots and credits > 0 and depots > 0 else None)
     ratios["depots"] = depots
     ratios["credits"] = credits
     # Rendement des actifs : une banque se juge aussi sur ce que rapporte son
