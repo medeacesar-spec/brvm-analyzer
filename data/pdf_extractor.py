@@ -17,6 +17,7 @@ import math
 import os
 import re
 import tempfile
+import threading
 from typing import Optional, List
 
 import requests
@@ -30,6 +31,43 @@ from data.storage import (get_report_links, save_fundamentals, get_connection,
 # ---------------------------------------------------------------------------
 # Parsing helpers
 # ---------------------------------------------------------------------------
+
+# Convention de separation des milliers, propre au document en cours.
+# `_parse_amount` est appelee des centaines de fois sans contexte : le drapeau
+# vit donc dans un stockage par thread — les scripts de rattrapage lisent
+# quatre documents en parallele, et la convention de l'un ne doit pas
+# contaminer celle du voisin.
+_contexte = threading.local()
+
+
+def _virgule_est_millier() -> bool:
+    return getattr(_contexte, "virgule_millier", False)
+
+
+def _regler_convention_virgule(texte: str) -> None:
+    """Le document prouve-t-il que sa virgule separe les milliers ?
+
+    Deux preuves internes, aucune supposition :
+      1. un nombre a DEUX groupes au moins — « 1,424,257 » — qui ne se lit
+         d'aucune autre facon ;
+      2. un en-tete bi-devise (« milliers $EU | millions FCFA »), qui trahit
+         une redaction anglo-saxonne meme quand tous les nombres de la page
+         n'ont qu'un seul groupe.
+
+    Le tableau d'activite d'Ecobank releve du second cas : « Produit net
+    bancaire 6 36,223 3 56,715 ». Lu a la francaise, le produit net bancaire
+    du premier trimestre 2026 tombait a 356,7 millions FCFA au lieu de
+    356,7 milliards — mille fois trop petit, et incoherent avec le semestre
+    suivant du meme emetteur, ecrit lui sans virgule.
+    """
+    try:
+        if re.search(r"\d{1,3}(?:,\d{3}){2,}", texte or ""):
+            _contexte.virgule_millier = True
+            return
+        _contexte.virgule_millier = _colonne_fcfa(texte)[0] is not None
+    except Exception:
+        _contexte.virgule_millier = False
+
 
 def _parse_amount(text: str) -> Optional[float]:
     """Parse un montant depuis le texte PDF.
@@ -56,6 +94,13 @@ def _parse_amount(text: str) -> Optional[float]:
         # On n'applique la regle qu'a partir de DEUX groupes de trois
         # chiffres : c'est la seule forme non ambigue. « 2,448 » pourrait
         # aussi bien valoir 2 448 que 2,448, et reste lu a la francaise.
+        cleaned = brut.replace(",", "")
+    elif _virgule_est_millier() and re.match(r"^\d+,\d{3}$", brut):
+        # Un seul groupe, mais le document a deja prouve sa convention
+        # (cf. `_regler_convention_virgule`) : « 356,715 » vaut 356 715.
+        # La regle exige exactement trois chiffres apres la virgule, si bien
+        # qu'un pourcentage francais (« 23,5 % ») ou un cours (« 1,94 ») reste
+        # lu a la francaise.
         cleaned = brut.replace(",", "")
     elif "," in brut:
         # La virgule est decimale : les points ne peuvent etre que des milliers.
@@ -579,6 +624,23 @@ def _recoller_milliers(texte: str) -> str:
     return texte
 
 
+# Un montant suivi d'un marqueur de devise etrangere n'est pas un montant en
+# francs. Ecobank ouvre son communique par « Produit net bancaire : +17% a
+# 2,4 milliards $EU ( 1 424 milliards FCFA) » : la lecture de prose retenait
+# 2,4 milliards et ce chiffre en DOLLARS ecrasait le produit net bancaire du
+# tableau, 1 424 milliards FCFA — la banque paraissait cinq cents fois plus
+# petite qu'elle ne l'est. L'echelle facultative laisse passer aussi bien
+# « 2,4 milliards $EU » que « 801 millions de dollars » ou « 40 000 USD ».
+_APRES_MONTANT_DEVISE = re.compile(
+    r"^\s*(?:(?:de\s+|d')?(?:milliards?|millions?|milliers?|mds?|mio|k)\s*)?"
+    r"(?:de\s+|d')?(?:\$|dollars?\b|usd\b|us\s*\$|euros?\b|eur\b)")
+
+
+def _montant_en_devise_etrangere(bas: str, fin: int) -> bool:
+    """Le montant qui s'acheve a `fin` est-il libelle en devise etrangere ?"""
+    return bool(_APRES_MONTANT_DEVISE.match(bas[fin:fin + 30]))
+
+
 def _extract_from_text(all_text: str, mult: float,
                        appliquer_plancher: bool = True) -> dict:
     """Extraction depuis le texte brut.
@@ -607,6 +669,8 @@ def _extract_from_text(all_text: str, mult: float,
     for pattern, field in patterns:
         match = re.search(pattern, text_lower)
         if match and field not in data:
+            if _montant_en_devise_etrangere(text_lower, match.end(1)):
+                continue
             val = _parse_amount(match.group(1))
             if val:
                 data[field] = val * mult
@@ -703,7 +767,7 @@ def _extract_from_text(all_text: str, mult: float,
         if field in data:
             continue
         m = re.search(pat, text_lower)
-        if m:
+        if m and not _montant_en_devise_etrangere(text_lower, m.end()):
             val = _parse_amount(m.group(1))
             if val and val > 1:
                 data[field] = val * base_mult
@@ -1193,6 +1257,8 @@ def _extract_from_prose(texte: str) -> dict:
                 r"(" + _MOTIF_ECHELLE + r")\b", bas):
             if _saute_un_autre_libelle(m.start(), m.start(1), champ):
                 continue
+            if _montant_en_devise_etrangere(bas, m.end()):
+                continue
             val = _parse_amount(m.group(1))
             if val:
                 montant = val * _ECHELLES[m.group(2)]
@@ -1204,6 +1270,8 @@ def _extract_from_prose(texte: str) -> dict:
                     etiquette + r"[^.]{0," + str(fenetre)
                     + r"}?([\d][\d\s.,]*?)\s*f\s?cfa", bas):
                 if _saute_un_autre_libelle(m.start(), m.start(1), champ):
+                    continue
+                if _montant_en_devise_etrangere(bas, m.end()):
                     continue
                 val = _parse_amount(m.group(1))
                 if val:
@@ -1730,6 +1798,7 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
     }
 
     is_scanned = False
+    _contexte.virgule_millier = False
 
     try:
         with pdfplumber.open(pdf_path) as pdf:
@@ -1745,6 +1814,7 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
                 # Presentation : les valeurs sont posees sous leurs libelles,
                 # centrees, sans tableau. L'echelle est declaree sur la page
                 # elle-meme (« en Mds FCFA »), pas dans l'en-tete du document.
+                _regler_convention_virgule(all_text)
                 _echelle_page = _echelle_de_page(text)
                 if _echelle_page:
                     for _champ, _valeur in _extract_depuis_presentation(
@@ -1768,6 +1838,7 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
                 data["commentary"] = extract_commentary(all_text)
 
             if not is_scanned:
+                _regler_convention_virgule(all_text)
                 # Detect multiplier
                 data["multiplier"] = _resolve_multiplier(all_text, lignes_cellules)
 
@@ -1858,10 +1929,23 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
                     if len(complets) > len(chiffres) and complets.endswith(chiffres):
                         all_extracted[champ] = valeur_prose
 
+                # Une valeur lue dans un TABLEAU prime sur une valeur devinee
+                # dans la mise en page. Les etats d'Ecobank donnent le produit
+                # net bancaire en clair — 1 424 261 millions FCFA — pendant que
+                # la lecture de diapositive ramasse un « 14 » centre quelque
+                # part sur la page. Sans cet arbitrage, le chiffre d'affaires
+                # du groupe tombait a 14 milliards.
+                tabulaire = {}
+                for d in [bank_data, label_data, cell_data, ifrs_data, ref_data]:
+                    tabulaire.update({k: v for k, v in d.items() if v is not None})
+
                 # Map to output
                 data["revenue"] = all_extracted.get("revenue")
-                if data["revenue"] is None:
-                    data["revenue"] = all_extracted.get("revenue_bank")
+                if data["revenue"] is None or (
+                        "revenue" not in tabulaire
+                        and tabulaire.get("revenue_bank") is not None):
+                    data["revenue"] = (all_extracted.get("revenue_bank")
+                                       or data["revenue"])
 
                 data["net_income"] = all_extracted.get("net_income")
                 data["equity"] = all_extracted.get("equity")
@@ -1938,6 +2022,7 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
             if ocr_text and len(ocr_text) > 100:
                 if not data.get("commentary"):
                     data["commentary"] = extract_commentary(ocr_text)
+                _regler_convention_virgule(ocr_text)
                 ocr_mult = _resolve_multiplier(ocr_text, ocr_cellules)
                 data["multiplier"] = ocr_mult
                 ocr_data = _extract_from_text(ocr_text, ocr_mult)
