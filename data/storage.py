@@ -836,14 +836,74 @@ def get_fundamentals(ticker: str, fiscal_year: Optional[int] = None) -> Optional
             (ticker, fiscal_year),
         ).fetchone()
     else:
-        # Priorité : dernière année avec revenue + net_income (income statement complet)
-        row = conn.execute(
+        # Priorité : dernière année avec revenue + net_income (income statement
+        # complet) — MAIS en écartant les exercices manifestement partiels.
+        #
+        # Aucun émetteur ne publie de rapport annuel 2026 en septembre 2026 :
+        # les seules publications de l'année sont trimestrielles ou
+        # semestrielles. Leur chiffre d'affaires et leur résultat net couvrent
+        # donc un trimestre, et la fiche les présentait comme un exercice.
+        # Orange CI affichait ainsi un PER de 65,5 — son bénéfice trimestriel
+        # rapporté au cours, soit environ quatre fois le PER réel.
+        #
+        # On repère ces exercices par leur ordre de grandeur : un chiffre
+        # d'affaires inférieur à la moitié de la médiane du titre n'est pas
+        # une année, c'est une fraction d'année.
+        candidats = [dict(l) for l in conn.execute(
             """SELECT * FROM fundamentals WHERE ticker=?
                AND revenue IS NOT NULL AND revenue != 0
                AND net_income IS NOT NULL AND net_income != 0
-               ORDER BY fiscal_year DESC LIMIT 1""",
+               ORDER BY fiscal_year DESC""",
             (ticker,),
-        ).fetchone()
+        ).fetchall()]
+
+        row = None
+        if candidats:
+            # Premier critère, le seul qui ne se devine pas : l'exercice
+            # dispose-t-il d'un document ANNUEL ? Le cycle de publication
+            # UEMOA veut qu'un exercice N soit publié au printemps N+1 ;
+            # pendant l'année N, il n'existe que des trimestriels et des
+            # semestriels. Un exercice sans document annuel n'est donc pas un
+            # exercice clos, quoi qu'en dise la table.
+            annuels = set()
+            try:
+                for ligne in conn.execute(
+                    """SELECT DISTINCT fiscal_year FROM report_links
+                       WHERE ticker = ? AND report_type IN
+                             ('rapport_annuel', 'etats_financiers')""",
+                    (ticker,),
+                ).fetchall():
+                    annee = dict(ligne).get("fiscal_year")
+                    if annee:
+                        annuels.add(int(annee))
+            except Exception:
+                annuels = set()
+
+            for candidat in candidats:
+                if candidat.get("fiscal_year") in annuels:
+                    row = candidat
+                    break
+
+            # Second critère, de repli quand aucun document n'est référencé :
+            # l'ordre de grandeur. Un chiffre d'affaires inférieur à la moitié
+            # de la médiane du titre n'est pas une année, c'est une fraction
+            # d'année.
+            if row is None:
+                montants = sorted(abs(c["revenue"]) for c in candidats
+                                  if c.get("revenue"))
+                repere = (montants[len(montants) // 2] if montants else None)
+                for candidat in candidats:
+                    if (repere and candidat.get("revenue")
+                            and abs(candidat["revenue"]) < 0.5 * repere):
+                        continue
+                    row = candidat
+                    break
+
+            # Rien de concluant : on garde le plus récent plutôt que rien,
+            # mais on le signale pour que l'écran puisse le dire.
+            if row is None:
+                row = dict(candidats[0])
+                row["_exercice_incertain"] = True
         if not row:
             row = conn.execute(
                 """SELECT * FROM fundamentals WHERE ticker=?
