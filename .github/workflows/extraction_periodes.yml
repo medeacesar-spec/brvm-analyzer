@@ -1,13 +1,12 @@
 name: Lecture des publications de periode
 
-# Separee du rattrapage sectoriel pour pouvoir tourner EN PARALLELE : les deux
-# traitements ecrivent dans des tables differentes — `fundamentals` pour les
-# postes sectoriels, `quarterly_data` pour les periodes — donc rien ne les
-# oppose. Les mener l'un apres l'autre faisait attendre plusieurs heures une
-# lecture qui n'a aucune raison de patienter.
+# Meme methode de distribution que le rattrapage sectoriel : le travail est
+# DECOUPE EN LOTS traites par des coureurs distincts. Un document scanne coute
+# plusieurs minutes d'OCR ; un coureur unique mettrait des dizaines d'heures
+# a lire les 447 trimestriels et semestriels, pour une limite de 350 minutes.
 #
-# Chaque cote reste modeste en fils : l'OCR rend les pages a 300 ppp et deux
-# traitements a deux fils suffisent a saturer un coureur.
+# Les deux traitements ecrivent dans des tables differentes — `fundamentals`
+# et `quarterly_data` — donc rien n'empeche de les mener en parallele.
 on:
   workflow_dispatch:
     inputs:
@@ -15,11 +14,21 @@ on:
         description: "Exercice de depart"
         required: false
         default: "2023"
+      lots:
+        description: "Nombre de lots paralleles (20 par defaut)"
+        required: false
+        default: "20"
 
 jobs:
   periodes:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    timeout-minutes: 340
+    strategy:
+      # Un lot qui echoue ne doit pas emporter les dix-neuf autres.
+      fail-fast: false
+      matrix:
+        lot: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+              10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -32,7 +41,11 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq tesseract-ocr tesseract-ocr-fra tesseract-ocr-eng
-      - name: Lire les trimestriels et semestriels
+      - name: Lire le lot ${{ matrix.lot }}
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: python scripts/extraire_periodes.py "${{ inputs.depuis }}"
+        run: |
+          python scripts/extraire_periodes.py "${{ inputs.depuis }}" \
+                 --ouvriers=2 \
+                 --lot=${{ matrix.lot }} \
+                 --sur=${{ inputs.lots }}
