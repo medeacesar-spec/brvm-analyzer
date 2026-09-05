@@ -995,6 +995,57 @@ def _extract_with_ocr_cellules(pdf_path: str) -> list:
     return lignes
 
 
+def _ocr_document(pdf_path: str, maxi: int = 15, psm: int = 6,
+                  avec_cellules: bool = True):
+    """Rend chaque page UNE fois et en tire les deux lectures d'un coup.
+
+    Le rendu d'une page a 300 ppp est cher. Or le document etait parcouru
+    DEUX fois : une passe pour reconstituer les colonnes par coordonnees, une
+    autre pour le texte a plat. Chaque page etait donc rasterisee deux fois
+    pour rien — sur un rapport scanne de quinze pages, cela double le temps
+    de lecture sans rien apporter.
+
+    La page est ici rendue une seule fois, donnee successivement aux deux
+    lecteurs, puis liberee avant la suivante : on ne garde jamais quinze
+    images pleine resolution en memoire, ce qui avait deja tue trois
+    traitements en local.
+
+    `avec_cellules` permet au repli de segmentation de ne redemander que le
+    texte : la lecture par coordonnees ne depend pas du mode de segmentation,
+    la refaire serait du rendu perdu.
+
+    Retourne (texte a plat, lignes de cellules).
+    """
+    try:
+        import fitz
+        from PIL import Image
+    except ImportError:
+        return "", []
+    try:
+        doc = fitz.open(pdf_path)
+    except Exception as exc:
+        print(f"OCR: ouverture PDF impossible ({exc})", flush=True)
+        return "", []
+
+    texte, cellules = "", []
+    try:
+        for i in range(min(len(doc), maxi)):
+            img = None
+            try:
+                pix = doc[i].get_pixmap(dpi=300)
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                texte += _ocr_image(img, psm=psm) + "\n\n"
+                if avec_cellules:
+                    cellules.extend(_ocr_cellules(img))
+            except Exception as exc:
+                print(f"OCR page {i + 1}: {exc}", flush=True)
+            finally:
+                del img
+    finally:
+        doc.close()
+    return texte, cellules
+
+
 def _extract_with_ocr(pdf_path: str) -> str:
     """Rend chaque page en image via PyMuPDF puis l'OCR.
 
@@ -1707,13 +1758,20 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
     )
     if (is_scanned or not _has_data) and use_ocr:
         try:
-            ocr_text = _extract_with_ocr(pdf_path)
+            # Un seul parcours du document pour les deux lectures.
+            ocr_text, ocr_cellules = _ocr_document(pdf_path)
+            if _lignes_exploitables(ocr_text) == 0:
+                # Segmentation sterile : on retente le texte a plat dans
+                # l'autre mode, sans refaire la lecture par coordonnees, qui
+                # ne depend pas de la segmentation.
+                autre, _ = _ocr_document(pdf_path, psm=4, avec_cellules=False)
+                if _lignes_exploitables(autre) > _lignes_exploitables(ocr_text):
+                    print("OCR: segmentation psm 6 sterile, bascule en psm 4",
+                          flush=True)
+                    ocr_text = autre
             if ocr_text and len(ocr_text) > 100:
                 if not data.get("commentary"):
                     data["commentary"] = extract_commentary(ocr_text)
-                # Les coordonnees de l'OCR tranchent l'ambiguite des colonnes,
-                # que le texte recolle ne permet pas de lever.
-                ocr_cellules = _extract_with_ocr_cellules(pdf_path)
                 ocr_mult = _resolve_multiplier(ocr_text, ocr_cellules)
                 data["multiplier"] = ocr_mult
                 ocr_data = _extract_from_text(ocr_text, ocr_mult)
