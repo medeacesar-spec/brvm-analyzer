@@ -1597,6 +1597,63 @@ def _render_recommendation(result, fundamentals):
             unsafe_allow_html=True,
         )
 
+    # ── Grille bancaire ──
+    # Le resultat net d'une banque est un symptome. Le diagnostic se lit dans
+    # le croisement du coefficient d'exploitation (ce que coute la machine) et
+    # du cout du risque (ce que coute le portefeuille).
+    _secteur = (fundamentals.get("sector") or "").lower()
+    if "banque" in _secteur or "bank" in _secteur:
+        _grille = [
+            ("Coefficient d'exploitation", "coefficient_exploitation", "pct",
+             "Frais généraux rapportés au produit net bancaire"),
+            ("Coût du risque / PNB", "cout_risque_pnb", "pct",
+             "Part du PNB absorbée par le risque de crédit"),
+            ("Marge brute d'exploitation", "marge_brute_exploitation", "pct",
+             "Résultat brut d'exploitation rapporté au PNB"),
+            ("Crédits / dépôts", "credits_depots", "pct",
+             "Au-delà de 100 %, la banque prête plus qu'elle ne collecte"),
+            ("Rendement des actifs (ROA)", "roa", "pct",
+             "Ce que rapporte le bilan, pas seulement les fonds propres"),
+        ]
+        _dispo = [(lib, cle, fmt, aide) for lib, cle, fmt, aide in _grille
+                  if ratios_src.get(cle) is not None]
+        if _dispo:
+            section_heading("Grille bancaire", spacing="loose")
+            _drapeaux = ratios_src.get("flags") or {}
+            _lignes = ""
+            for lib, cle, _fmt, aide in _dispo:
+                val = ratios_src[cle]
+                niveau, commentaire = _drapeaux.get(cle, ("", ""))
+                couleur = {"OK": "var(--up)", "Vigilance": "var(--ocre)",
+                           "Risque": "var(--down)"}.get(niveau, "var(--ink-3)")
+                _lignes += (
+                    f"<tr>"
+                    f"<td style='padding:6px 14px 6px 0;font-size:12.5px;"
+                    f"color:var(--ink);'>{lib}"
+                    f"<div style='font-size:11px;color:var(--ink-3);'>{aide}</div></td>"
+                    f"<td style='padding:6px 14px 6px 0;font-size:15px;font-weight:600;"
+                    f"text-align:right;font-variant-numeric:tabular-nums;'>"
+                    f"{val*100:.1f} %</td>"
+                    f"<td style='padding:6px 0;font-size:11.5px;color:{couleur};'>"
+                    f"{commentaire}</td>"
+                    f"</tr>"
+                )
+            st.markdown(
+                f"<div style='border:1px solid var(--border);border-radius:10px;"
+                f"padding:6px 16px;background:var(--bg-elev);'>"
+                f"<table style='width:100%;border-collapse:collapse;'>{_lignes}</table>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+            _dep, _cre = ratios_src.get("depots"), ratios_src.get("credits")
+            if _dep or _cre:
+                _bouts = []
+                if _dep:
+                    _bouts.append(f"dépôts clientèle {_dep/1e9:,.0f} Mds")
+                if _cre:
+                    _bouts.append(f"crédits nets {_cre/1e9:,.0f} Mds")
+                st.caption(" · ".join(_bouts))
+
     # ═══════════════════════════════════════════════════════════════════
     # 3 cards : Score fondamental · Score technique · Conviction modèle
     # ═══════════════════════════════════════════════════════════════════
