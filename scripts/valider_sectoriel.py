@@ -32,6 +32,32 @@ FACTEUR_ECHELLE = 20      # au-dela, le multiplicateur a saute
 TOLERANCE_IDENTITE = 0.02
 
 
+_FACTEURS = (1_000, 1_000_000, 1_000_000_000)
+
+
+def _corriger_echelle(valeur, repere):
+    """Retablit un multiplicateur perdu, quand il n'y a rien a deviner.
+
+    Un multiplicateur perdu DIVISE par une puissance de mille exacte. Si la
+    valeur remise a l'echelle retombe dans l'ordre de grandeur des autres
+    exercices du titre, ce n'est plus une supposition mais une verification :
+    le resultat brut d'exploitation d'ETI valait 735 835 000 quand ses autres
+    exercices donnent 596 et 811 MILLIARDS — les memes chiffres, l'echelle en
+    moins.
+
+    Retourne la valeur corrigee, ou None si aucun facteur ne convient. On ne
+    corrige jamais « au plus proche » : le resultat doit tomber dans une
+    fourchette large mais bornee, sinon on annule.
+    """
+    if not valeur or not repere:
+        return None
+    for facteur in _FACTEURS:
+        candidat = abs(valeur) * facteur
+        if repere / 3 <= candidat <= repere * 3:
+            return candidat if valeur > 0 else -candidat
+    return None
+
+
 def _valeur(ligne, champ):
     v = ligne.get(champ)
     return v if v not in (None, 0) else None
@@ -53,7 +79,7 @@ def main(dry_run: bool = False) -> None:
         if ca:
             par_ticker.setdefault(l["ticker"], []).append(abs(ca))
 
-    annulations = []
+    annulations, corrections = [], []
     for l in lignes:
         ca = _valeur(l, "revenue")
         eb = _valeur(l, "ebitda")
@@ -73,6 +99,33 @@ def main(dry_run: bool = False) -> None:
                 annulations.append((
                     l, ["operating_expenses", "gross_operating_income"],
                     f"identite non tenue ({ecart*100:.0f} % d'ecart)"))
+
+        # Marge brute d'exploitation : un resultat brut represente entre 5 et
+        # 100 % du produit net bancaire. ETI affichait 0,05 % — son RBE etait
+        # mille fois trop petit, et RIEN ne le signalait : l'identite n'etait
+        # verifiee que lorsque les frais generaux etaient presents, ce qui
+        # n'etait pas le cas. Une marge impossible est desormais une alarme a
+        # elle seule.
+        rbe_v = _valeur(l, "gross_operating_income")
+        if rbe_v and ca:
+            part = abs(rbe_v) / abs(ca)
+            if part < 0.05 or part > 1.0:
+                autres = [abs(x["gross_operating_income"]) for x in lignes
+                          if x["ticker"] == l["ticker"] and x is not l
+                          and _valeur(x, "gross_operating_income")]
+                repere = statistics.median(autres) if len(autres) >= 2 else None
+                corrigee = _corriger_echelle(rbe_v, repere)
+                if corrigee:
+                    corrections.append((
+                        l, "gross_operating_income", corrigee,
+                        f"echelle retablie : {abs(rbe_v)/1e9:,.3f} Mds -> "
+                        f"{abs(corrigee)/1e9:,.1f} Mds "
+                        f"(marge brute {part*100:.2f} % impossible)"))
+                else:
+                    annulations.append((
+                        l, ["gross_operating_income"],
+                        f"marge brute d'exploitation impossible : "
+                        f"{part*100:.2f} % du produit net bancaire"))
 
         # Encours : depots et credits se controlent l'un par l'autre ET par
         # l'historique du titre. La SIB portait 1,29 Md de depots en 2024
@@ -113,7 +166,9 @@ def main(dry_run: bool = False) -> None:
                     f"{repere/1e9:,.1f} Mds les autres exercices"))
 
     print(f"Lignes examinees : {len(lignes)}")
-    print(f"Anomalies : {len(annulations)}\n")
+    print(f"Corrections : {len(corrections)} | annulations : {len(annulations)}\n")
+    for ligne, champ, _corrigee, motif in corrections:
+        print(f"  {ligne['ticker']} {ligne['fiscal_year']} — {motif}")
     for ligne, champs, motif in annulations:
         print(f"  {ligne['ticker']} {ligne['fiscal_year']} — {motif}")
         print(f"      annule : {', '.join(champs)}")
@@ -123,6 +178,10 @@ def main(dry_run: bool = False) -> None:
         conn.close()
         return
 
+    # Corriger d'abord : une valeur retablie n'a plus a etre annulee.
+    for ligne, champ, valeur_corrigee, _ in corrections:
+        conn.execute(f"UPDATE fundamentals SET {champ} = ? WHERE id = ?",
+                     (valeur_corrigee, ligne["id"]))
     for ligne, champs, _ in annulations:
         remise = ", ".join(f"{c} = NULL" for c in champs)
         conn.execute(f"UPDATE fundamentals SET {remise} WHERE id = ?", (ligne["id"],))
