@@ -31,6 +31,13 @@ _COUVERTURE = {"T1": 3, "S1": 6, "T2": 6, "T3": 9, "T4": 12, "S2": 12}
 LIBELLES = {1: "T1", 2: "T2", 3: "T3", 4: "T4"}
 
 
+def _variation(actuel, precedent):
+    """Variation d'un trimestre au MEME trimestre de l'exercice precedent."""
+    if actuel is None or precedent in (None, 0):
+        return None
+    return (actuel - precedent) / abs(precedent) * 100
+
+
 def _cumuls(lignes: list) -> dict:
     """Cumuls disponibles pour un exercice : {mois couverts: ligne}."""
     sortie = {}
@@ -115,6 +122,16 @@ def trimestres_normalises(ticker: str) -> list:
                 continue          # on ne devine pas le cumul manquant
             ca = _difference(courant, anterieur, "revenue")
             rn = _difference(courant, anterieur, "net_income")
+
+            # Un trimestre pese environ un quart de l'exercice. Au-dela de
+            # 60 %, la difference ne decrit pas un trimestre mais l'ecart
+            # entre deux cumuls dont l'un est faux : Societe Generale CI
+            # ressortait a 194,7 Mds au troisieme trimestre 2025 quand ses
+            # autres trimestres font 66 Mds, soit 74 % de l'exercice a lui
+            # seul. On prefere une case vide a un trimestre invente.
+            reference = (annuels.get(annee) or {}).get("revenue")
+            if ca and reference and abs(ca) > 0.6 * abs(reference):
+                ca = None
             # Un cumul identique au precedent produit un trimestre nul : ce
             # n'est pas une activite nulle, c'est une valeur non mise a jour.
             if not ca:
@@ -154,12 +171,23 @@ def derniers_trimestres(ticker: str, combien: int = 4) -> list:
     annee, rang = max(connus)
     suite = []
     for _ in range(combien):
-        suite.append(connus.get((annee, rang), {
+        entree = dict(connus.get((annee, rang), {
             "annee": annee, "trimestre": rang,
             "libelle": f"{LIBELLES[rang]} {annee}",
             "revenue": None, "net_income": None, "deduit": False,
             "absent": True,
         }))
+        # Le MEME trimestre de l'exercice precedent : c'est la seule
+        # comparaison qui neutralise la saisonnalite. Confronter un trimestre
+        # au precedent ferait passer un creux saisonnier pour un recul.
+        precedent = connus.get((entree["annee"] - 1, entree["trimestre"]))
+        entree["revenue_n1"] = (precedent or {}).get("revenue")
+        entree["net_income_n1"] = (precedent or {}).get("net_income")
+        entree["revenue_var"] = _variation(entree.get("revenue"),
+                                           entree["revenue_n1"])
+        entree["net_income_var"] = _variation(entree.get("net_income"),
+                                              entree["net_income_n1"])
+        suite.append(entree)
         rang -= 1
         if rang == 0:
             rang, annee = 4, annee - 1
@@ -189,18 +217,31 @@ def moyenne_mobile(ticker: str) -> Optional[dict]:
     complet_rn = all(t.get("net_income") is not None and t.get("revenue")
                      for t in quatre)
 
+    # La reference doit etre un exercice ANNUEL CLOS. Prendre simplement la
+    # ligne la plus recente comparait douze mois glissants a un trimestre :
+    # Societe Generale CI ressortait a +494 % de croissance, ses 393,9 Mds sur
+    # douze mois etant confrontes aux 66,3 Mds d'un exercice 2026 alimente par
+    # un seul trimestre.
+    from data.storage import exercices_annuels
+
+    annuels = exercices_annuels([ticker]).get(ticker, set())
     conn = get_connection()
     try:
-        ligne = conn.execute(
+        candidats = [dict(l) for l in conn.execute(
             """SELECT fiscal_year, revenue, net_income FROM fundamentals
                WHERE ticker = ? AND revenue IS NOT NULL AND revenue <> 0
-               ORDER BY fiscal_year DESC LIMIT 1""", (ticker,)).fetchone()
+               ORDER BY fiscal_year DESC""", (ticker,)).fetchall()]
     except Exception:
-        ligne = None
+        candidats = []
     conn.close()
-    if not ligne:
+
+    exercice = None
+    for candidat in candidats:
+        if not annuels or candidat.get("fiscal_year") in annuels:
+            exercice = candidat
+            break
+    if exercice is None:
         return None
-    exercice = dict(ligne)
 
     def _croissance(actuel, reference):
         if actuel is None or not reference:
