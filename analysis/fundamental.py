@@ -1150,7 +1150,9 @@ def format_ratio(value, fmt: str = "pct") -> str:
     elif fmt == "x":
         return f"{value:.2f}x"
     elif fmt == "number":
-        return f"{value:,.0f}"
+        # Un montant sous dix francs perd tout son sens arrondi a l'entier :
+        # le dividende par action d'ETI vaut 0,93 FCFA et s'affichait « 1 ».
+        return f"{value:,.2f}" if abs(value) < 10 else f"{value:,.0f}"
     elif fmt == "decimal":
         return f"{value:.2f}"
     return str(value)

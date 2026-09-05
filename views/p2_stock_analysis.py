@@ -691,8 +691,11 @@ def _render_fundamental(fundamentals, ratios):
             if unit == "pct":
                 return f"{v*100:.1f}%"
             if unit == "int":
-                return f"{v:.0f}"
-            return f"{v:,.0f}"
+                # Un montant inferieur a dix francs perd tout son sens arrondi
+                # a l'entier : le dividende d'ETI vaut 0,93 FCFA et
+                # s'affichait « 1 ».
+                return f"{v:.2f}" if abs(v) < 10 else f"{v:.0f}"
+            return f"{v:,.2f}" if abs(v) < 10 else f"{v:,.0f}"
 
         header = "font-size:10.5px;text-transform:uppercase;letter-spacing:0.08em;color:var(--ink-3);font-weight:500;padding:7px 10px;text-align:left;"
         cell = "padding:8px 10px;font-size:13px;border-bottom:1px solid var(--border);"
@@ -2616,7 +2619,8 @@ def _render_profile(ticker: str, fundamentals: dict):
             def _int(v):
                 if v is None or pd.isna(v) or not v:
                     return "—"
-                return f"{v:,.0f}"
+                # Meme raison : un dividende sous le franc ne s'arrondit pas.
+                return f"{v:,.2f}" if abs(v) < 10 else f"{v:,.0f}"
 
             def _dec(v):
                 if v is None or pd.isna(v) or not v:
