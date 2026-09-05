@@ -642,7 +642,7 @@ def comparaison_pairs(secteur: str) -> dict:
             return valeurs[milieu]
         return (valeurs[milieu - 1] + valeurs[milieu]) / 2
 
-    medianes, bornes, effectifs = {}, {}, {}
+    medianes, moyennes, bornes, effectifs = {}, {}, {}, {}
     for cle in cles:
         observees = [l["valeurs"].get(cle) for l in lignes]
         observees = [v for v in observees if v is not None]
@@ -650,6 +650,12 @@ def comparaison_pairs(secteur: str) -> dict:
         # Meme exigence qu'ailleurs : une mediane sur moins de trois
         # observations decrit une societe, pas un secteur.
         medianes[cle] = (_mediane(observees)
+                         if len(observees) >= MIN_OBSERVATIONS else None)
+        # La moyenne se lit A COTE de la mediane, jamais a sa place : leur
+        # ecart dit si le secteur est homogene ou tire par un cas extreme.
+        # Une mediane de 40 % pour une moyenne de 60 % signale qu'un pair
+        # deforme l'ensemble — information que la mediane seule masque.
+        moyennes[cle] = (sum(observees) / len(observees)
                          if len(observees) >= MIN_OBSERVATIONS else None)
         # Les bornes situent le titre dans la dispersion du secteur : une
         # valeur proche de la mediane ne dit pas la meme chose selon que les
@@ -659,7 +665,7 @@ def comparaison_pairs(secteur: str) -> dict:
 
     lignes.sort(key=lambda l: -sum(1 for v in l["valeurs"].values() if v is not None))
     return {"colonnes": colonnes, "lignes": lignes, "medianes": medianes,
-            "bornes": bornes, "effectifs": effectifs}
+            "moyennes": moyennes, "bornes": bornes, "effectifs": effectifs}
 
 
 def parcs_du_secteur() -> dict:

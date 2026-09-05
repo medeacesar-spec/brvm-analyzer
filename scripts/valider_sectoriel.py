@@ -41,7 +41,8 @@ def main(dry_run: bool = False) -> None:
     conn = get_connection()
     lignes = [dict(l) for l in conn.execute(
         "SELECT id, ticker, fiscal_year, sector, revenue, ebitda, cost_of_risk, "
-        "operating_expenses, gross_operating_income FROM fundamentals "
+        "operating_expenses, gross_operating_income, deposits, loans "
+        "FROM fundamentals "
         "ORDER BY ticker, fiscal_year"
     ).fetchall()]
 
@@ -72,6 +73,32 @@ def main(dry_run: bool = False) -> None:
                 annulations.append((
                     l, ["operating_expenses", "gross_operating_income"],
                     f"identite non tenue ({ecart*100:.0f} % d'ecart)"))
+
+        # Encours : depots et credits se controlent l'un par l'autre ET par
+        # l'historique du titre. La SIB portait 1,29 Md de depots en 2024
+        # quand ses autres exercices en donnent 1 090 a 1 289 MILLIARDS —
+        # facteur mille. Le ratio credits/depots ressortait a 85 548 %, ce
+        # que la mediane du secteur masquait et que la moyenne a revele.
+        for champ in ("deposits", "loans"):
+            valeur = _valeur(l, champ)
+            if not valeur:
+                continue
+            autres = [abs(x[champ]) for x in lignes
+                      if x["ticker"] == l["ticker"] and x is not l
+                      and _valeur(x, champ)]
+            if len(autres) < 2:
+                continue
+            repere = statistics.median(autres)
+            # On ne signale QUE les valeurs trop PETITES. Un multiplicateur
+            # perdu divise, il ne multiplie jamais. Et le sens compte : chez
+            # Coris Bank, deux exercices sur quatre portent un encours mille
+            # fois trop faible ; la mediane bascule alors du mauvais cote et
+            # un controle symetrique condamnerait les bonnes annees.
+            if repere and abs(valeur) * FACTEUR_ECHELLE < repere:
+                annulations.append((
+                    l, [champ],
+                    f"encours aberrant : {champ} a {abs(valeur)/1e9:,.2f} Mds "
+                    f"contre {repere/1e9:,.1f} Mds les autres exercices"))
 
         # Echelle : on compare aux AUTRES exercices du meme titre.
         autres = [v for v in par_ticker.get(l["ticker"], []) if ca is None or v != abs(ca)]
