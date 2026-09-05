@@ -18,6 +18,10 @@ on:
         description: "Nombre de lots paralleles (20 par defaut)"
         required: false
         default: "20"
+      tout_relire:
+        description: "Tout relire, y compris les periodes deja enregistrees (oui/non)"
+        required: false
+        default: "non"
 
 jobs:
   periodes:
@@ -45,7 +49,9 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
+          RELIRE=""
+          if [ "${{ inputs.tout_relire }}" = "oui" ]; then RELIRE="--tout-relire"; fi
           python scripts/extraire_periodes.py "${{ inputs.depuis }}" \
                  --ouvriers=2 \
                  --lot=${{ matrix.lot }} \
-                 --sur=${{ inputs.lots }}
+                 --sur=${{ inputs.lots }} $RELIRE
