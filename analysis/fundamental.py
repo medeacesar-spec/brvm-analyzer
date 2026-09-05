@@ -332,6 +332,21 @@ def compute_ratios(data: dict) -> dict:
     ratios["roa"] = (net_income / data["total_assets"]
                      if data.get("total_assets") and net_income else None)
 
+    # --- Grille telecoms ---
+    # Le secteur se juge sur trois axes que le resultat net ne montre pas : la
+    # marge d'EBITDA (rentabilite operationnelle avant le poids des reseaux),
+    # l'intensite capitalistique (ce que le reseau engloutit chaque annee) et
+    # le levier rapporte a l'EBITDA. Les operateurs communiquent d'ailleurs en
+    # EBITDAaL, pas en resultat net.
+    ebitda_v = data.get("ebitda")
+    capex_v = abs(capex) if capex else None
+    ratios["ebitda"] = ebitda_v
+    ratios["marge_ebitda"] = (ebitda_v / revenue) if ebitda_v and revenue else None
+    ratios["intensite_capex"] = (capex_v / revenue) if capex_v and revenue else None
+    ratios["dette_ebitda"] = (
+        total_debt / ebitda_v if ebitda_v and not total_debt_missing and total_debt
+        else None)
+
     # --- P/B (Price to Book) ---
     book_value_per_share = equity / shares if shares != 0 else 0
     ratios["bvps"] = book_value_per_share or None
@@ -381,6 +396,38 @@ def _compute_flags(ratios: dict, is_bank: bool) -> dict:
                 "Vigilance", f"{abs(part)*100:.0f}% du résultat est exceptionnel")
         else:
             flags["part_exceptionnelle"] = ("OK", "Résultat essentiellement courant")
+
+    # Marge d'EBITDA — la reference du secteur telecom
+    me = ratios.get("marge_ebitda")
+    if me is not None:
+        if me >= 0.40:
+            flags["marge_ebitda"] = ("OK", f"Marge d'EBITDA élevée ({me*100:.0f} %)")
+        elif me >= 0.30:
+            flags["marge_ebitda"] = ("OK", f"Marge d'EBITDA solide ({me*100:.0f} %)")
+        elif me >= 0.20:
+            flags["marge_ebitda"] = ("Vigilance", f"Marge d'EBITDA moyenne ({me*100:.0f} %)")
+        else:
+            flags["marge_ebitda"] = ("Risque", f"Marge d'EBITDA faible ({me*100:.0f} %)")
+
+    # Intensite capitalistique : un reseau se paie tous les ans
+    ic = ratios.get("intensite_capex")
+    if ic is not None:
+        if ic <= 0.20:
+            flags["intensite_capex"] = ("OK", f"Investissement contenu ({ic*100:.0f} % du CA)")
+        elif ic <= 0.30:
+            flags["intensite_capex"] = ("Vigilance", f"Investissement lourd ({ic*100:.0f} % du CA)")
+        else:
+            flags["intensite_capex"] = ("Risque", f"Investissement très lourd ({ic*100:.0f} % du CA)")
+
+    # Levier rapporte a l'EBITDA
+    de = ratios.get("dette_ebitda")
+    if de is not None:
+        if de <= 2:
+            flags["dette_ebitda"] = ("OK", f"Levier confortable ({de:.1f}×)")
+        elif de <= 3:
+            flags["dette_ebitda"] = ("Vigilance", f"Levier à surveiller ({de:.1f}×)")
+        else:
+            flags["dette_ebitda"] = ("Risque", f"Levier élevé ({de:.1f}×)")
 
     # Coefficient d'exploitation : ce que coute la machine bancaire
     ce = ratios.get("coefficient_exploitation")
