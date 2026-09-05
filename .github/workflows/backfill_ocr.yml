@@ -1,0 +1,52 @@
+name: Rattrapage OCR des rapports
+
+# Lancement MANUEL uniquement : ce traitement lit plusieurs centaines de PDF
+# scannes et n'a pas sa place dans le job quotidien.
+#
+# Pourquoi ici plutot qu'en local : le poste de travail de l'assistant ne
+# parvient pas a installer tesseract — les telechargements y sont tronques
+# au-dela de quelques megaoctets — et l'OCR d'une page a 300 ppp y saturait
+# la memoire des que plusieurs fils tournaient. Le coureur GitHub installe
+# tesseract par apt en quelques secondes et dispose de la memoire voulue.
+on:
+  workflow_dispatch:
+    inputs:
+      depuis:
+        description: "Exercice de depart"
+        required: false
+        default: "2023"
+      ouvriers:
+        description: "Nombre de fils (2 recommande : l'OCR est gourmand)"
+        required: false
+        default: "2"
+
+jobs:
+  rattrapage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Installer tesseract
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq tesseract-ocr tesseract-ocr-fra tesseract-ocr-eng
+      - name: Rattraper les postes sectoriels
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          python scripts/backfill_sectoriel.py "${{ inputs.depuis }}" \
+                 --ouvriers="${{ inputs.ouvriers }}"
+      - name: Lire les publications de periode
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python scripts/extraire_periodes.py "${{ inputs.depuis }}"
+      - name: Controler la vraisemblance
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python scripts/valider_sectoriel.py
