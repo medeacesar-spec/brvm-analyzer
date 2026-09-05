@@ -1363,7 +1363,8 @@ def _render_indicator_explanations(df: pd.DataFrame, sma_labels: dict, freq: str
             )
 
 
-def _exercice_le_plus_complet(fundamentals, ratios_courants):
+def _exercice_le_plus_complet(fundamentals, ratios_courants,
+                              exercice_pairs=None):
     """Choisit l'exercice sur lequel lire la grille sectorielle.
 
     La fiche affiche le dernier exercice ayant un chiffre d'affaires et un
@@ -1376,6 +1377,17 @@ def _exercice_le_plus_complet(fundamentals, ratios_courants):
     les depots sont connus, tandis que l'exercice 2024 porte le resultat brut
     d'exploitation, les credits et les depots. On lit donc la grille sur
     l'exercice le plus complet, et on indique lequel.
+
+    `exercice_pairs` est l'exercice sur lequel la comparaison aux pairs lit ce
+    meme titre — le dernier exercice ANNUEL. La meme page ne devrait pas
+    afficher deux fois le meme indicateur sur deux annees differentes : la SIB
+    lisait sa grille sur 2023 quand sa position sectorielle lisait 2024.
+    L'exercice des pairs est donc PREFERE — mais a egalite de remplissage
+    seulement. Aligner coute que coute aurait fait perdre a la SIB son cout du
+    risque, qui n'existe que sur 2023 : renoncer a l'indicateur central d'une
+    banque pour uniformiser un affichage serait un mauvais echange. Quand les
+    deux exercices divergent malgre tout, chaque bloc porte le sien et
+    l'ecart est annonce plutot que subi.
 
     Retourne (ratios, exercice) — l'exercice etant None quand c'est celui que
     la fiche affiche deja, donc sans rien a signaler.
@@ -1390,30 +1402,38 @@ def _exercice_le_plus_complet(fundamentals, ratios_courants):
     def _remplies(ratios):
         return sum(1 for c in cles if ratios.get(c) is not None)
 
-    meilleur = _remplies(ratios_courants)
-    if meilleur >= len(cles):
-        return ratios_courants, None
-
     ticker = fundamentals.get("ticker")
     annee_courante = fundamentals.get("fiscal_year")
-    if not ticker or not annee_courante:
+
+    meilleur = _remplies(ratios_courants)
+    retenus, annee_retenue = ratios_courants, None
+
+    def _essayer(annee, prefere=False):
+        """Retient `annee` si elle remplit mieux la grille — ou aussi bien,
+        quand c'est l'exercice des pairs : a egalite, la coherence tranche."""
+        nonlocal meilleur, retenus, annee_retenue
+        if not annee or annee == annee_courante:
+            return
+        try:
+            autre = get_fundamentals(ticker, fiscal_year=annee)
+            ratios_autre = compute_ratios(autre) if autre else None
+        except Exception:
+            return
+        if not ratios_autre:
+            return
+        combien = _remplies(ratios_autre)
+        if combien > meilleur or (prefere and combien == meilleur and combien):
+            meilleur = combien
+            retenus, annee_retenue = ratios_autre, autre.get("fiscal_year")
+
+    if meilleur >= len(cles) or not ticker or not annee_courante:
         return ratios_courants, None
 
-    retenus, annee_retenue = ratios_courants, None
+    # Les reculs d'abord, l'exercice des pairs ensuite : a remplissage egal
+    # c'est lui qui doit l'emporter, et il ne le peut qu'en passant en dernier.
     for recul in range(1, 4):
-        try:
-            autre = get_fundamentals(ticker, fiscal_year=annee_courante - recul)
-        except Exception:
-            autre = None
-        if not autre:
-            continue
-        try:
-            ratios_autre = compute_ratios(autre)
-        except Exception:
-            continue
-        if _remplies(ratios_autre) > meilleur:
-            meilleur = _remplies(ratios_autre)
-            retenus, annee_retenue = ratios_autre, autre.get("fiscal_year")
+        _essayer(annee_courante - recul)
+    _essayer(exercice_pairs, prefere=True)
 
     return retenus, annee_retenue
 
@@ -1564,19 +1584,29 @@ def _render_bloc_sectoriel(fundamentals, ratios_src):
     """
     from utils.ui_helpers import section_heading
 
-    ratios_src, _exercice_grille = _exercice_le_plus_complet(
-        fundamentals, ratios_src)
-
     _secteur_bas = (fundamentals.get("sector") or "").lower()
 
     # Les pairs sont calcules AVANT la grille : chaque ligne doit pouvoir se
-    # situer face a eux, pas seulement face a une borne.
+    # situer face a eux, pas seulement face a une borne. Et c'est l'exercice
+    # de cette ligne qui commande celui de la grille — sans quoi la meme page
+    # affichait le meme indicateur deux fois, sur deux annees differentes.
     try:
         from analysis.sectors import comparaison_pairs, MIN_OBSERVATIONS
         _pairs = comparaison_pairs(fundamentals.get("sector"))
     except Exception:
         _pairs = None
     _medianes = (_pairs or {}).get("medianes") or {}
+
+    _mien = (fundamentals.get("ticker") or "").upper()
+    _ma_ligne = None
+    for _l in (_pairs or {}).get("lignes") or []:
+        if (_l.get("ticker") or "").upper() == _mien:
+            _ma_ligne = _l
+            break
+
+    ratios_src, _exercice_grille = _exercice_le_plus_complet(
+        fundamentals, ratios_src,
+        exercice_pairs=(_ma_ligne or {}).get("exercice"))
 
     def _render_grille(titre, definition, source):
         dispo = [(lib, cle, fmt, aide) for lib, cle, fmt, aide in definition
@@ -1716,14 +1746,6 @@ def _render_bloc_sectoriel(fundamentals, ratios_src):
     # moyenne des credits sur depots ressortait a 8 612 % quand la mediane
     # affichait 71 % — un encours mille fois trop faible chez un pair, que la
     # mediane masquait entierement.
-    _mien = (fundamentals.get("ticker") or "").upper()
-    _ma_ligne = None
-    if _pairs:
-        for _l in _pairs.get("lignes") or []:
-            if (_l.get("ticker") or "").upper() == _mien:
-                _ma_ligne = _l
-                break
-
     if _pairs and _ma_ligne and len(_pairs["lignes"]) > 1:
         section_heading("Position dans le secteur", spacing="loose")
 
@@ -1779,6 +1801,22 @@ def _render_bloc_sectoriel(fundamentals, ratios_src):
                 f"extrême les sépare. Aucun repère n'est publié en dessous de "
                 f"{MIN_OBSERVATIONS} valeurs renseignées."
             )
+
+            # Les deux blocs ne lisent pas toujours la meme annee : la grille
+            # peut reculer pour ne pas perdre un indicateur que le dernier
+            # exercice annuel ne porte pas. Le dire, c'est la difference entre
+            # une precision et une contradiction.
+            _annee_grille = _exercice_grille or fundamentals.get("fiscal_year")
+            if _annee_grille and _ma_ligne["exercice"] \
+                    and _annee_grille != _ma_ligne["exercice"]:
+                st.caption(
+                    f"⚠︎ La grille ci-dessus est lue sur l'exercice "
+                    f"**{_annee_grille}**, ce tableau sur **"
+                    f"{_ma_ligne['exercice']}** : le dernier exercice annuel "
+                    f"ne porte pas tous les indicateurs du métier, et reculer "
+                    f"la grille évite d'en perdre. Un même indicateur peut "
+                    f"donc différer d'un bloc à l'autre."
+                )
 
     # ── Parcs clients des operateurs ──
     # Le recrutement de clients precede le chiffre d'affaires : comparer deux
