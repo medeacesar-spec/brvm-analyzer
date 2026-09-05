@@ -1416,23 +1416,28 @@ def _exercice_le_plus_complet(fundamentals, ratios_courants):
 
 
 def _render_tendance_periodes(ticker):
-    """Compare chaque periode publiee a la MEME periode de l'exercice anterieur.
+    """Les quatre derniers trimestres CALENDAIRES, et la moyenne mobile.
 
-    Regle non negociable : on ne rapproche jamais deux periodes de duree
-    differente. Un premier semestre se compare a un premier semestre — le
-    confronter a un trimestre annoncerait un doublement qui n'existe pas.
+    Les emetteurs BRVM publient en cumul depuis le debut de l'exercice, jamais
+    par periode isolee. Chaque trimestre est donc DEDUIT par difference entre
+    deux cumuls — Q2 = semestre moins premier trimestre — ce qui permet enfin
+    de comparer des durees egales.
+
+    La suite est calendaire et non « les quatre derniers disponibles » : un
+    trimestre manquant reste une case vide a sa place. Additionner des
+    trimestres separes par des trous donnait a Orange CI une croissance de
+    250 % qui ne mesurait rien.
     """
     from utils.ui_helpers import section_heading
-    from analysis.tendances import tendance_periodes
+    from analysis.trimestres import derniers_trimestres, moyenne_mobile
 
     if not ticker:
         return
-    donnees = tendance_periodes(ticker)
-    lignes = donnees.get("lignes") or []
-    if not lignes:
+    quatre = derniers_trimestres(ticker, 4)
+    if not quatre or all(t.get("absent") for t in quatre):
         return
 
-    section_heading("Tendance · publications de période", spacing="loose")
+    section_heading("Quatre derniers trimestres", spacing="loose")
 
     def _montant(valeur):
         if valeur is None:
@@ -1441,53 +1446,87 @@ def _render_tendance_periodes(ticker):
             return f"{valeur/1e9:,.1f} Md"
         return f"{valeur/1e6:,.0f} M"
 
-    def _ecart(variation):
-        if variation is None:
-            return "<span style='color:var(--ink-3);'>—</span>"
-        couleur = "var(--up)" if variation >= 0 else "var(--down)"
-        return (f"<span style='color:{couleur};font-weight:600;'>"
-                f"{variation:+.1f} %</span>")
+    entetes = "".join(
+        f"<th style='padding:0 12px 5px;font-size:11px;font-weight:500;"
+        f"color:var(--ink-3);text-align:right;white-space:nowrap;"
+        f"{'opacity:.5;' if t.get('absent') else ''}'>{t['libelle']}</th>"
+        for t in reversed(quatre))
 
-    corps = ""
-    for ligne in lignes:
-        reference = (f"contre {_montant(ligne['revenue_ref'])} en "
-                     f"{ligne['annee_ref']}" if ligne.get("annee_ref")
-                     else "<span style='color:var(--ink-3);'>"
-                          "pas de période comparable</span>")
-        corps += (
-            f"<tr style='border-top:1px solid var(--border);'>"
-            f"<td style='padding:7px 12px 7px 0;font-size:12.5px;"
-            f"white-space:nowrap;'>{ligne['libelle']} {ligne['annee']}</td>"
-            f"<td style='padding:7px 12px;font-size:13px;font-weight:600;"
-            f"text-align:right;font-variant-numeric:tabular-nums;'>"
-            f"{_montant(ligne['revenue'])}</td>"
-            f"<td style='padding:7px 12px;font-size:12.5px;text-align:right;'>"
-            f"{_ecart(ligne['revenue_var'])}</td>"
-            f"<td style='padding:7px 12px;font-size:13px;font-weight:600;"
-            f"text-align:right;font-variant-numeric:tabular-nums;'>"
-            f"{_montant(ligne['net_income'])}</td>"
-            f"<td style='padding:7px 0;font-size:12.5px;text-align:right;'>"
-            f"{_ecart(ligne['net_income_var'])}</td></tr>"
-        )
+    def _rangee(intitule, champ):
+        cases = "".join(
+            f"<td style='padding:8px 12px;font-size:13px;text-align:right;"
+            f"font-variant-numeric:tabular-nums;'>{_montant(t.get(champ))}</td>"
+            for t in reversed(quatre))
+        return (f"<tr style='border-top:1px solid var(--border);'>"
+                f"<td style='padding:8px 12px 8px 0;font-size:12.5px;"
+                f"white-space:nowrap;'>{intitule}</td>{cases}</tr>")
 
-    entetes = ["Période", "Chiffre d'affaires", "vs N-1", "Résultat net", "vs N-1"]
+    ligne_ca = _rangee("Chiffre d’affaires", "revenue")
+    ligne_rn = _rangee("Résultat net", "net_income")
     st.markdown(
-        f"<div style='overflow-x:auto;'>"
+        f"<div style='overflow-x:auto;border:1px solid var(--border);"
+        f"border-radius:10px;padding:6px 14px;background:var(--bg-elev);'>"
         f"<table style='width:100%;border-collapse:collapse;'>"
-        f"<thead><tr>"
-        + "".join(
-            f"<th style='padding:0 12px 4px 0;font-size:11px;font-weight:500;"
-            f"color:var(--ink-3);text-align:{'left' if i == 0 else 'right'};"
-            f"white-space:nowrap;'>{t}</th>"
-            for i, t in enumerate(entetes))
-        + f"</tr></thead><tbody>{corps}</tbody></table></div>",
+        f"<thead><tr><th style='padding:0 12px 5px 0;'></th>{entetes}</tr></thead>"
+        f"<tbody>{ligne_ca}{ligne_rn}</tbody></table></div>",
         unsafe_allow_html=True)
-    st.caption(
-        "Chaque période est comparée à la **même période** de l'exercice "
-        "précédent : un premier semestre à un premier semestre, jamais à un "
-        "trimestre. Ces publications ne font pas référence — l'exercice annuel "
-        "seul le fait — mais elles montrent la tendance avant lui."
-    )
+
+    deduits = sum(1 for t in quatre if t.get("deduit"))
+    manquants = sum(1 for t in quatre if t.get("absent"))
+    note = ("Les émetteurs publient en **cumul** depuis le début de "
+            "l'exercice : chaque trimestre est déduit par différence entre "
+            "deux publications — un deuxième trimestre est le semestre moins "
+            "le premier trimestre.")
+    if deduits:
+        note += f" {deduits} trimestre(s) sur 4 obtenu(s) ainsi."
+    if manquants:
+        note += (f" {manquants} trimestre(s) manquant(s) : la case reste vide "
+                 f"à sa place calendaire, jamais comblée par un trimestre "
+                 f"plus ancien.")
+    st.caption(note)
+
+    # ── Moyenne mobile sur quatre trimestres ──
+    mobile = moyenne_mobile(ticker)
+    if not mobile or mobile.get("revenue_croissance") is None:
+        if manquants:
+            st.caption(
+                "La moyenne mobile n'est pas calculée : quatre trimestres "
+                "consécutifs sont nécessaires pour se comparer à un exercice. "
+                "Trois trimestres annonceraient une chute de 25 % qui n'existe pas."
+            )
+        return
+
+    def _carte(libelle, actuel, reference, croissance):
+        if croissance is None:
+            return ""
+        couleur = "var(--up)" if croissance >= 0 else "var(--down)"
+        return (
+            f"<div style='flex:1;min-width:190px;border:1px solid var(--border);"
+            f"border-radius:10px;padding:12px 14px;background:var(--bg-elev);'>"
+            f"<div style='font-size:11px;color:var(--ink-3);"
+            f"text-transform:uppercase;letter-spacing:.03em;'>{libelle}</div>"
+            f"<div style='font-size:22px;font-weight:600;margin-top:2px;"
+            f"color:{couleur};'>{croissance:+.1f} %</div>"
+            f"<div style='font-size:11.5px;color:var(--ink-3);'>"
+            f"{_montant(actuel)} sur 12 mois glissants</div>"
+            f"<div style='font-size:11.5px;color:var(--ink-3);'>"
+            f"contre {_montant(reference)} en {mobile['exercice_ref']}</div>"
+            f"</div>")
+
+    cartes = (_carte("Chiffre d'affaires", mobile["revenue"],
+                     mobile["revenue_ref"], mobile["revenue_croissance"])
+              + _carte("Résultat net", mobile["net_income"],
+                       mobile["net_income_ref"], mobile["net_income_croissance"]))
+    if cartes:
+        st.markdown(
+            f"<div style='display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;'>"
+            f"{cartes}</div>", unsafe_allow_html=True)
+        st.caption(
+            f"Quatre trimestres glissants ({mobile['periode']}) couvrent douze "
+            f"mois : ils se comparent donc légitimement à l'exercice "
+            f"{mobile['exercice_ref']}. Cette croissance précède de plusieurs "
+            f"mois celle que l'exercice suivant entérinera."
+        )
 
 
 def _render_bloc_sectoriel(fundamentals, ratios_src):
