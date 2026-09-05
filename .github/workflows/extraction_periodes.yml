@@ -1,0 +1,38 @@
+name: Lecture des publications de periode
+
+# Separee du rattrapage sectoriel pour pouvoir tourner EN PARALLELE : les deux
+# traitements ecrivent dans des tables differentes — `fundamentals` pour les
+# postes sectoriels, `quarterly_data` pour les periodes — donc rien ne les
+# oppose. Les mener l'un apres l'autre faisait attendre plusieurs heures une
+# lecture qui n'a aucune raison de patienter.
+#
+# Chaque cote reste modeste en fils : l'OCR rend les pages a 300 ppp et deux
+# traitements a deux fils suffisent a saturer un coureur.
+on:
+  workflow_dispatch:
+    inputs:
+      depuis:
+        description: "Exercice de depart"
+        required: false
+        default: "2023"
+
+jobs:
+  periodes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Installer tesseract
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq tesseract-ocr tesseract-ocr-fra tesseract-ocr-eng
+      - name: Lire les trimestriels et semestriels
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python scripts/extraire_periodes.py "${{ inputs.depuis }}"
