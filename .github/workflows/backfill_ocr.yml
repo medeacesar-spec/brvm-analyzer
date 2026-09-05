@@ -1,13 +1,16 @@
 name: Rattrapage OCR des rapports
 
-# Lancement MANUEL uniquement : ce traitement lit plusieurs centaines de PDF
-# scannes et n'a pas sa place dans le job quotidien.
+# Lancement MANUEL uniquement.
 #
-# Pourquoi ici plutot qu'en local : le poste de travail de l'assistant ne
-# parvient pas a installer tesseract — les telechargements y sont tronques
-# au-dela de quelques megaoctets — et l'OCR d'une page a 300 ppp y saturait
-# la memoire des que plusieurs fils tournaient. Le coureur GitHub installe
-# tesseract par apt en quelques secondes et dispose de la memoire voulue.
+# Le travail est DECOUPE EN LOTS traites par des coureurs distincts. La mesure
+# qui l'impose : un document scanne coute environ neuf minutes — quinze pages
+# rendues a 300 ppp et donnees a tesseract jusqu'a trois fois. Un seul coureur
+# mettrait pres de soixante heures a lire les 641 documents, pour une limite
+# de 350 minutes. Vingt lots ramenent cela sous les quatre heures.
+#
+# Le decoupage est deterministe (un document sur vingt, en partant du k-ieme)
+# et le tri par exercice decroissant repartit les scans lourds entre les lots
+# plutot que de les concentrer sur l'un d'eux.
 on:
   workflow_dispatch:
     inputs:
@@ -15,19 +18,25 @@ on:
         description: "Exercice de depart"
         required: false
         default: "2023"
-      ouvriers:
-        description: "Nombre de fils (2 recommande : l'OCR est gourmand)"
+      lots:
+        description: "Nombre de lots paralleles (20 par defaut)"
         required: false
-        default: "2"
-      periodes:
-        description: "Enchainer la lecture des periodes ? (oui/non — 'non' si elle tourne a cote)"
+        default: "20"
+      deja:
+        description: "Sauter les exercices portant deja N postes sectoriels (0 = tout relire)"
         required: false
-        default: "non"
+        default: "3"
 
 jobs:
   rattrapage:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    timeout-minutes: 340
+    strategy:
+      # Un lot qui echoue ne doit pas emporter les dix-neuf autres.
+      fail-fast: false
+      matrix:
+        lot: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+              10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -40,20 +49,30 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq tesseract-ocr tesseract-ocr-fra tesseract-ocr-eng
-      - name: Rattraper les postes sectoriels
+      - name: Lire le lot ${{ matrix.lot }}
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           python scripts/backfill_sectoriel.py "${{ inputs.depuis }}" \
-                 --ouvriers="${{ inputs.ouvriers }}"
-      # La lecture des periodes a son propre workflow, lancable EN PARALLELE
-      # (« Lecture des publications de periode »). On la garde ici en option,
-      # pour un rattrapage complet en une seule fois quand rien ne presse.
-      - name: Lire les publications de periode
-        if: ${{ inputs.periodes == 'oui' }}
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: python scripts/extraire_periodes.py "${{ inputs.depuis }}"
+                 --ouvriers=2 \
+                 --lot=${{ matrix.lot }} \
+                 --sur=${{ inputs.lots }} \
+                 --deja=${{ inputs.deja }}
+
+  controle:
+    # Le controle de vraisemblance ne passe qu'une fois, tous lots termines :
+    # il raisonne sur l'ensemble des exercices d'un titre.
+    needs: rattrapage
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
       - name: Controler la vraisemblance
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}

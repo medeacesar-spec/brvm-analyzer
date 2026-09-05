@@ -82,10 +82,48 @@ def rapports_a_traiter(conn, depuis: int) -> list:
     return sortie
 
 
-def main(depuis: int = 2023, avec_ocr: bool = True, ouvriers: int = 4) -> None:
+def _deja_renseignes(conn, seuil: int) -> set:
+    """Exercices portant deja au moins `seuil` postes sectoriels.
+
+    Relire un rapport dont l'exercice est deja renseigne coute une dizaine de
+    minutes d'OCR pour reecrire les memes valeurs. Sur 641 documents, c'est
+    la difference entre un traitement qui aboutit et un traitement qui expire.
+    """
+    colonnes = ("operating_expenses", "gross_operating_income", "cost_of_risk",
+                "deposits", "loans", "ebitda", "pretax_income")
+    compte = " + ".join(
+        f"(CASE WHEN {c} IS NOT NULL AND {c} <> 0 THEN 1 ELSE 0 END)"
+        for c in colonnes)
+    try:
+        lignes = conn.execute(
+            f"SELECT ticker, fiscal_year FROM fundamentals "
+            f"WHERE ({compte}) >= {int(seuil)}"
+        ).fetchall()
+    except Exception:
+        return set()
+    return {(dict(l)["ticker"], dict(l)["fiscal_year"]) for l in lignes}
+
+
+def main(depuis: int = 2023, avec_ocr: bool = True, ouvriers: int = 4,
+         lot: int = 0, sur: int = 1, seuil_complet: int = 0) -> None:
     conn = get_connection()
     rapports = rapports_a_traiter(conn, depuis)
+
+    if seuil_complet > 0:
+        acquis = _deja_renseignes(conn, seuil_complet)
+        avant = len(rapports)
+        rapports = [r for r in rapports
+                    if (r["ticker"], r["fiscal_year"]) not in acquis]
+        print(f"deja renseignes, ecartes : {avant - len(rapports)}", flush=True)
     conn.close()
+
+    if sur > 1:
+        # Decoupage deterministe : le lot k prend un document sur `sur`, en
+        # partant du k-ieme. Le tri etant par exercice decroissant, chaque lot
+        # recoit ainsi un melange d'annees et de societes plutot qu'un bloc
+        # homogene — aucun lot ne herite de tous les scans les plus lourds.
+        rapports = [r for i, r in enumerate(rapports) if i % sur == lot]
+        print(f"lot {lot + 1}/{sur} : {len(rapports)} documents", flush=True)
     print(f"Rapports a repasser (>= {depuis}) : {len(rapports)} "
           f"| {ouvriers} en parallele | OCR {'oui' if avec_ocr else 'non'}",
           flush=True)
@@ -164,12 +202,17 @@ def main(depuis: int = 2023, avec_ocr: bool = True, ouvriers: int = 4) -> None:
 
 
 if __name__ == "__main__":
-    annee = 2023
+    annee, ouvriers, lot, sur, seuil = 2023, 4, 0, 1, 0
     for a in sys.argv[1:]:
         if a.isdigit():
             annee = int(a)
-    ouvriers = 4
-    for a in sys.argv[1:]:
-        if a.startswith("--ouvriers="):
+        elif a.startswith("--ouvriers="):
             ouvriers = int(a.split("=", 1)[1])
-    main(depuis=annee, avec_ocr="--sans-ocr" not in sys.argv, ouvriers=ouvriers)
+        elif a.startswith("--lot="):
+            lot = int(a.split("=", 1)[1])
+        elif a.startswith("--sur="):
+            sur = int(a.split("=", 1)[1])
+        elif a.startswith("--deja="):
+            seuil = int(a.split("=", 1)[1])
+    main(depuis=annee, avec_ocr="--sans-ocr" not in sys.argv, ouvriers=ouvriers,
+         lot=lot, sur=sur, seuil_complet=seuil)
