@@ -176,6 +176,18 @@ def _classify_pdf(url: str):
     return genre, int(annees[-1])
 
 
+def _make_title(report_type: str, year: int, ticker: str) -> str:
+    """Libelle lisible du document, tel qu'il apparait dans les listes."""
+    name = ticker.split(".")[0]
+    type_label = {
+        "rapport_annuel": "Rapport activités annuel",
+        "etats_financiers": "Etats financiers",
+        "rapport_semestriel": "Rapport activités semestriel",
+        "rapport_trimestriel": "Rapport activités trimestriel",
+    }.get(report_type, report_type)
+    return f"{type_label} {year} - {name}"
+
+
 def scrape_company_pdfs(slug: str, session: requests.Session) -> list[dict]:
     """Retourne la liste des PDFs trouvés sur la page société brvm.org.
 
