@@ -111,6 +111,13 @@ _ANNEE_APRES_ETAT = re.compile(
 # etre lu : « attestation_des_cac_sur_le_rapport_dactivites_du_1er_semestre »
 # EST le rapport semestriel. On n'ecarte que les pieces qui ne portent aucun
 # etat : communiques, convocations, resolutions, rapport RSE.
+# Un « examen limite » porte sur des comptes INTERMEDIAIRES, jamais sur un
+# exercice clos : c'est la revue allegee que les commissaires aux comptes
+# signent en cours d'annee. Coris Bank a ainsi vu son rapport d'examen limite
+# du 31/08/2026 classe « etats financiers 2026 », creant un exercice 2026 qui
+# n'existe pas.
+_EXAMEN_LIMITE = re.compile(r"examen[_-]limit[eé]", re.I)
+
 _SANS_CHIFFRES = re.compile(
     r"rapport[_-]rse|communiqu[eé]|convocation|ordre[_-]du[_-]jour"
     r"|proces[_-]verbal|resolutions?[_-]", re.I)
@@ -142,7 +149,11 @@ def _classify_pdf(url: str):
     exercice = _ANNEE_EXERCICE.search(corps)
     genre = None
 
-    if exercice and _ETATS.search(corps):
+    if _EXAMEN_LIMITE.search(corps) and not exercice:
+        # Comptes intermediaires : semestriels sauf mention de trimestre.
+        genre = "rapport_trimestriel" if _TRIMESTRE.search(corps) \
+            else "rapport_semestriel"
+    elif exercice and _ETATS.search(corps):
         genre = "etats_financiers"
     elif exercice and (_ANNUEL.search(corps) or _ACTIVITES.search(corps)) \
             and not _SEMESTRE.search(corps) and not _TRIMESTRE.search(corps):

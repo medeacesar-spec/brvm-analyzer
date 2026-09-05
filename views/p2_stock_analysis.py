@@ -1617,11 +1617,13 @@ def _render_bloc_sectoriel(fundamentals, ratios_src):
                 _bouts.append(f"crédits nets {_cre/1e9:,.0f} Mds")
             st.caption(" · ".join(_bouts))
 
-    # ── Comparaison aux pairs du secteur ──
-    # Comparer une banque a la mediane de toute la cote n'apprend rien : un
-    # coefficient d'exploitation ne se lit que face a d'autres banques, une
-    # intensite capitalistique que face a d'autres operateurs. On compare donc
-    # le titre a SES pairs, sur les indicateurs de SA grille.
+    # ── Position dans le secteur ──
+    # On n'aligne plus les quatorze banques de la cote : le lecteur veut
+    # savoir ou SE SITUE le titre qu'il consulte, pas parcourir un annuaire.
+    # Chaque indicateur est donc rendu par une ligne unique — la valeur du
+    # titre, la mediane de ses pairs, et un curseur qui montre la dispersion
+    # du secteur. Les pairs restent calcules : ils font la mediane et les
+    # bornes.
     try:
         from analysis.sectors import comparaison_pairs, MIN_OBSERVATIONS
         _pairs = comparaison_pairs(fundamentals.get("sector"))
@@ -1629,65 +1631,119 @@ def _render_bloc_sectoriel(fundamentals, ratios_src):
         _pairs = None
 
     _mien = (fundamentals.get("ticker") or "").upper()
-    if _pairs and len(_pairs.get("lignes") or []) > 1:
-        section_heading("Comparaison aux pairs du secteur", spacing="loose")
-        _colonnes = _pairs["colonnes"]
+    _ma_ligne = None
+    if _pairs:
+        for _l in _pairs.get("lignes") or []:
+            if (_l.get("ticker") or "").upper() == _mien:
+                _ma_ligne = _l
+                break
 
-        def _cellule(valeur, forme):
+    if _pairs and _ma_ligne and len(_pairs["lignes"]) > 1:
+        section_heading("Position dans le secteur", spacing="loose")
+
+        def _forme(valeur, forme):
             if valeur is None:
-                return "<span style='color:var(--ink-3);'>—</span>"
+                return "—"
             return f"{valeur:.2f} ×" if forme == "fois" else f"{valeur*100:.1f} %"
 
-        _corps = ""
-        for _ligne in _pairs["lignes"]:
-            _actuel = (_ligne["ticker"] or "").upper() == _mien
-            _fond = "background:var(--bg-elev);" if _actuel else ""
-            _gras = "font-weight:600;" if _actuel else ""
-            _cases = "".join(
-                f"<td style='padding:6px 10px;font-size:12.5px;text-align:right;"
-                f"font-variant-numeric:tabular-nums;{_gras}'>"
-                f"{_cellule(_ligne['valeurs'].get(_cle), _forme)}</td>"
-                for _, _cle, _forme in _colonnes)
-            _corps += (
-                f"<tr style='{_fond}border-top:1px solid var(--border);'>"
-                f"<td style='padding:6px 10px 6px 0;font-size:12.5px;"
-                f"white-space:nowrap;{_gras}'>{_ligne['ticker']}</td>"
-                f"<td style='padding:6px 10px;font-size:11.5px;color:var(--ink-3);"
-                f"text-align:center;'>{_ligne['exercice'] or '—'}</td>"
-                f"{_cases}</tr>")
+        _blocs = ""
+        for _lib, _cle, _fmt in _pairs["colonnes"]:
+            _val = _ma_ligne["valeurs"].get(_cle)
+            _med = _pairs["medianes"].get(_cle)
+            _bor = _pairs["bornes"].get(_cle)
+            _n = _pairs["effectifs"].get(_cle, 0)
+            if _val is None and _med is None:
+                continue
 
-        _cases_med = "".join(
-            f"<td style='padding:7px 10px;font-size:12.5px;text-align:right;"
-            f"font-variant-numeric:tabular-nums;color:var(--ink-3);'>"
-            f"{_cellule(_pairs['medianes'].get(_cle), _forme)}</td>"
-            for _, _cle, _forme in _colonnes)
-        _corps += (
-            f"<tr style='border-top:2px solid var(--border);'>"
-            f"<td style='padding:7px 10px 7px 0;font-size:12px;"
-            f"color:var(--ink-3);'>Médiane du secteur</td><td></td>{_cases_med}</tr>")
+            # Curseur : position du titre entre la plus faible et la plus
+            # forte valeur du secteur. Sans bornes, pas de curseur — on ne
+            # simule pas une dispersion qu'on ne connait pas.
+            _jauge = ""
+            if _val is not None and _bor and _bor[1] > _bor[0]:
+                _pos = (_val - _bor[0]) / (_bor[1] - _bor[0])
+                _pos = min(max(_pos, 0.0), 1.0)
+                _pos_med = ((_med - _bor[0]) / (_bor[1] - _bor[0])
+                            if _med is not None else None)
+                _repere = ""
+                if _pos_med is not None:
+                    _repere = (
+                        f"<div style='position:absolute;left:{_pos_med*100:.1f}%;"
+                        f"top:-3px;width:1px;height:12px;background:var(--ink-3);'>"
+                        f"</div>")
+                _jauge = (
+                    f"<div style='position:relative;height:6px;border-radius:3px;"
+                    f"background:var(--border);margin:8px 0 2px;'>{_repere}"
+                    f"<div style='position:absolute;left:calc({_pos*100:.1f}% - 4px);"
+                    f"top:-2px;width:9px;height:9px;border-radius:50%;"
+                    f"background:var(--ink);border:2px solid var(--bg-elev);'></div>"
+                    f"</div>")
 
-        _entetes = "".join(
-            f"<th style='padding:0 10px 4px;font-size:11px;font-weight:500;"
-            f"color:var(--ink-3);text-align:right;white-space:nowrap;'>{_lib}</th>"
-            for _lib, _, _ in _colonnes)
-        st.markdown(
-            f"<div style='overflow-x:auto;'>"
-            f"<table style='width:100%;border-collapse:collapse;'>"
-            f"<thead><tr>"
-            f"<th style='text-align:left;font-size:11px;font-weight:500;"
-            f"color:var(--ink-3);padding-bottom:4px;'>Titre</th>"
-            f"<th style='font-size:11px;font-weight:500;color:var(--ink-3);"
-            f"padding:0 10px 4px;'>Exercice</th>{_entetes}"
-            f"</tr></thead><tbody>{_corps}</tbody></table></div>",
-            unsafe_allow_html=True)
-        st.caption(
-            f"Chaque pair est lu sur UN SEUL exercice, celui qui remplit le "
-            f"mieux la grille — mélanger les charges d'une année et le produit "
-            f"d'une autre donnerait un coefficient d'exploitation qui n'existe "
-            f"pas. L'exercice retenu est indiqué, et diffère d'un titre à "
-            f"l'autre. La médiane n'est publiée qu'à partir de "
-            f"{MIN_OBSERVATIONS} valeurs renseignées."
-        )
+            _ecart = ""
+            if _val is not None and _med not in (None, 0):
+                _delta = (_val - _med) / abs(_med) * 100
+                _signe = "+" if _delta >= 0 else ""
+                _ecart = (f"<span style='font-size:11.5px;color:var(--ink-3);'>"
+                          f"{_signe}{_delta:.0f} % vs médiane</span>")
+
+            _blocs += (
+                f"<div style='flex:1;min-width:168px;border:1px solid var(--border);"
+                f"border-radius:10px;padding:12px 14px;background:var(--bg-elev);'>"
+                f"<div style='font-size:11px;color:var(--ink-3);"
+                f"text-transform:uppercase;letter-spacing:.03em;'>{_lib}</div>"
+                f"<div style='font-size:21px;font-weight:600;margin-top:3px;"
+                f"font-variant-numeric:tabular-nums;'>"
+                f"{_forme(_val, _fmt)}</div>"
+                f"{_jauge}"
+                f"<div style='font-size:11.5px;color:var(--ink-3);'>"
+                f"médiane {_forme(_med, _fmt)}"
+                + (f" · {_n} pairs" if _n else "") + "</div>"
+                f"{_ecart}</div>"
+            )
+
+        if _blocs:
+            st.markdown(
+                f"<div style='display:flex;gap:10px;flex-wrap:wrap;'>{_blocs}</div>",
+                unsafe_allow_html=True)
+            st.caption(
+                f"Le point situe {_mien} entre la plus faible et la plus forte "
+                f"valeur de son secteur ; le trait fin marque la médiane. "
+                f"Tous les pairs sont lus sur leur **dernier exercice annuel** — "
+                f"jamais sur un trimestre. Aucune médiane n'est publiée en "
+                f"dessous de {MIN_OBSERVATIONS} valeurs renseignées."
+            )
+            with st.expander("Voir le détail des pairs", expanded=False):
+                _detail = ""
+                for _l in _pairs["lignes"]:
+                    _actuel = (_l.get("ticker") or "").upper() == _mien
+                    _gras = "font-weight:600;" if _actuel else ""
+                    _cases = "".join(
+                        f"<td style='padding:5px 10px;font-size:12px;"
+                        f"text-align:right;font-variant-numeric:tabular-nums;"
+                        f"{_gras}'>{_forme(_l['valeurs'].get(_c), _f)}</td>"
+                        for _, _c, _f in _pairs["colonnes"])
+                    _detail += (
+                        f"<tr style='border-top:1px solid var(--border);"
+                        f"{'background:var(--bg-elev);' if _actuel else ''}'>"
+                        f"<td style='padding:5px 10px 5px 0;font-size:12px;"
+                        f"{_gras}'>{_l['ticker']}</td>"
+                        f"<td style='padding:5px 8px;font-size:11px;"
+                        f"color:var(--ink-3);text-align:center;'>"
+                        f"{_l['exercice'] or '—'}</td>{_cases}</tr>")
+                st.markdown(
+                    f"<div style='overflow-x:auto;'>"
+                    f"<table style='width:100%;border-collapse:collapse;'>"
+                    f"<thead><tr>"
+                    f"<th style='text-align:left;font-size:10.5px;font-weight:500;"
+                    f"color:var(--ink-3);padding-bottom:3px;'>Titre</th>"
+                    f"<th style='font-size:10.5px;font-weight:500;"
+                    f"color:var(--ink-3);padding:0 8px 3px;'>Ex.</th>"
+                    + "".join(
+                        f"<th style='font-size:10.5px;font-weight:500;"
+                        f"color:var(--ink-3);padding:0 10px 3px;text-align:right;"
+                        f"white-space:nowrap;'>{_lb}</th>"
+                        for _lb, _, _ in _pairs["colonnes"])
+                    + f"</tr></thead><tbody>{_detail}</tbody></table></div>",
+                    unsafe_allow_html=True)
 
     # ── Parcs clients des operateurs ──
     # Le recrutement de clients precede le chiffre d'affaires : comparer deux
