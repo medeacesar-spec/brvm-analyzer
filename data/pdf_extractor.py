@@ -520,6 +520,30 @@ _TABLE_LABELS = [
     (r"capitaux\s+propres", "equity"),
     (r"total\s+bilan", "total_assets"),
     (r"total\s+(?:de\s+l.)?actif", "total_assets"),
+
+    # ── Variantes rencontrees d'un emetteur a l'autre ──
+    # Le vocabulaire ci-dessus decrivait les libelles observes sur quelques
+    # rapports. Sur un echantillon de trente publications de periode, dix-neuf
+    # ne rendaient rien : les emetteurs n'ecrivent pas tous « chiffre
+    # d'affaires » ni « resultat net ». Ces formes couvrent les redactions
+    # rencontrees ailleurs, en texte natif comme apres OCR.
+    #
+    # L'ordre compte : ces motifs viennent APRES les precedents, plus
+    # specifiques, et la recherche s'arrete au premier champ trouve.
+    (r"produits?\s+d.exploitation", "revenue"),
+    (r"total\s+des\s+produits", "revenue"),
+    (r"revenus?\s+(?:consolid|net|d.exploitation)", "revenue"),
+    (r"\bpnb\b", "revenue_bank"),
+    (r"b.n.fice\s+net", "net_income"),
+    (r"r.sultat\s+de\s+l.exercice", "net_income"),
+    (r"r.sultat\s+(?:net\s+)?part\s+du\s+groupe", "net_income"),
+    (r"r.sultat\s+(?:d.exploitation|op.rationnel)", "ebit"),
+    (r"charges\s+d.exploitation", "operating_expenses"),
+    (r"dotations?\s+(?:nettes?\s+)?aux\s+provisions", "cost_of_risk"),
+    (r"encours\s+(?:de\s+)?cr.dits?", "loans"),
+    (r"pr.ts?\s+[àa]\s+la\s+client[eè]le", "loans"),
+    (r"d.p.ts?\s+et\s+comptes\s+courants", "deposits"),
+    (r"total\s+du\s+bilan", "total_assets"),
 ]
 
 
@@ -1357,11 +1381,27 @@ _PARC_PLANCHER = 1_000
 # du libelle et celui de sa valeur vaut 3,2 points pour EBITDAAL, 1,4 pour
 # CAPEX, 0,3 pour « Résultat Net ». Un simple recouvrement, lui, laissait le
 # mot « Ebitda » de la phrase d'introduction capter l'appariement.
+# Chaque entree est une SUITE de motifs mot a mot, du plus specifique au plus
+# general : « produit net bancaire » doit etre tente avant « produit », sans
+# quoi la banque verrait son PNB pris pour autre chose. La correspondance est
+# EXACTE sur chaque mot, pour qu'une occurrence en prose ne capte pas
+# l'appariement.
 _ETIQUETTES_DIAPO = [
-    (re.compile(r"^r[ée]sultat$", re.I), re.compile(r"^net$", re.I), "net_income"),
-    (re.compile(r"^ebitda\s*a?l?$", re.I), None, "ebitda"),
-    (re.compile(r"^capex$", re.I), None, "capex"),
+    ([r"^produit$", r"^net$", r"^bancaire$"], "revenue_bank"),
+    ([r"^pnb$"], "revenue_bank"),
+    ([r"^chiffre$", r"^d.affaires$"], "revenue"),
+    ([r"^revenus?$", r"^consolid[ée]s?$"], "revenue"),
+    ([r"^r[ée]sultat$", r"^net$"], "net_income"),
+    ([r"^b[ée]n[ée]fice$", r"^net$"], "net_income"),
+    ([r"^r[ée]sultat$", r"^d.exploitation$"], "ebit"),
+    ([r"^ebitda\s*a?l?$"], "ebitda"),
+    ([r"^ebitda$"], "ebitda"),
+    ([r"^capex$"], "capex"),
+    ([r"^investissements?$"], "capex"),
+    ([r"^co[uû]t$", r"^du$", r"^risque$"], "cost_of_risk"),
 ]
+_ETIQUETTES_DIAPO = [([re.compile(m, re.I) for m in motifs], champ)
+                     for motifs, champ in _ETIQUETTES_DIAPO]
 
 _NOMBRE_DIAPO = re.compile(r"^-?\d{1,3}(?:[ .]\d{3})*(?:,\d+)?$")
 
@@ -1419,15 +1459,15 @@ def _extract_depuis_presentation(page, echelle: float) -> dict:
 
     trouve = {}
     for i, mot in enumerate(mots):
-        for motif, motif_suite, champ in _ETIQUETTES_DIAPO:
-            if not motif.match(mot["text"].strip()):
+        for motifs, champ in _ETIQUETTES_DIAPO:
+            if champ in trouve:
                 continue
-            suite = [mot]
-            if motif_suite is not None:
-                if i + 1 >= len(mots) or not motif_suite.match(
-                        mots[i + 1]["text"].strip()):
-                    continue
-                suite.append(mots[i + 1])
+            if i + len(motifs) > len(mots):
+                continue
+            suite = mots[i:i + len(motifs)]
+            if not all(m.match(x["text"].strip())
+                       for m, x in zip(motifs, suite)):
+                continue
 
             centre = (min(x["x0"] for x in suite)
                       + max(x["x1"] for x in suite)) / 2
