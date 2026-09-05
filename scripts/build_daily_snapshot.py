@@ -607,6 +607,12 @@ def build_all() -> dict:
         except Exception as e:
             print(f"  [news] scan_publications KO (non bloquant): {e}")
         try:
+            from scripts.scan_news import main as _scan_news
+            print("  [revue] collecte des depeches sikafinance …")
+            _scan_news()
+        except Exception as e:
+            print(f"  [revue] scan_news KO (non bloquant): {e}")
+        try:
             from scripts.extract_pending_pubs import main as _extract_pending
             print("  [pdfs] extract pending publications …")
             _extract_pending()
