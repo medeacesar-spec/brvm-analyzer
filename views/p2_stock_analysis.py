@@ -2507,6 +2507,55 @@ def _render_publications_with_status(ticker: str):
         )
 
 
+def _note_changement_methode(ticker: str):
+    """Signale la rupture de serie du 05/09/2026, avec les deux scores du titre.
+
+    Le score fondamental integre depuis cette date une composante sectorielle
+    — cout du risque d'une banque, intensite capitalistique d'un operateur,
+    rotation de l'actif d'un distributeur — que les quatre sous-scores
+    generalistes ne voyaient pas. Les points anterieurs de la courbe ont ete
+    calculés SANS elle : les comparer sans le dire ferait passer un changement
+    de methode pour un mouvement du titre.
+
+    On affiche donc, pour CE titre, la valeur avant et apres.
+    """
+    from analysis.fundamental import CHANGEMENT_METHODE, compute_ratios
+    from data.storage import get_fundamentals
+
+    try:
+        fond = get_fundamentals(ticker)
+        detail = (compute_ratios(fond) or {}).get("fundamental_breakdown") or {}
+    except Exception:
+        return
+    points = detail.get("secteur")
+    if points is None:
+        return
+
+    avant = (detail.get("rentabilite", 0) + detail.get("endettement", 0)
+             + detail.get("valorisation", 0) + detail.get("dividendes", 0))
+    apres = detail.get("total", avant)
+    sens = ("relevé" if points > 0 else "abaissé" if points < 0 else "inchangé")
+    couleur = ("var(--up)" if points > 0
+               else "var(--down)" if points < 0 else "var(--ink-3)")
+
+    st.markdown(
+        f"<div style='border-left:2px solid var(--ocre);padding:8px 0 8px 12px;"
+        f"margin:4px 0 12px;'>"
+        f"<div style='font-size:12px;font-weight:600;'>"
+        f"Changement de méthodologie le {CHANGEMENT_METHODE}</div>"
+        f"<div style='font-size:11.5px;color:var(--ink-3);margin-top:3px;'>"
+        f"Le score intègre désormais une composante sectorielle — coût du "
+        f"risque, intensité capitalistique, rotation de l'actif selon le "
+        f"métier — que les quatre sous-scores généralistes ne voyaient pas. "
+        f"Les points antérieurs de la courbe ont été calculés sans elle.</div>"
+        f"<div style='font-size:12.5px;margin-top:5px;'>"
+        f"Pour {ticker} : <b>{avant:.0f}/50</b> avant · "
+        f"<b style='color:{couleur};'>{apres:.0f}/50</b> après "
+        f"<span style='color:{couleur};'>({points:+d} point"
+        f"{'s' if abs(points) > 1 else ''}, {sens})</span></div></div>",
+        unsafe_allow_html=True)
+
+
 def _render_score_evolution(ticker: str):
     """Affiche l'évolution des scores (hybrid/fond/tech) sur les 90 derniers
     jours pour ce ticker, en bas de l'onglet Recommandation. Les données
@@ -2514,6 +2563,7 @@ def _render_score_evolution(ticker: str):
     """
     from analysis.verdict_history import get_score_evolution, has_history
     section_heading("Évolution du score", spacing="loose")
+    _note_changement_methode(ticker)
     if not has_history():
         st.caption(
             "Collecte des verdicts quotidiens en cours. Les courbes "

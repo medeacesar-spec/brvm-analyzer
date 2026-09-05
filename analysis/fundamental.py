@@ -840,7 +840,20 @@ def _compute_fundamental_breakdown(ratios: dict, is_bank: bool) -> dict:
     if pr is not None and pr > 1.0:
         div = max(0, div - 2)
 
-    total = rent + endet + valo + div
+    # --- Composante sectorielle (-3 a +3) ---
+    # CHANGEMENT DE METHODE DU 05/09/2026. Le score ne lisait que des ratios
+    # generalistes : rentabilite, endettement, valorisation, dividendes. Il ne
+    # voyait donc ni le cout du risque d'une banque, ni l'intensite
+    # capitalistique d'un operateur, ni la rotation de l'actif d'un
+    # distributeur — precisement ce qui distingue une societe de ses pairs.
+    #
+    # La composante est volontairement BORNEE a plus ou moins trois points sur
+    # cinquante : elle infléchit, elle ne refait pas le score. Les quatre
+    # sous-scores historiques gardent leur poids et leur bareme.
+    secteur_pts = _points_sectoriels(ratios)
+
+    total = rent + endet + valo + div + secteur_pts
+    total = max(0, min(50, total))
 
     # --- Profil narratif (court : "Moyen - valorisation tendue, distribution attractive") ---
     fragments = []
@@ -869,10 +882,46 @@ def _compute_fundamental_breakdown(ratios: dict, is_bank: bool) -> dict:
         "endettement": endet,
         "valorisation": valo,
         "dividendes": div,
+        "secteur": secteur_pts,
         "total": total,
         "profile": profile,
         "quality": quality,
     }
+
+
+# Date du changement de methode, affichee sous l'historique des scores pour
+# que la rupture de serie soit lisible plutot que subie.
+CHANGEMENT_METHODE = "2026-09-05"
+
+
+def _points_sectoriels(ratios: dict) -> int:
+    """Inflexion du score par la grille du metier, bornee a plus ou moins 3.
+
+    On ne rejuge pas les ratios generalistes : on ajoute ce qu'ils ne voient
+    pas. Chaque indicateur de la grille sectorielle deja evalue « OK » vaut un
+    point, chaque « Risque » en coute un, la vigilance est neutre. Le total est
+    ensuite ramene dans [-3, +3].
+
+    Le bareme reste volontairement grossier : ces indicateurs sont renseignes
+    de facon tres inegale selon les societes, et un poids plus fin donnerait
+    une precision que la donnee ne porte pas.
+    """
+    drapeaux = ratios.get("flags") or {}
+    cles = ("coefficient_exploitation", "cout_risque_pnb",
+            "marge_brute_exploitation", "credits_depots", "roa",
+            "marge_ebitda", "intensite_capex", "dette_ebitda", "fcf_margin",
+            "marge_exploitation", "rotation_actif", "volatilite_resultat",
+            "interest_coverage")
+    points = 0
+    for cle in cles:
+        if ratios.get(cle) is None:
+            continue
+        niveau = (drapeaux.get(cle) or ("", ""))[0]
+        if niveau == "OK":
+            points += 1
+        elif niveau == "Risque":
+            points -= 1
+    return max(-3, min(3, points))
 
 
 def compute_target_price(ratios: dict, sector: Optional[str] = None,
