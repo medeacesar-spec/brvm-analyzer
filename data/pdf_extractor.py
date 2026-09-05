@@ -477,6 +477,10 @@ _TABLE_LABELS = [
     (r"charges\s+g.n.rales\s+d.exploitation", "operating_expenses"),
     (r"r.sultat\s+brut\s+d.exploitation", "gross_operating_income"),
     (r"r.sultat\s+avant\s+imp.t", "pretax_income"),
+    # Les telecoms communiquent en EBITDAaL (« after Leases »), pas en EBITDA :
+    # c'est l'indicateur de reference du secteur, celui que suit le marche.
+    (r"ebitda\s*a?\s*l?\b", "ebitda"),
+    (r"exc.dent\s+brut\s+d.exploitation", "ebitda"),
     (r"d.p.ts?\s+(?:de\s+la\s+)?client[eè]le", "deposits"),
     (r"ressources\s+client[eè]le", "deposits"),
     (r"cr.dits?\s+nets?\s+[àa]\s+la\s+client[eè]le", "loans"),
@@ -1171,9 +1175,19 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
                 ref_data = _extract_syscohada(all_tables, mult) if is_syscohada else {}
 
                 # Merge (higher layers override)
-                # Order: text < bank < label < ifrs < ref (IFRS/SYSCOHADA most reliable)
+                # Order: text < bank < label < cells < ifrs < ref.
+                #
+                # La lecture par coordonnees passe DEVANT `label_data` : cette
+                # derniere depend de la detection de tableaux de pdfplumber, qui
+                # associe parfois un libelle a la mauvaise cellule. Sur le
+                # rapport Orange CI 2025 elle rendait un resultat net de 857 Mds
+                # — superieur a l'EBITDA, donc impossible — la ou le texte et
+                # les coordonnees s'accordaient tous deux sur 167,8 Mds.
+                # IFRS et SYSCOHADA restent au-dessus : leurs codes REF ancrent
+                # semantiquement la valeur, ce qu'aucune heuristique de mise en
+                # page ne peut garantir.
                 all_extracted = {}
-                for d in [text_data, cell_data, bank_data, label_data,
+                for d in [text_data, bank_data, label_data, cell_data,
                           ifrs_data, ref_data]:
                     all_extracted.update({k: v for k, v in d.items() if v is not None})
 
