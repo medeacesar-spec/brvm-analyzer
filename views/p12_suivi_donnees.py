@@ -203,6 +203,48 @@ def render():
         st.caption(f"{pleins} banque(s) sur {len(banques)} disposent des cinq "
                    f"postes nécessaires à l'analyse du coût du risque.")
 
+    # ── Ce qui echoue au controle ──
+    # Le controle de vraisemblance annule les valeurs impossibles. Sans trace,
+    # on savait qu'il avait mordu, jamais sur quoi : impossible de corriger
+    # autrement qu'en relancant tout. Chaque anomalie est desormais nommee, et
+    # accompagnee des documents a relire.
+    from analysis.completude import anomalies_ouvertes
+    try:
+        anomalies = anomalies_ouvertes()
+    except Exception as exc:
+        anomalies = []
+        st.caption(f"Anomalies indisponibles : {exc}")
+
+    if anomalies:
+        section_heading("Ce qui échoue au contrôle", spacing="loose")
+        st.caption(
+            "Valeurs annulées parce qu'elles ne pouvaient pas être vraies — "
+            "un EBITDA supérieur au chiffre d'affaires, un coût du risque "
+            "supérieur au produit net bancaire, un ordre de grandeur en "
+            "désaccord avec les autres exercices du titre. Chacune indique le "
+            "document à relire."
+        )
+        for a in anomalies:
+            liens = " · ".join(
+                f"<a href='{d['url']}' target='_blank'>"
+                f"{d['report_type'].replace('_', ' ')}</a>"
+                for d in a.get("documents", []))
+            st.markdown(
+                f"<div style='border-left:2px solid var(--down);"
+                f"padding:6px 0 6px 12px;margin:8px 0;'>"
+                f"<span style='font-size:12.5px;font-weight:600;'>"
+                f"{a['ticker']}</span>"
+                f"<span style='font-size:12px;color:var(--ink-3);'> · exercice "
+                f"{a['fiscal_year']}</span>"
+                f"<div style='font-size:12px;color:var(--down);margin-top:2px;'>"
+                f"{a['motif']}</div>"
+                f"<div style='font-size:11px;color:var(--ink-3);'>"
+                f"annulé : {a['champs']}</div>"
+                + (f"<div style='font-size:11px;margin-top:2px;'>{liens}</div>"
+                   if liens else "")
+                + "</div>",
+                unsafe_allow_html=True)
+
     # ── Ce qui reste a lire ──
     section_heading("Ce qui reste à lire", spacing="loose")
     with st.spinner("Recensement des documents…"):

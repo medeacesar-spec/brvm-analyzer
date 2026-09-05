@@ -256,3 +256,44 @@ def reste_a_lire(limite_annee: int = 2023) -> list:
             "nb_manque": len(absents),
         })
     return sorted(sortie, key=lambda e: (-e["nb_manque"], e["ticker"]))
+
+
+def anomalies_ouvertes() -> list:
+    """Anomalies relevees par le controle de vraisemblance, non encore reparees.
+
+    Chacune est accompagnee des documents publies pour ce titre et cet
+    exercice : c'est ce qui permet de corriger de facon CIBLEE plutot que de
+    relancer un rattrapage complet en esperant que le probleme se resolve.
+    """
+    from data.db import get_connection
+
+    conn = get_connection()
+    try:
+        lignes = [dict(l) for l in conn.execute(
+            """SELECT ticker, fiscal_year, champs, motif, detectee_le
+               FROM controle_anomalies WHERE resolue_le IS NULL
+               ORDER BY ticker, fiscal_year DESC"""
+        ).fetchall()]
+    except Exception:
+        conn.close()
+        return []
+
+    documents = {}
+    try:
+        for ligne in conn.execute(
+            """SELECT ticker, fiscal_year, report_type, url FROM report_links
+               WHERE url IS NOT NULL"""
+        ).fetchall():
+            d = dict(ligne)
+            documents.setdefault((d["ticker"], d["fiscal_year"]), []).append(d)
+    except Exception:
+        pass
+    conn.close()
+
+    for ligne in lignes:
+        pieces = documents.get((ligne["ticker"], ligne["fiscal_year"]), [])
+        # Les documents annuels d'abord : ce sont eux qui portent les postes
+        # que le controle a annules.
+        pieces.sort(key=lambda p: 0 if p["report_type"] in TYPES_ANNUELS else 1)
+        ligne["documents"] = pieces[:3]
+    return lignes
