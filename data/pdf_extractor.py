@@ -1067,6 +1067,9 @@ _ETIQUETTES_PROSE = [
     (r"produit\s+net\s+bancaire", "revenue_bank", 80),
     (r"chiffre\s+d.affaires", "revenue", 80),
     (r"r.sultat\s+net", "net_income", 100),
+    # Les operateurs communiquent en EBITDAaL : « l'EBITDAaL s'etablit a
+    # 424,1 milliards FCFA, soit 35,4 % du chiffre d'affaires ».
+    (r"ebitda\s*a?l?\b", "ebitda", 90),
     (r"r.sultat\s+des\s+activit.s\s+ordinaires", "ordinary_income", 100),
     # Encours clientele : les banques BRVM les citent dans leur commentaire,
     # pas dans le tableau.
@@ -1263,6 +1266,19 @@ _PARCS = [
 # 12,61 millions de clients en 2025 ». Sans lecture de cette prose, un
 # operateur entier restait absent de la comparaison des parcs — alors que le
 # recrutement de clients precede le chiffre d'affaires.
+_FAMILLES_COURTES = [
+    (r"(?:orange|moov|mobile)\s+money", "parc_mobile_money"),
+    (r"data\s+mobile", "parc_data_mobile"),
+    (r"fibre", "parc_fibre"),
+    (r"mobile\b", "parc_mobile"),
+    # « fixe » seul est refuse : dans le rapport integre d'Orange CI, la mise
+    # en page accole « 38,5 M abonnes » et le mot « Fixe » de la puce
+    # suivante, ce qui donnerait plus d'abonnes fixes que mobiles. On exige
+    # une denomination explicite.
+    (r"fixe\s+haut\s+d[eé]bit|internet\s+fixe|fixe\s+broadband",
+     "parc_fixe_broadband"),
+]
+
 _PARCS_PROSE = [
     (r"(?:abonn[eé]s?\s+actifs?|base\s+clients?|parc\s+(?:global|total)"
      r"|nombre\s+d.abonn[eé]s?)", "parc_total"),
@@ -1289,6 +1305,32 @@ def _extract_parcs_prose(texte: str) -> dict:
     bas = re.sub(r"\s+", " ", (texte or "").lower())
     unites = "|".join(sorted(_UNITES_PARC, key=len, reverse=True))
     trouve = {}
+
+    # Forme inverse : le chiffre precede la famille, qui est nommee seule.
+    # Orange CI ecrit « 37,6 M abonnes mobile (+8,6 %) », « 40,4 M clients
+    # Orange money (+10,2 %) ». Le « M » n'est accepte qu'accole a « abonnes »
+    # ou « clients », ou il ne peut signifier que million.
+    for famille, champ in _FAMILLES_COURTES:
+        if champ in trouve:
+            continue
+        m = re.search(
+            r"([\d][\d\s.,]*?)\s*(m|" + unites + r")\b\s*"
+            r"(?:d.)?(?:abonn[eé]s?|clients?)\s+" + famille
+            + r"(?:[^.]{0,25}?\(\s*([+-]?[\d.,]+)\s*%)?", bas)
+        if not m:
+            continue
+        valeur = _parse_amount(m.group(1))
+        if not valeur:
+            continue
+        unite = m.group(2)
+        echelle = 1_000_000 if unite == "m" else _UNITES_PARC[unite]
+        variation = None
+        if m.group(3):
+            brut = m.group(3).strip()
+            variation = _parse_amount(brut.lstrip("+-"))
+            if variation is not None and brut.startswith("-"):
+                variation = -variation
+        trouve[champ] = {"valeur": valeur * echelle, "variation": variation}
 
     for etiquette, champ in _PARCS_PROSE:
         if champ in trouve:
@@ -1579,6 +1621,25 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
                 for d in [prose_data, text_data, bank_data, label_data,
                           cell_data, ifrs_data, ref_data]:
                     all_extracted.update({k: v for k, v in d.items() if v is not None})
+
+                # Arbitrage des nombres tronques par une frontiere de colonne.
+                # Le rapport integre d'Orange CI annonce « 1 197,1 milliards
+                # FCFA » ; le decoupage en cellules laissait le « 1 » dans la
+                # colonne voisine et le tableau rendait 197,1 — un dixieme du
+                # chiffre d'affaires du groupe, sans que rien ne le signale.
+                # Quand la valeur du tableau est le SUFFIXE en chiffres de
+                # celle annoncee en prose, c'est une troncature et non un
+                # desaccord : la prose l'emporte.
+                for champ, valeur_prose in prose_data.items():
+                    valeur = all_extracted.get(champ)
+                    if valeur is None or valeur == valeur_prose:
+                        continue
+                    if abs(valeur) >= abs(valeur_prose):
+                        continue
+                    chiffres = str(int(abs(valeur)))
+                    complets = str(int(abs(valeur_prose)))
+                    if len(complets) > len(chiffres) and complets.endswith(chiffres):
+                        all_extracted[champ] = valeur_prose
 
                 # Map to output
                 data["revenue"] = all_extracted.get("revenue")
