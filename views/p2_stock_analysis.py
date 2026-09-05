@@ -1597,6 +1597,82 @@ def _render_recommendation(result, fundamentals):
             unsafe_allow_html=True,
         )
 
+    _secteur_bas = (fundamentals.get("sector") or "").lower()
+
+    def _render_grille(titre, definition, source):
+        dispo = [(lib, cle, fmt, aide) for lib, cle, fmt, aide in definition
+                 if source.get(cle) is not None]
+        if not dispo:
+            return
+        section_heading(titre, spacing="loose")
+        drapeaux = source.get("flags") or {}
+        lignes = ""
+        for lib, cle, fmt, aide in dispo:
+            val = source[cle]
+            affiche = f"{val:.2f} ×" if fmt == "fois" else f"{val*100:.1f} %"
+            niveau, commentaire = drapeaux.get(cle, ("", ""))
+            couleur = {"OK": "var(--up)", "Vigilance": "var(--ocre)",
+                       "Risque": "var(--down)"}.get(niveau, "var(--ink-3)")
+            lignes += (
+                f"<tr>"
+                f"<td style='padding:6px 14px 6px 0;font-size:12.5px;color:var(--ink);'>"
+                f"{lib}<div style='font-size:11px;color:var(--ink-3);'>{aide}</div></td>"
+                f"<td style='padding:6px 14px 6px 0;font-size:15px;font-weight:600;"
+                f"text-align:right;font-variant-numeric:tabular-nums;'>{affiche}</td>"
+                f"<td style='padding:6px 0;font-size:11.5px;color:{couleur};'>"
+                f"{commentaire}</td></tr>"
+            )
+        st.markdown(
+            f"<div style='border:1px solid var(--border);border-radius:10px;"
+            f"padding:6px 16px;background:var(--bg-elev);'>"
+            f"<table style='width:100%;border-collapse:collapse;'>{lignes}</table></div>",
+            unsafe_allow_html=True,
+        )
+
+    # ── Grille telecoms ──
+    # Les operateurs communiquent en EBITDAaL, pas en resultat net : la marge
+    # d'EBITDA, l'intensite capitalistique et le levier disent la trajectoire
+    # bien mieux que le bas du compte de resultat.
+    if "telecom" in _secteur_bas or "télécom" in _secteur_bas:
+        _grille_t = [
+            ("Marge d'EBITDA", "marge_ebitda", "pct",
+             "Rentabilité opérationnelle avant le poids des réseaux"),
+            ("Intensité capitalistique", "intensite_capex", "pct",
+             "Investissements rapportés au chiffre d'affaires"),
+            ("Dette / EBITDA", "dette_ebitda", "fois",
+             "Nombre d'années d'EBITDA pour rembourser la dette"),
+            ("Marge de flux libre", "fcf_margin", "pct",
+             "Trésorerie dégagée après investissements"),
+        ]
+        _render_grille("Grille télécoms", _grille_t, ratios_src)
+
+    # ── Grille bancaire ──
+    # Le resultat net d'une banque est un symptome. Le diagnostic se lit dans
+    # le croisement du coefficient d'exploitation (ce que coute la machine) et
+    # du cout du risque (ce que coute le portefeuille).
+    if "banque" in _secteur_bas or "bank" in _secteur_bas:
+        _grille_b = [
+            ("Coefficient d'exploitation", "coefficient_exploitation", "pct",
+             "Frais généraux rapportés au produit net bancaire"),
+            ("Coût du risque / PNB", "cout_risque_pnb", "pct",
+             "Part du PNB absorbée par le risque de crédit"),
+            ("Marge brute d'exploitation", "marge_brute_exploitation", "pct",
+             "Résultat brut d'exploitation rapporté au PNB"),
+            ("Crédits / dépôts", "credits_depots", "pct",
+             "Au-delà de 100 %, la banque prête plus qu'elle ne collecte"),
+            ("Rendement des actifs (ROA)", "roa", "pct",
+             "Ce que rapporte le bilan, pas seulement les fonds propres"),
+        ]
+        _render_grille("Grille bancaire", _grille_b, ratios_src)
+        _dep, _cre = ratios_src.get("depots"), ratios_src.get("credits")
+        if _dep or _cre:
+            _bouts = []
+            if _dep:
+                _bouts.append(f"dépôts clientèle {_dep/1e9:,.0f} Mds")
+            if _cre:
+                _bouts.append(f"crédits nets {_cre/1e9:,.0f} Mds")
+            st.caption(" · ".join(_bouts))
+
     # ═══════════════════════════════════════════════════════════════════
     # 3 cards : Score fondamental · Score technique · Conviction modèle
     # ═══════════════════════════════════════════════════════════════════
