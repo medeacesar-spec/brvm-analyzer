@@ -48,7 +48,16 @@ def _parse_amount(text: str) -> Optional[float]:
     # L'OCR laisse des scories en fin de cellule : « 268537063| », « 1 234] »
     brut = re.sub(r"[|\]\)\}»\*]+$", "", brut).rstrip(".").rstrip("%")
 
-    if "," in brut:
+    if re.match(r"^\d{1,3}(?:,\d{3}){2,}(?:\.\d+)?$", brut):
+        # Convention anglo-saxonne : la virgule separe les milliers, le point
+        # est decimal. Ecobank Transnational publie ainsi — « Produit net
+        # bancaire 1,424,261 millions FCFA » — et la lecture francaise rendait
+        # None sur CHAQUE nombre du document, donc aucune donnee.
+        # On n'applique la regle qu'a partir de DEUX groupes de trois
+        # chiffres : c'est la seule forme non ambigue. « 2,448 » pourrait
+        # aussi bien valoir 2 448 que 2,448, et reste lu a la francaise.
+        cleaned = brut.replace(",", "")
+    elif "," in brut:
         # La virgule est decimale : les points ne peuvent etre que des milliers.
         cleaned = brut.replace(".", "").replace(",", ".")
     elif re.match(r"^\d{1,3}(?:\.\d{3})+$", brut):
@@ -475,7 +484,10 @@ def _extract_bank_chiffres_cles(all_tables: list, mult: float) -> dict:
 # Le lookahead final est indispensable : l'OCR colle parfois deux colonnes
 # ("8 640 318 8656926"), et sans lui le groupe " 865" serait rattache au
 # premier nombre.
-_NUM_TOKEN = re.compile(r"-?\d+(?:[ .]\d{3})*(?:,\d+)?(?!\d)")
+# La virgule figure dans la classe des separateurs de milliers : les
+# emetteurs qui publient en anglais (Ecobank Transnational) ecrivent
+# « 1,424,261 ». Sans cela le tokeniseur coupait au premier groupe.
+_NUM_TOKEN = re.compile(r"-?\d+(?:[ .,]\d{3})*(?:,\d+)?(?!\d)")
 
 # L'ordre compte : "resultat des activites ordinaires" doit etre teste AVANT
 # "resultat net", sinon le motif le plus court capterait la ligne.
@@ -528,6 +540,18 @@ _LIBELLES_SCINDES = [
 def _recoller_libelles(texte: str) -> str:
     for motif, remplacement in _LIBELLES_SCINDES:
         texte = re.sub(motif, remplacement, texte, flags=re.IGNORECASE)
+    return _recoller_milliers(texte)
+
+
+def _recoller_milliers(texte: str) -> str:
+    """Supprime les espaces parasites autour d'un separateur de milliers.
+
+    L'extraction des etats d'Ecobank Transnational rend « 2 ,448,994 » : un
+    espace s'est glisse avant la virgule. Le tokeniseur coupait alors au
+    premier groupe et lisait 2 au lieu de 2 448 994.
+    """
+    texte = re.sub(r"(?<=\d)\s+(?=[.,]\d{3}\b)", "", texte)
+    texte = re.sub(r"(?<=[.,])\s+(?=\d{3}\b)", "", texte)
     return texte
 
 
@@ -1240,7 +1264,37 @@ def _extract_parcs(pages_cellules: list) -> dict:
     return parcs
 
 
-def _extract_from_cells(lignes: list, mult: float) -> dict:
+_ECHELLES_DEVISE = {"milliers": 1e3, "millions": 1e6, "milliards": 1e9}
+
+
+def _colonne_fcfa(texte: str):
+    """Repere la colonne en francs d'un etat presente en double devise.
+
+    Ecobank Transnational publie ses comptes sur deux devises cote a cote :
+    « milliers $EU | millions FCFA | milliers $EU | millions FCFA », soit
+    l'exercice courant puis le precedent. Lire la premiere colonne chiffree
+    revient a prendre des dollars pour des francs — le produit net bancaire
+    2025 ressortait a 2 449 Mds au lieu de 1 424 Mds, l'ecart etant le taux
+    de change.
+
+    Retourne (rang de la colonne en francs parmi les cellules chiffrees,
+    multiplicateur declare) ou (None, None) si l'etat n'est pas bi-devise.
+    """
+    bas = (texte or "").lower()
+    apres = re.search(
+        r"(milliers|millions|milliards)\s*\$\s*eu\s+"
+        r"(milliers|millions|milliards)\s*f\s?cfa", bas)
+    if apres:
+        return 1, _ECHELLES_DEVISE[apres.group(2)]
+    avant = re.search(
+        r"(milliers|millions|milliards)\s*f\s?cfa\s+"
+        r"(milliers|millions|milliards)\s*\$\s*eu", bas)
+    if avant:
+        return 0, _ECHELLES_DEVISE[avant.group(1)]
+    return None, None
+
+
+def _extract_from_cells(lignes: list, mult: float, rang: int = 0) -> dict:
     """Lit les libelles connus dans des lignes deja decoupees en cellules."""
     data = {}
     for cellules in lignes:
@@ -1257,12 +1311,19 @@ def _extract_from_cells(lignes: list, mult: float) -> dict:
             # prendre la colonne suivante, qui est un autre exercice ou une
             # variation. Sur un scan SITAB, cette errance ramenait 513 728 —
             # la colonne « variation en valeur » — comme chiffre d'affaires.
+            vus = 0
             for cel in cellules[1:]:
                 val = _parse_amount(cel)
                 if val is None or val == 0 or len(re.sub(r"\D", "", cel)) < 3:
                     continue                      # cellule vide ou parasite
                 if float(val).is_integer() and 1990 <= abs(val) <= 2100:
                     continue                      # millesime
+                # `rang` vaut 0 dans le cas courant : la periode en cours est
+                # la premiere colonne chiffree. Il vaut 1 sur un etat bi-devise
+                # ou la colonne en francs suit la colonne en dollars.
+                if vus < rang:
+                    vus += 1
+                    continue
                 montant = val * mult
                 if abs(montant) >= 100_000_000:
                     data[champ] = montant
@@ -1338,6 +1399,15 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
 
                 mult = data["multiplier"]
 
+                # Etat bi-devise : la colonne en francs n'est pas la premiere,
+                # et son echelle est declaree dans l'en-tete plutot que dans
+                # la sonde generale du multiplicateur.
+                _rang_fcfa, _mult_fcfa = _colonne_fcfa(all_text)
+                if _rang_fcfa is None:
+                    _rang_fcfa = 0
+                else:
+                    mult = _mult_fcfa
+
                 # Detect SYSCOHADA format
                 is_syscohada = False
                 for table in all_tables:
@@ -1355,7 +1425,8 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
 
                 # Couche coordonnees : elle tranche l'ambiguite des colonnes
                 # separees par des espaces, que le texte brut ne permet pas.
-                cell_data = _extract_from_cells(lignes_cellules, mult)
+                cell_data = _extract_from_cells(lignes_cellules, mult,
+                                                rang=_rang_fcfa)
 
                 # Layer 2: row-by-row label matching
                 label_data = _extract_from_tables_rowlabel(all_tables, mult)
