@@ -284,6 +284,17 @@ def render():
             f"{fundamentals.get('company_name', '')}</div>",
             unsafe_allow_html=True,
         )
+        # Le selecteur d'exercice signale quand aucun document annuel ne
+        # confirme l'annee retenue. Le dire vaut mieux que laisser croire a
+        # un exercice clos : sans rapport annuel, les montants peuvent ne
+        # couvrir qu'une partie de l'annee.
+        if fundamentals.get("_exercice_incertain"):
+            st.caption(
+                "Aucun rapport annuel n'est référencé pour cet exercice : les "
+                "montants proviennent de publications de période et peuvent "
+                "ne pas couvrir douze mois. À lire comme une tendance, pas "
+                "comme une référence."
+            )
     with col_stars:
         # Stars + verdict tag juste en dessous (le verdict n'apparaît plus dans Recommandation)
         st.markdown(
