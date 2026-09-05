@@ -23,7 +23,8 @@ import requests
 import pdfplumber
 
 from config import load_tickers
-from data.storage import get_report_links, save_fundamentals, get_connection
+from data.storage import (get_report_links, save_fundamentals, get_connection,
+                          champs_extraits)
 
 
 # ---------------------------------------------------------------------------
@@ -1735,6 +1736,11 @@ def extract_all_local_pdfs(base_dir: str = None, progress_callback=None, use_ocr
                 "total_assets": _best("total_assets"),
                 "dps": market["dps"] if market else existing_dict.get("dps"),
             }
+            # Complete avec les champs d'extraction que ce dictionnaire ne
+            # nommait pas (ebitda, cout du risque, depots, credits...).
+            for _champ, _valeur in champs_extraits(result, _best).items():
+                if fund_data.get(_champ) is None:
+                    fund_data[_champ] = _valeur
 
             save_fundamentals(fund_data)
             extracted += 1
@@ -1810,6 +1816,9 @@ def extract_all_reports(progress_callback=None, use_ocr: bool = False):
                 "total_assets": result.get("total_assets"),
                 "dps": market["dps"] if market else None,
             }
+            for _champ, _valeur in champs_extraits(result).items():
+                if fund_data.get(_champ) is None:
+                    fund_data[_champ] = _valeur
             save_fundamentals(fund_data)
             updated += 1
 

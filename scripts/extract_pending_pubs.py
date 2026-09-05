@@ -29,7 +29,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from data.db import read_sql_df, get_connection  # noqa: E402
 from data.pdf_extractor import download_and_extract  # noqa: E402
 from data.storage import (save_fundamentals, save_quarterly_data,  # noqa: E402
-                          save_telecom_parcs)
+                          save_telecom_parcs, champs_extraits)
 
 
 def _log_attempt(pub_id, ticker, fy, pt, url, status, error=None, summary=None):
@@ -182,15 +182,14 @@ def main():
         # Route vers la bonne table
         if pt == "annuel":
             try:
-                save_fundamentals({
+                _fond = {
                     "ticker": tk, "fiscal_year": fy,
                     "revenue": revenue, "net_income": net_income, "ebit": ebit,
-                    "equity": result.get("equity"),
-                    "total_debt": result.get("total_debt"),
-                    "interest_expense": result.get("interest_expense"),
-                    "cfo": result.get("cfo"), "capex": result.get("capex"),
-                    "dividends_total": result.get("dividends_total"),
-                })
+                }
+                for _champ, _valeur in champs_extraits(result).items():
+                    if _fond.get(_champ) is None:
+                        _fond[_champ] = _valeur
+                save_fundamentals(_fond)
                 print(f"{label} OK fundamentals (rev={revenue or 0:,.0f}, ni={net_income or 0:,.0f})")
                 n_ok += 1
                 summary.append((tk, fy, pt, "ok", title))

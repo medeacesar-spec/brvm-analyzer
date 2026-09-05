@@ -674,6 +674,39 @@ def _net_income_coherent(data: dict) -> dict:
     return data
 
 
+# Champs que l'extracteur PDF sait produire et que `save_fundamentals`
+# accepte. Centralises ici volontairement : chaque appelant recopiait
+# jusqu'ici sa propre liste en dur, si bien que les colonnes ajoutees
+# ensuite — ebitda, cout du risque, depots, credits, frais generaux — etaient
+# bien extraites mais jamais ecrites. Les grilles sectorielles restaient donc
+# vides alors que l'extraction fonctionnait.
+CHAMPS_EXTRACTION = (
+    "revenue", "net_income", "equity", "total_debt", "ebit",
+    "interest_expense", "cfo", "capex", "dividends_total", "total_assets",
+    "shares", "ordinary_income", "hao_income", "cost_of_risk", "ebitda",
+    "operating_expenses", "gross_operating_income", "pretax_income",
+    "deposits", "loans",
+)
+
+
+def champs_extraits(result: dict, selecteur=None) -> dict:
+    """Reprend d'un resultat d'extraction tous les champs renseignes.
+
+    `selecteur` permet aux appelants qui arbitrent entre plusieurs sources
+    (fonction `_best`) de conserver leur arbitrage.
+    """
+    prendre = selecteur or (lambda champ: result.get(champ))
+    sortie = {}
+    for champ in CHAMPS_EXTRACTION:
+        try:
+            valeur = prendre(champ)
+        except Exception:
+            valeur = None
+        if valeur is not None:
+            sortie[champ] = valeur
+    return sortie
+
+
 def save_fundamentals(data: dict) -> int:
     """Insère ou met à jour les données fondamentales d'un titre.
     Les valeurs clairement aberrantes sont mises à NULL avant insertion.
