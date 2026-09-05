@@ -1629,22 +1629,20 @@ def _render_recommendation(result, fundamentals):
             unsafe_allow_html=True,
         )
 
-    # ── Grille telecoms ──
-    # Les operateurs communiquent en EBITDAaL, pas en resultat net : la marge
-    # d'EBITDA, l'intensite capitalistique et le levier disent la trajectoire
-    # bien mieux que le bas du compte de resultat.
+    # ── Grille sectorielle ──
+    # Chaque secteur de la cote a desormais sa grille, et surtout ses propres
+    # bornes de jugement : une marge d'EBITDA de 8 % condamne un operateur
+    # telecoms et n'a rien d'anormal chez un distributeur. Le referentiel
+    # `analysis.sectors` porte les deux. Auparavant seules les banques et les
+    # telecoms etaient servies — les 30 autres societes n'affichaient rien.
+    from analysis.sectors import profil_secteur
+    _profil = profil_secteur(fundamentals.get("sector"))
+    _render_grille(_profil["libelle"], _profil["grille"], ratios_src)
+    if any(ratios_src.get(cle) is not None for _, cle, _, _ in _profil["grille"]):
+        st.caption(_profil["lecture"])
+
+    # ── Complements propres aux telecoms ──
     if "telecom" in _secteur_bas or "télécom" in _secteur_bas:
-        _grille_t = [
-            ("Marge d'EBITDA", "marge_ebitda", "pct",
-             "Rentabilité opérationnelle avant le poids des réseaux"),
-            ("Intensité capitalistique", "intensite_capex", "pct",
-             "Investissements rapportés au chiffre d'affaires"),
-            ("Dette / EBITDA", "dette_ebitda", "fois",
-             "Nombre d'années d'EBITDA pour rembourser la dette"),
-            ("Marge de flux libre", "fcf_margin", "pct",
-             "Trésorerie dégagée après investissements"),
-        ]
-        _render_grille("Grille télécoms", _grille_t, ratios_src)
 
         # Parcs clients : le chiffre d'affaires n'est que la consequence du
         # parc. Sonatel T1-2026 le montre — le mobile recule de 2,9 % pendant
@@ -1695,24 +1693,10 @@ def _render_recommendation(result, fundamentals):
                     f"ordre de grandeur, le parc étant un stock et le chiffre "
                     f"d'affaires un flux.")
 
-    # ── Grille bancaire ──
-    # Le resultat net d'une banque est un symptome. Le diagnostic se lit dans
-    # le croisement du coefficient d'exploitation (ce que coute la machine) et
-    # du cout du risque (ce que coute le portefeuille).
+    # ── Complements propres aux banques ──
+    # La grille elle-meme est rendue plus haut par le referentiel ; il reste
+    # les encours, qui sont des montants et non des ratios.
     if "banque" in _secteur_bas or "bank" in _secteur_bas:
-        _grille_b = [
-            ("Coefficient d'exploitation", "coefficient_exploitation", "pct",
-             "Frais généraux rapportés au produit net bancaire"),
-            ("Coût du risque / PNB", "cout_risque_pnb", "pct",
-             "Part du PNB absorbée par le risque de crédit"),
-            ("Marge brute d'exploitation", "marge_brute_exploitation", "pct",
-             "Résultat brut d'exploitation rapporté au PNB"),
-            ("Crédits / dépôts", "credits_depots", "pct",
-             "Au-delà de 100 %, la banque prête plus qu'elle ne collecte"),
-            ("Rendement des actifs (ROA)", "roa", "pct",
-             "Ce que rapporte le bilan, pas seulement les fonds propres"),
-        ]
-        _render_grille("Grille bancaire", _grille_b, ratios_src)
         _dep, _cre = ratios_src.get("depots"), ratios_src.get("credits")
         if _dep or _cre:
             _bouts = []
@@ -1721,6 +1705,72 @@ def _render_recommendation(result, fundamentals):
             if _cre:
                 _bouts.append(f"crédits nets {_cre/1e9:,.0f} Mds")
             st.caption(" · ".join(_bouts))
+
+    # ── Comparables intersectoriels ──
+    # Les grilles ci-dessus ne se comparent pas entre elles : un coefficient
+    # d'exploitation bancaire et une intensite capitalistique telecoms ne
+    # parlent pas de la meme chose. Ce tableau ne retient donc que les mesures
+    # qui gardent le meme sens partout, et situe le secteur du titre parmi les
+    # autres.
+    try:
+        from analysis.sectors import (medianes_intersecteurs,
+                                      COMPARABLES_INTERSECTEURS,
+                                      MIN_OBSERVATIONS)
+        _inter = medianes_intersecteurs()
+    except Exception:
+        _inter = []
+
+    if _inter:
+        with st.expander("Comparaison entre secteurs", expanded=False):
+            _mien = (fundamentals.get("sector") or "").strip().lower()
+            _entetes = "".join(
+                f"<th style='padding:6px 10px;font-size:11px;font-weight:500;"
+                f"color:var(--ink-3);text-align:right;white-space:nowrap;'>{lib}</th>"
+                for lib, _, _ in COMPARABLES_INTERSECTEURS)
+            _corps = ""
+            for _e in _inter:
+                _actuel = _e["secteur"].strip().lower() == _mien
+                _fond = "background:var(--bg-elev);" if _actuel else ""
+                _gras = "font-weight:600;" if _actuel else ""
+                _cellules = ""
+                for _lib, _cle, _fmt in COMPARABLES_INTERSECTEURS:
+                    _v = _e.get(_cle)
+                    if _v is None:
+                        _txt = "<span style='color:var(--ink-3);'>—</span>"
+                    elif _fmt == "fois":
+                        _txt = f"{_v:.1f} ×"
+                    else:
+                        _txt = f"{_v*100:.1f} %"
+                    _cellules += (
+                        f"<td style='padding:6px 10px;font-size:12.5px;"
+                        f"text-align:right;font-variant-numeric:tabular-nums;"
+                        f"{_gras}'>{_txt}</td>")
+                _corps += (
+                    f"<tr style='{_fond}border-top:1px solid var(--border);'>"
+                    f"<td style='padding:6px 10px;font-size:12.5px;{_gras}'>"
+                    f"{_e['secteur']}</td>"
+                    f"<td style='padding:6px 10px;font-size:11.5px;"
+                    f"color:var(--ink-3);text-align:right;'>{_e['effectif']}</td>"
+                    f"{_cellules}</tr>")
+            st.markdown(
+                f"<div style='overflow-x:auto;'>"
+                f"<table style='width:100%;border-collapse:collapse;'>"
+                f"<thead><tr>"
+                f"<th style='padding:6px 10px;font-size:11px;font-weight:500;"
+                f"color:var(--ink-3);text-align:left;'>Secteur</th>"
+                f"<th style='padding:6px 10px;font-size:11px;font-weight:500;"
+                f"color:var(--ink-3);text-align:right;'>Sociétés</th>"
+                f"{_entetes}</tr></thead><tbody>{_corps}</tbody></table></div>",
+                unsafe_allow_html=True)
+            st.caption(
+                f"Médianes sectorielles, calculées seulement à partir de "
+                f"{MIN_OBSERVATIONS} sociétés renseignées — en deçà, la "
+                f"médiane refléterait une société et non un secteur, et la "
+                f"case reste vide. Pour les banques, la marge nette se "
+                f"rapporte au produit net bancaire et non à un chiffre "
+                f"d'affaires : elle n'est pas comparable telle quelle aux "
+                f"autres secteurs."
+            )
 
     # ═══════════════════════════════════════════════════════════════════
     # 3 cards : Score fondamental · Score technique · Conviction modèle

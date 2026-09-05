@@ -151,6 +151,39 @@ def compare_to_sector(ratio_name: str, value: float, benchmarks: dict,
 COUT_CAPITAUX_PROPRES = 0.13
 
 
+def _actif_fiable(total_actif, fonds_propres, chiffre_affaires, is_bank):
+    """Dit si le total de bilan extrait est exploitable.
+
+    Un total de bilan faux empoisonne silencieusement le rendement des actifs
+    et la rotation de l'actif — deux indicateurs mis en avant dans les grilles
+    sectorielles. Trois recoupements suffisent a ecarter les valeurs qui ne
+    peuvent pas etre un total :
+
+      - l'actif ne peut pas etre inferieur aux fonds propres (actif = fonds
+        propres + dettes, et les dettes ne sont pas negatives) ;
+      - une banque porte un bilan de plusieurs fois son produit net bancaire,
+        jamais l'inverse ;
+      - hors banque, une rotation de l'actif superieure a 5 n'existe pas sur
+        la cote : c'est le signe qu'une ligne partielle a ete prise pour le
+        total.
+
+    Constate sur les donnees : CFAO CI portait un actif inferieur a ses fonds
+    propres, et trois filiales BOA un actif des centaines de fois plus petit
+    que leur PNB.
+    """
+    if not total_actif or total_actif <= 0:
+        return False
+    if fonds_propres and fonds_propres > 0 and total_actif < fonds_propres:
+        return False
+    if chiffre_affaires and chiffre_affaires > 0:
+        rotation = chiffre_affaires / total_actif
+        if is_bank and rotation > 1:
+            return False
+        if not is_bank and rotation > 5:
+            return False
+    return True
+
+
 def compute_ratios(data: dict) -> dict:
     """
     Calcule tous les ratios fondamentaux à partir des données financières.
@@ -329,8 +362,12 @@ def compute_ratios(data: dict) -> dict:
     ratios["credits"] = credits
     # Rendement des actifs : une banque se juge aussi sur ce que rapporte son
     # bilan, pas seulement ses fonds propres.
-    ratios["roa"] = (net_income / data["total_assets"]
-                     if data.get("total_assets") and net_income else None)
+    _actif_brut = data.get("total_assets")
+    _actif_ok = _actif_fiable(_actif_brut, equity, revenue, is_bank)
+    ratios["total_assets"] = _actif_brut if _actif_ok else None
+    ratios["actif_incoherent"] = bool(_actif_brut) and not _actif_ok
+    ratios["roa"] = (net_income / _actif_brut
+                     if _actif_ok and net_income else None)
 
     # --- Grille telecoms ---
     # Le secteur se juge sur trois axes que le resultat net ne montre pas : la
@@ -346,6 +383,32 @@ def compute_ratios(data: dict) -> dict:
     ratios["dette_ebitda"] = (
         total_debt / ebitda_v if ebitda_v and not total_debt_missing and total_debt
         else None)
+
+    # --- Indicateurs communs aux secteurs industriels et commerciaux ---
+    # Trois mesures qui, hors banque et telecoms, disent l'essentiel :
+    #  - la marge d'exploitation isole la performance du metier, avant la
+    #    structure financiere et l'impot ;
+    #  - la rotation de l'actif dit combien de chiffre d'affaires un franc
+    #    d'actif engendre — determinante en distribution (elevee) comme en
+    #    services publics (faible), et illisible sans le secteur ;
+    #  - la volatilite du resultat mesure le caractere cyclique, ce qui compte
+    #    davantage que le niveau du resultat pour l'agriculture et les matieres
+    #    premieres.
+    ratios["marge_exploitation"] = (ebit / revenue) if ebit and revenue else None
+    ratios["rotation_actif"] = (
+        revenue / _actif_brut if revenue and _actif_ok else None)
+
+    _serie = [data.get(f"net_income_n{i}") for i in range(3, -1, -1)]
+    _serie = [v for v in _serie if v not in (None, 0)]
+    if len(_serie) >= 3:
+        _moyenne = sum(_serie) / len(_serie)
+        if _moyenne:
+            _variance = sum((v - _moyenne) ** 2 for v in _serie) / len(_serie)
+            ratios["volatilite_resultat"] = (_variance ** 0.5) / abs(_moyenne)
+        else:
+            ratios["volatilite_resultat"] = None
+    else:
+        ratios["volatilite_resultat"] = None
 
     # --- P/B (Price to Book) ---
     book_value_per_share = equity / shares if shares != 0 else 0
@@ -368,7 +431,7 @@ def compute_ratios(data: dict) -> dict:
         ratios["bank_leverage"] = None  # Nécessite total actif
 
     # --- Drapeaux ---
-    ratios["flags"] = _compute_flags(ratios, is_bank)
+    ratios["flags"] = _compute_flags(ratios, is_bank, data.get("sector"))
 
     # --- Checklist Value & Dividendes ---
     ratios["checklist"] = _compute_checklist(ratios, is_bank)
@@ -381,8 +444,13 @@ def compute_ratios(data: dict) -> dict:
     return ratios
 
 
-def _compute_flags(ratios: dict, is_bank: bool) -> dict:
-    """Calcule les drapeaux (OK/Vigilance/Risque) pour chaque ratio."""
+def _compute_flags(ratios: dict, is_bank: bool, secteur: str = None) -> dict:
+    """Calcule les drapeaux (OK/Vigilance/Risque) pour chaque ratio.
+
+    Les bornes generiques ci-dessous sont ensuite RELUES a la lumiere du
+    secteur : une marge d'EBITDA de 8 % condamne un operateur telecoms et
+    ne dit rien d'anormal chez un distributeur. Voir `analysis.sectors`.
+    """
     flags = {}
 
     # Part exceptionnelle du resultat
@@ -617,6 +685,21 @@ def _compute_flags(ratios: dict, is_bank: bool) -> dict:
             flags["dividend_cash_coverage"] = ("Risque", "Non couvert")
     else:
         flags["dividend_cash_coverage"] = ("Vigilance", "Non disponible")
+
+    # --- Relecture sectorielle ---
+    # Le referentiel a le dernier mot quand il se prononce : ses bornes sont
+    # calibrees metier par metier. Il complete aussi les ratios que la grille
+    # generique ne jugeait pas du tout (rotation de l'actif, volatilite).
+    if secteur:
+        try:
+            from analysis.sectors import juger
+            for cle, valeur in list(ratios.items()):
+                if isinstance(valeur, (int, float)):
+                    verdict = juger(cle, valeur, secteur)
+                    if verdict:
+                        flags[cle] = verdict
+        except Exception:
+            pass
 
     return flags
 

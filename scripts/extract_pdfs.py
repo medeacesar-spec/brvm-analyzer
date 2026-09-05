@@ -12,7 +12,8 @@ import traceback
 # Ensure project root is on the path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from data.storage import get_report_links, save_fundamentals, get_connection
+from data.storage import (get_report_links, save_fundamentals, get_connection,
+                          champs_extraits)
 from data.pdf_extractor import download_and_extract
 
 
@@ -83,6 +84,9 @@ def main():
             "total_assets": result.get("total_assets"),
             "shares": result.get("shares"),
         }
+        for _champ, _valeur in champs_extraits(result).items():
+            if fund_data.get(_champ) is None:
+                fund_data[_champ] = _valeur
 
         try:
             row_id = save_fundamentals(fund_data)
