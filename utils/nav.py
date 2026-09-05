@@ -5,6 +5,7 @@ import streamlit as st
 
 
 PAGE_STOCK_ANALYSIS = "Analyse d'un Titre"
+PAGE_INFOS_MARCHE = "Infos Marché"
 
 
 def goto_ticker(ticker: str) -> None:
@@ -13,6 +14,12 @@ def goto_ticker(ticker: str) -> None:
     La page p2 détecte `target_ticker` et pré-sélectionne le titre."""
     st.session_state["target_ticker"] = ticker
     st.session_state["pending_page"] = PAGE_STOCK_ANALYSIS
+    st.rerun()
+
+
+def goto_revue() -> None:
+    """Ouvre Infos Marché sur l'onglet Revue de presse."""
+    st.session_state["pending_page"] = PAGE_INFOS_MARCHE
     st.rerun()
 
 
