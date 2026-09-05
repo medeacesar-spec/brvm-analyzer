@@ -1850,6 +1850,11 @@ def _render_recommendation(result, fundamentals):
     """Onglet Recommandation v3 : verdict card avec composition + 3 score
     cards descriptives + Points forts/Vigilance en tables + Plan d'action
     zones de prix avec conviction."""
+    # Import en TETE de fonction : place dans un bloc, il rendrait le nom
+    # local pour toute la fonction et les usages anterieurs leveraient
+    # UnboundLocalError.
+    from utils.ui_helpers import section_heading
+
     reco = result["recommendation"]
 
     fund_s = result.get("fundamental_score") or 0
@@ -2252,7 +2257,6 @@ def _render_recommendation(result, fundamentals):
         _alertes = []
 
     if _alertes:
-        from utils.ui_helpers import section_heading
         section_heading("Lecture sectorielle", spacing="loose")
         _blocs = ""
         for _a in _alertes:
