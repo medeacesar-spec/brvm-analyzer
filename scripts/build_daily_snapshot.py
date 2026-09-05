@@ -625,6 +625,19 @@ def build_all() -> dict:
         except Exception as e:
             print(f"  [pdfs] extract_pending_pubs KO (non bloquant): {e}")
 
+        # ── Contrôle de vraisemblance ──
+        # Une extraction fausse ne proteste pas : elle rend un nombre. On la
+        # contredit ici, AVANT le calcul des scores, pour qu'une valeur
+        # impossible n'atteigne jamais l'écran (EBITDA supérieur au chiffre
+        # d'affaires, coût du risque supérieur au PNB, identité bancaire non
+        # tenue, ordre de grandeur en désaccord avec les autres exercices).
+        try:
+            from scripts.valider_sectoriel import main as _valider
+            print("  [controle] vraisemblance des valeurs sectorielles …")
+            _valider()
+        except Exception as e:
+            print(f"  [controle] valider_sectoriel KO (non bloquant): {e}")
+
         # ── Étape 0ter : réconciliation des notifications ──
         # Marque comme traitées (is_new=0) les publications dont les données
         # correspondantes sont déjà en base (fundamentals/quarterly_data), et
