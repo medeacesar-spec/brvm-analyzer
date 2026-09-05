@@ -98,6 +98,17 @@ def trimestres_normalises(ticker: str) -> list:
         return []
     conn.close()
 
+    # Ordre de grandeur d'un exercice complet pour ce titre, tire des annees
+    # dont un document annuel atteste la cloture.
+    try:
+        from data.storage import exercices_annuels
+        clos = exercices_annuels([ticker]).get(ticker, set())
+    except Exception:
+        clos = set()
+    montants = sorted(abs(v.get("revenue")) for a, v in annuels.items()
+                      if v.get("revenue") and (not clos or a in clos))
+    repere_annuel = montants[len(montants) // 2] if montants else None
+
     par_annee = {}
     for ligne in lignes:
         par_annee.setdefault(ligne.get("fiscal_year"), []).append(ligne)
@@ -129,7 +140,12 @@ def trimestres_normalises(ticker: str) -> list:
             # ressortait a 194,7 Mds au troisieme trimestre 2025 quand ses
             # autres trimestres font 66 Mds, soit 74 % de l'exercice a lui
             # seul. On prefere une case vide a un trimestre invente.
-            reference = (annuels.get(annee) or {}).get("revenue")
+            # La reference doit etre un exercice CLOS. Prendre celui de la
+            # meme annee revient parfois a se comparer a une ligne alimentee
+            # par un seul trimestre : Sonatel porte 49,8 Mds pour « 2026 »,
+            # si bien qu'un trimestre de 504 Mds paraissait aberrant et etait
+            # ecarte. On prend la mediane des exercices annuels du titre.
+            reference = repere_annuel
             if ca and reference and abs(ca) > 0.6 * abs(reference):
                 ca = None
             # Un cumul identique au precedent produit un trimestre nul : ce
