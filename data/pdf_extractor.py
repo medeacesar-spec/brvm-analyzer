@@ -31,13 +31,31 @@ from data.storage import get_report_links, save_fundamentals, get_connection
 # ---------------------------------------------------------------------------
 
 def _parse_amount(text: str) -> Optional[float]:
-    """Parse un montant depuis le texte PDF."""
+    """Parse un montant depuis le texte PDF.
+
+    Le point est ambigu en francais : separateur de milliers ou virgule
+    decimale. Une resolution d'AG ecrit « un dividende brut de 1.940 fcfa par
+    action » — lire 1,94 revient a diviser le montant par mille, en silence.
+    On tranche par la forme : un point suivi d'exactement trois chiffres est un
+    separateur de milliers, sauf si une virgule joue deja le role decimal.
+    """
     if not text:
         return None
-    cleaned = text.strip().replace("\xa0", "").replace(" ", "").replace(",", ".")
-    negative = ("(" in cleaned and ")" in cleaned) or cleaned.startswith("-")
-    cleaned = cleaned.replace("(", "").replace(")", "").lstrip("-")
-    cleaned = cleaned.rstrip(".").rstrip("%")
+    brut = text.strip().replace("\xa0", "").replace(" ", "")
+    negative = ("(" in brut and ")" in brut) or brut.startswith("-")
+    brut = brut.replace("(", "").replace(")", "").lstrip("-")
+    # L'OCR laisse des scories en fin de cellule : « 268537063| », « 1 234] »
+    brut = re.sub(r"[|\]\)\}»\*]+$", "", brut).rstrip(".").rstrip("%")
+
+    if "," in brut:
+        # La virgule est decimale : les points ne peuvent etre que des milliers.
+        cleaned = brut.replace(".", "").replace(",", ".")
+    elif re.match(r"^\d{1,3}(?:\.\d{3})+$", brut):
+        # 1.940 · 34.837.331.686 -> milliers
+        cleaned = brut.replace(".", "")
+    else:
+        cleaned = brut
+
     if not re.match(r'^[\d.]+$', cleaned):
         return None
     try:
@@ -857,6 +875,101 @@ def _lignes_exploitables(texte: str) -> int:
     return sum(1 for l in (texte or "").split("\n") if _LIGNE_UTILE.search(l))
 
 
+def _ocr_cellules(img, psm: int = 6) -> list:
+    """Lignes decoupees en cellules a partir des coordonnees rendues par l'OCR.
+
+    Meme principe que `_lignes_par_coordonnees` pour le texte natif : sur un
+    tableau scanne, l'espace qui separe deux colonnes est indistinguable de
+    celui qui separe deux groupes de milliers *dans le texte*, mais pas dans
+    les positions. Sans cela, un meme rapport rend un produit net bancaire de
+    78,9 Mds a une extraction et 65,1 Mds a la suivante, selon la facon dont
+    tesseract a recolle les colonnes ce jour-la.
+    """
+    try:
+        import pytesseract
+        from pytesseract import Output
+    except ImportError:
+        return []
+
+    gris = img.convert("L")
+    try:
+        d = pytesseract.image_to_data(gris, lang="fra+eng",
+                                      config=f"--psm {psm}", output_type=Output.DICT)
+    except Exception:
+        try:
+            d = pytesseract.image_to_data(gris, config=f"--psm {psm}",
+                                          output_type=Output.DICT)
+        except Exception:
+            return []
+
+    mots = []
+    for i, texte in enumerate(d.get("text", [])):
+        texte = (texte or "").strip()
+        if not texte:
+            continue
+        try:
+            conf = float(d["conf"][i])
+        except (ValueError, TypeError):
+            conf = -1
+        if conf < 40:          # en dessous, tesseract devine plus qu'il ne lit
+            continue
+        mots.append({
+            "texte": texte, "x0": d["left"][i], "x1": d["left"][i] + d["width"][i],
+            "hauteur": d["height"][i],
+            "ligne": (d["block_num"][i], d["par_num"][i], d["line_num"][i]),
+        })
+    if not mots:
+        return []
+
+    hauteur = sorted(m["hauteur"] for m in mots)[len(mots) // 2] or 20
+    ecart_colonne = 2.0 * hauteur
+
+    groupes = {}
+    for m in mots:
+        groupes.setdefault(m["ligne"], []).append(m)
+
+    out = []
+    for cle in sorted(groupes):
+        ligne = sorted(groupes[cle], key=lambda m: m["x0"])
+        cellules, courante, precedent = [], [], None
+        for m in ligne:
+            if precedent is not None and m["x0"] - precedent["x1"] > ecart_colonne:
+                cellules.append(" ".join(courante))
+                courante = []
+            courante.append(m["texte"])
+            precedent = m
+        if courante:
+            cellules.append(" ".join(courante))
+        if cellules:
+            out.append(cellules)
+    return out
+
+
+def _extract_with_ocr_cellules(pdf_path: str) -> list:
+    """Lignes-cellules de toutes les pages d'un PDF scanne."""
+    try:
+        import fitz
+        from PIL import Image
+    except ImportError:
+        return []
+    try:
+        doc = fitz.open(pdf_path)
+    except Exception:
+        return []
+    lignes = []
+    try:
+        for i in range(min(len(doc), 15)):
+            try:
+                pix = doc[i].get_pixmap(dpi=300)
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                lignes.extend(_ocr_cellules(img))
+            except Exception as e:
+                print(f"OCR cellules page {i + 1}: {e}", flush=True)
+    finally:
+        doc.close()
+    return lignes
+
+
 def _extract_with_ocr(pdf_path: str) -> str:
     """Rend chaque page en image via PyMuPDF puis l'OCR.
 
@@ -1063,18 +1176,20 @@ def _extract_from_cells(lignes: list, mult: float) -> dict:
                 continue
             if not re.match(r"\s*" + motif + r"\b", libelle):
                 continue
+            # La periode courante est la PREMIERE colonne chiffree. Si elle est
+            # inexploitable, on abandonne ce libelle : continuer reviendrait a
+            # prendre la colonne suivante, qui est un autre exercice ou une
+            # variation. Sur un scan SITAB, cette errance ramenait 513 728 —
+            # la colonne « variation en valeur » — comme chiffre d'affaires.
             for cel in cellules[1:]:
                 val = _parse_amount(cel)
-                if val is None or val == 0:
-                    continue
-                if len(re.sub(r"\D", "", cel)) < 3:
-                    continue
+                if val is None or val == 0 or len(re.sub(r"\D", "", cel)) < 3:
+                    continue                      # cellule vide ou parasite
                 if float(val).is_integer() and 1990 <= abs(val) <= 2100:
-                    continue
+                    continue                      # millesime
                 montant = val * mult
-                if abs(montant) < 100_000_000:
-                    continue
-                data[champ] = montant
+                if abs(montant) >= 100_000_000:
+                    data[champ] = montant
                 break
     return data
 
@@ -1243,9 +1358,16 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
             if ocr_text and len(ocr_text) > 100:
                 if not data.get("commentary"):
                     data["commentary"] = extract_commentary(ocr_text)
-                ocr_mult = _resolve_multiplier(ocr_text)
+                # Les coordonnees de l'OCR tranchent l'ambiguite des colonnes,
+                # que le texte recolle ne permet pas de lever.
+                ocr_cellules = _extract_with_ocr_cellules(pdf_path)
+                ocr_mult = _resolve_multiplier(ocr_text, ocr_cellules)
                 data["multiplier"] = ocr_mult
                 ocr_data = _extract_from_text(ocr_text, ocr_mult)
+                # Les cellules priment : elles savent ou s'arrete une colonne.
+                ocr_data.update({k: v for k, v in
+                                 _extract_from_cells(ocr_cellules, ocr_mult).items()
+                                 if v is not None})
                 # Merge tous les champs extractibles depuis l'OCR (couvre ebit,
                 # ebitda, capex, cfo en plus des 5 fields originaux).
                 for field in ("revenue", "revenue_bank", "net_income", "equity",
