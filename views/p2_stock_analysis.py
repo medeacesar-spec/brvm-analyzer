@@ -1618,12 +1618,15 @@ def _render_bloc_sectoriel(fundamentals, ratios_src):
             st.caption(" · ".join(_bouts))
 
     # ── Position dans le secteur ──
-    # On n'aligne plus les quatorze banques de la cote : le lecteur veut
-    # savoir ou SE SITUE le titre qu'il consulte, pas parcourir un annuaire.
-    # Chaque indicateur est donc rendu par une ligne unique — la valeur du
-    # titre, la mediane de ses pairs, et un curseur qui montre la dispersion
-    # du secteur. Les pairs restent calcules : ils font la mediane et les
-    # bornes.
+    # Le lecteur veut savoir ou SE SITUE le titre qu'il consulte. Les valeurs
+    # individuelles des concurrents ne l'interessent pas : elles allongent le
+    # tableau sans rien lui apprendre. On ne garde donc que deux reperes.
+    #
+    # La MEDIANE et la MOYENNE figurent toutes deux, et c'est deliberé : leur
+    # ecart dit si le secteur est homogene ou tire par un cas extreme. La
+    # moyenne des credits sur depots ressortait a 8 612 % quand la mediane
+    # affichait 71 % — un encours mille fois trop faible chez un pair, que la
+    # mediane masquait entierement.
     try:
         from analysis.sectors import comparaison_pairs, MIN_OBSERVATIONS
         _pairs = comparaison_pairs(fundamentals.get("sector"))
@@ -1643,107 +1646,56 @@ def _render_bloc_sectoriel(fundamentals, ratios_src):
 
         def _forme(valeur, forme):
             if valeur is None:
-                return "—"
+                return "<span style='color:var(--ink-3);'>—</span>"
             return f"{valeur:.2f} ×" if forme == "fois" else f"{valeur*100:.1f} %"
 
-        _blocs = ""
-        for _lib, _cle, _fmt in _pairs["colonnes"]:
-            _val = _ma_ligne["valeurs"].get(_cle)
-            _med = _pairs["medianes"].get(_cle)
-            _bor = _pairs["bornes"].get(_cle)
-            _n = _pairs["effectifs"].get(_cle, 0)
-            if _val is None and _med is None:
-                continue
+        _colonnes = [(lib, cle, fmt) for lib, cle, fmt in _pairs["colonnes"]
+                     if (_ma_ligne["valeurs"].get(cle) is not None
+                         or _pairs["medianes"].get(cle) is not None)]
 
-            # Curseur : position du titre entre la plus faible et la plus
-            # forte valeur du secteur. Sans bornes, pas de curseur — on ne
-            # simule pas une dispersion qu'on ne connait pas.
-            _jauge = ""
-            if _val is not None and _bor and _bor[1] > _bor[0]:
-                _pos = (_val - _bor[0]) / (_bor[1] - _bor[0])
-                _pos = min(max(_pos, 0.0), 1.0)
-                _pos_med = ((_med - _bor[0]) / (_bor[1] - _bor[0])
-                            if _med is not None else None)
-                _repere = ""
-                if _pos_med is not None:
-                    _repere = (
-                        f"<div style='position:absolute;left:{_pos_med*100:.1f}%;"
-                        f"top:-3px;width:1px;height:12px;background:var(--ink-3);'>"
-                        f"</div>")
-                _jauge = (
-                    f"<div style='position:relative;height:6px;border-radius:3px;"
-                    f"background:var(--border);margin:8px 0 2px;'>{_repere}"
-                    f"<div style='position:absolute;left:calc({_pos*100:.1f}% - 4px);"
-                    f"top:-2px;width:9px;height:9px;border-radius:50%;"
-                    f"background:var(--ink);border:2px solid var(--bg-elev);'></div>"
-                    f"</div>")
+        if _colonnes:
+            _entetes = "".join(
+                f"<th style='padding:0 12px 5px;font-size:11px;font-weight:500;"
+                f"color:var(--ink-3);text-align:right;white-space:nowrap;'>"
+                f"{_lib}</th>" for _lib, _, _ in _colonnes)
 
-            _ecart = ""
-            if _val is not None and _med not in (None, 0):
-                _delta = (_val - _med) / abs(_med) * 100
-                _signe = "+" if _delta >= 0 else ""
-                _ecart = (f"<span style='font-size:11.5px;color:var(--ink-3);'>"
-                          f"{_signe}{_delta:.0f} % vs médiane</span>")
+            def _rangee(intitule, source, gras, couleur, bordure):
+                cases = "".join(
+                    f"<td style='padding:8px 12px;font-size:13px;text-align:right;"
+                    f"font-variant-numeric:tabular-nums;{gras}color:{couleur};'>"
+                    f"{_forme(source.get(_cle), _fmt)}</td>"
+                    for _, _cle, _fmt in _colonnes)
+                return (f"<tr style='border-top:{bordure};'>"
+                        f"<td style='padding:8px 12px 8px 0;font-size:12.5px;"
+                        f"white-space:nowrap;{gras}color:{couleur};'>"
+                        f"{intitule}</td>{cases}</tr>")
 
-            _blocs += (
-                f"<div style='flex:1;min-width:168px;border:1px solid var(--border);"
-                f"border-radius:10px;padding:12px 14px;background:var(--bg-elev);'>"
-                f"<div style='font-size:11px;color:var(--ink-3);"
-                f"text-transform:uppercase;letter-spacing:.03em;'>{_lib}</div>"
-                f"<div style='font-size:21px;font-weight:600;margin-top:3px;"
-                f"font-variant-numeric:tabular-nums;'>"
-                f"{_forme(_val, _fmt)}</div>"
-                f"{_jauge}"
-                f"<div style='font-size:11.5px;color:var(--ink-3);'>"
-                f"médiane {_forme(_med, _fmt)}"
-                + (f" · {_n} pairs" if _n else "") + "</div>"
-                f"{_ecart}</div>"
-            )
+            _corps = _rangee(
+                f"<b>{_mien}</b> · exercice {_ma_ligne['exercice'] or '—'}",
+                _ma_ligne["valeurs"], "font-weight:600;", "var(--ink)", "none")
+            _corps += _rangee("Médiane du secteur", _pairs["medianes"], "",
+                              "var(--ink-2)", "1px solid var(--border)")
+            _corps += _rangee("Moyenne du secteur", _pairs["moyennes"], "",
+                              "var(--ink-3)", "1px solid var(--border)")
 
-        if _blocs:
             st.markdown(
-                f"<div style='display:flex;gap:10px;flex-wrap:wrap;'>{_blocs}</div>",
+                f"<div style='overflow-x:auto;border:1px solid var(--border);"
+                f"border-radius:10px;padding:6px 14px;background:var(--bg-elev);'>"
+                f"<table style='width:100%;border-collapse:collapse;'>"
+                f"<thead><tr><th style='padding:0 12px 5px 0;font-size:11px;"
+                f"font-weight:500;color:var(--ink-3);text-align:left;'></th>"
+                f"{_entetes}</tr></thead><tbody>{_corps}</tbody></table></div>",
                 unsafe_allow_html=True)
+
+            _n = max(_pairs["effectifs"].get(c, 0) for _, c, _ in _colonnes)
             st.caption(
-                f"Le point situe {_mien} entre la plus faible et la plus forte "
-                f"valeur de son secteur ; le trait fin marque la médiane. "
-                f"Tous les pairs sont lus sur leur **dernier exercice annuel** — "
-                f"jamais sur un trimestre. Aucune médiane n'est publiée en "
-                f"dessous de {MIN_OBSERVATIONS} valeurs renseignées."
+                f"Comparaison à {len(_pairs['lignes'])} pairs du secteur, "
+                f"chacun lu sur son **dernier exercice annuel**. La moyenne "
+                f"figure à côté de la médiane parce que leur écart est une "
+                f"information : un secteur homogène les rapproche, un pair "
+                f"extrême les sépare. Aucun repère n'est publié en dessous de "
+                f"{MIN_OBSERVATIONS} valeurs renseignées."
             )
-            with st.expander("Voir le détail des pairs", expanded=False):
-                _detail = ""
-                for _l in _pairs["lignes"]:
-                    _actuel = (_l.get("ticker") or "").upper() == _mien
-                    _gras = "font-weight:600;" if _actuel else ""
-                    _cases = "".join(
-                        f"<td style='padding:5px 10px;font-size:12px;"
-                        f"text-align:right;font-variant-numeric:tabular-nums;"
-                        f"{_gras}'>{_forme(_l['valeurs'].get(_c), _f)}</td>"
-                        for _, _c, _f in _pairs["colonnes"])
-                    _detail += (
-                        f"<tr style='border-top:1px solid var(--border);"
-                        f"{'background:var(--bg-elev);' if _actuel else ''}'>"
-                        f"<td style='padding:5px 10px 5px 0;font-size:12px;"
-                        f"{_gras}'>{_l['ticker']}</td>"
-                        f"<td style='padding:5px 8px;font-size:11px;"
-                        f"color:var(--ink-3);text-align:center;'>"
-                        f"{_l['exercice'] or '—'}</td>{_cases}</tr>")
-                st.markdown(
-                    f"<div style='overflow-x:auto;'>"
-                    f"<table style='width:100%;border-collapse:collapse;'>"
-                    f"<thead><tr>"
-                    f"<th style='text-align:left;font-size:10.5px;font-weight:500;"
-                    f"color:var(--ink-3);padding-bottom:3px;'>Titre</th>"
-                    f"<th style='font-size:10.5px;font-weight:500;"
-                    f"color:var(--ink-3);padding:0 8px 3px;'>Ex.</th>"
-                    + "".join(
-                        f"<th style='font-size:10.5px;font-weight:500;"
-                        f"color:var(--ink-3);padding:0 10px 3px;text-align:right;"
-                        f"white-space:nowrap;'>{_lb}</th>"
-                        for _lb, _, _ in _pairs["colonnes"])
-                    + f"</tr></thead><tbody>{_detail}</tbody></table></div>",
-                    unsafe_allow_html=True)
 
     # ── Parcs clients des operateurs ──
     # Le recrutement de clients precede le chiffre d'affaires : comparer deux
