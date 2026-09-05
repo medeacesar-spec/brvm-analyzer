@@ -1124,7 +1124,8 @@ def extract_commentary(texte: str, maxi: int = 1500) -> str:
 # Reconstruction des colonnes par coordonnees
 # ---------------------------------------------------------------------------
 
-def _lignes_par_coordonnees(page, ecart_colonne: float = 12.0) -> list:
+def _lignes_par_coordonnees(page, ecart_colonne: float = 12.0,
+                            avec_positions: bool = False) -> list:
     """Reconstitue les lignes d'un tableau en cellules, a partir des positions.
 
     Sans cela, « Produit Net Bancaire 122 316 132 725 +8,5% » est illisible :
@@ -1151,17 +1152,91 @@ def _lignes_par_coordonnees(page, ecart_colonne: float = 12.0) -> list:
         mots_ligne = sorted(lignes[cle], key=lambda m: m["x0"])
         cellules, courante = [], []
         precedent = None
+
+        def _fermer():
+            if not courante:
+                return
+            texte = " ".join(m["text"] for m in courante)
+            cellules.append({"texte": texte, "x0": courante[0]["x0"],
+                             "x1": courante[-1]["x1"]}
+                            if avec_positions else texte)
+
         for m in mots_ligne:
             if precedent is not None and m["x0"] - precedent["x1"] > ecart_colonne:
-                cellules.append(" ".join(courante))
+                _fermer()
                 courante = []
-            courante.append(m["text"])
+            courante.append(m)
             precedent = m
-        if courante:
-            cellules.append(" ".join(courante))
+        _fermer()
         if cellules:
             out.append(cellules)
     return out
+
+
+# Parcs clients des operateurs telecoms. Le chiffre d'affaires n'est que la
+# consequence du parc : c'est lui qui dit si l'operateur recrute ou s'erode.
+_PARCS = [
+    (r"clients?\s+mobile\b", "parc_mobile"),
+    (r"actifs?\s+orange\s+money|clients?\s+orange\s+money|mobile\s+money",
+     "parc_mobile_money"),
+    (r"clients?\s+fibre", "parc_fibre"),
+    (r"clients?\s+fixe\s+broadband|fixe\s+haut\s+d.bit", "parc_fixe_broadband"),
+    (r"data\s+mobile", "parc_data_mobile"),
+    (r"actifs?\s+4g", "parc_4g"),
+    (r"parc\s+fmi", "parc_total"),
+]
+
+_UNITES_PARC = {"millions": 1_000_000, "million": 1_000_000,
+                "milliers": 1_000, "k": 1_000, "millier": 1_000}
+
+
+def _extract_parcs(pages_cellules: list) -> dict:
+    """Parcs clients lus dans les vignettes ou tableaux d'un rapport telecom.
+
+    La mise en page est en tuiles : une ligne de libelles, puis la valeur, puis
+    l'unite, puis la variation annuelle — chaque tuile occupant sa colonne. On
+    rattache donc la valeur au libelle par le RECOUVREMENT HORIZONTAL, seul
+    lien fiable entre des lignes distinctes.
+    """
+    parcs = {}
+    for lignes in pages_cellules:
+        for i, cellules in enumerate(lignes):
+            for cel in cellules:
+                bas = cel["texte"].lower().strip()
+                champ = next((c for motif, c in _PARCS if re.search(motif, bas)), None)
+                if champ is None or champ in parcs:
+                    continue
+                # On cherche, dans les lignes suivantes, un nombre dont la
+                # colonne recouvre celle du libelle.
+                valeur = variation = None
+                # L'unite peut etre dans le libelle — « Parc FMI (en milliers) »
+                m_unite = re.search(r"\((?:en\s+)?(milliers?|millions?)\)", bas)
+                unite = _UNITES_PARC.get(m_unite.group(1)) if m_unite else None
+
+                # On parcourt toute la fenetre sans s'arreter : la variation
+                # annuelle arrive apres l'unite, deux ou trois lignes plus bas.
+                # Fenetre large : du texte narratif s'intercale entre le
+                # libelle, la valeur et sa variation dans les mises en page en
+                # tuiles. Le recouvrement horizontal reste le garde-fou.
+                for suivante in lignes[i + 1:i + 9]:
+                    for c2 in suivante:
+                        if c2["x1"] < cel["x0"] - 5 or c2["x0"] > cel["x1"] + 5:
+                            continue          # autre colonne
+                        t = c2["texte"].strip()
+                        if re.search(r"[-+]?[\d.,]+\s*%", t):
+                            if variation is None:
+                                v = re.search(r"([-+]?[\d.,]+)\s*%", t)
+                                variation = _parse_amount(v.group(1).lstrip("+"))
+                                if v.group(1).startswith("-") and variation:
+                                    variation = -abs(variation)
+                        elif valeur is None and re.fullmatch(r"[\d][\d\s.,]*", t):
+                            valeur = _parse_amount(t)
+                        elif unite is None and t.lower() in _UNITES_PARC:
+                            unite = _UNITES_PARC[t.lower()]
+                if valeur:
+                    parcs[champ] = {"valeur": valeur * (unite or 1),
+                                    "variation": variation}
+    return parcs
 
 
 def _extract_from_cells(lignes: list, mult: float) -> dict:
@@ -1219,6 +1294,7 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
         "ordinary_income": None,
         "hao_income": None,
         "cost_of_risk": None,
+        "parcs": None,
         "operating_expenses": None,
         "gross_operating_income": None,
         "pretax_income": None,
@@ -1234,10 +1310,13 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
             all_tables = []
 
             lignes_cellules = []
+            pages_positions = []
             for page in pdf.pages[:20]:
                 text = page.extract_text() or ""
                 all_text += text + "\n"
                 lignes_cellules.extend(_lignes_par_coordonnees(page))
+                pages_positions.append(
+                    _lignes_par_coordonnees(page, avec_positions=True))
                 tables = page.extract_tables()
                 for table in tables:
                     if table and len(table) > 1:
@@ -1320,6 +1399,12 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
                 # Lignes du « Tableau d'activité et de résultats » : elles
                 # servent a neutraliser l'exceptionnel et, pour les banques,
                 # a lire le coût du risque rapporté au PNB.
+                # Parcs clients : pour un operateur telecom, le chiffre
+                # d'affaires n'est que la consequence du parc.
+                parcs = _extract_parcs(pages_positions)
+                if parcs:
+                    data["parcs"] = parcs
+
                 data["ordinary_income"] = all_extracted.get("ordinary_income")
                 data["hao_income"] = all_extracted.get("hao_income")
                 data["cost_of_risk"] = all_extracted.get("cost_of_risk")

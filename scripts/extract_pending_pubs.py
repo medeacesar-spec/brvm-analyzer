@@ -28,7 +28,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from data.db import read_sql_df, get_connection  # noqa: E402
 from data.pdf_extractor import download_and_extract  # noqa: E402
-from data.storage import save_fundamentals, save_quarterly_data  # noqa: E402
+from data.storage import (save_fundamentals, save_quarterly_data,  # noqa: E402
+                          save_telecom_parcs)
 
 
 def _log_attempt(pub_id, ticker, fy, pt, url, status, error=None, summary=None):
@@ -217,6 +218,13 @@ def main():
                 "revenue": revenue, "net_income": net_income, "ebit": ebit,
                 "source": "brvm.org PDF", "notes": title,
             })
+            # Parcs clients des operateurs telecoms : le chiffre d'affaires
+            # n'est que la consequence du parc, il se suit a part.
+            if result.get("parcs"):
+                n_parcs = save_telecom_parcs(tk, fy, f"T{q}", result["parcs"],
+                                             link["url"])
+                if n_parcs:
+                    print(f"{label} + {n_parcs} parc(s) client")
             print(f"{label} OK quarterly_data Q{q} (rev={revenue or 0:,.0f}, ni={net_income or 0:,.0f})")
             n_ok += 1
             summary.append((tk, fy, pt, f"ok Q{q}", title))

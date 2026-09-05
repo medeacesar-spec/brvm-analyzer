@@ -1646,6 +1646,55 @@ def _render_recommendation(result, fundamentals):
         ]
         _render_grille("Grille télécoms", _grille_t, ratios_src)
 
+        # Parcs clients : le chiffre d'affaires n'est que la consequence du
+        # parc. Sonatel T1-2026 le montre — le mobile recule de 2,9 % pendant
+        # que la fibre gagne 26,5 % ; un seul chiffre d'affaires en croissance
+        # masquerait entierement ce mouvement.
+        try:
+            from data.storage import get_telecom_parcs, PARCS_LIBELLES
+            _parcs = get_telecom_parcs(fundamentals.get('ticker'))
+        except Exception:
+            _parcs = None
+        if _parcs is not None and not _parcs.empty:
+            _recent = _parcs.iloc[0]
+            _periode = f"{_recent['periode']} {int(_recent['fiscal_year'])}".strip()
+            st.markdown(
+                f"<div class='label-xs' style='margin:14px 0 4px;'>"
+                f"Parcs clients · {_periode}</div>", unsafe_allow_html=True)
+            _cellules = ""
+            for _, r in _parcs[
+                (_parcs["fiscal_year"] == _recent["fiscal_year"])
+                & (_parcs["periode"] == _recent["periode"])
+            ].iterrows():
+                _val = (f"{r['valeur']/1e6:,.1f} M" if r["valeur"] >= 1e6
+                        else f"{r['valeur']:,.0f}")
+                _var, _couleur = "", "var(--ink-3)"
+                if pd.notna(r["variation"]):
+                    _couleur = "var(--up)" if r["variation"] >= 0 else "var(--down)"
+                    _var = f"{r['variation']:+.1f} %"
+                _cellules += (
+                    f"<tr>"
+                    f"<td style='padding:5px 14px 5px 0;font-size:12.5px;'>"
+                    f"{PARCS_LIBELLES.get(r['parc'], r['parc'])}</td>"
+                    f"<td style='padding:5px 14px 5px 0;font-size:14px;font-weight:600;"
+                    f"text-align:right;font-variant-numeric:tabular-nums;'>{_val}</td>"
+                    f"<td style='padding:5px 0;font-size:12px;color:{_couleur};"
+                    f"text-align:right;'>{_var}</td></tr>"
+                )
+            st.markdown(
+                f"<div style='border:1px solid var(--border);border-radius:10px;"
+                f"padding:6px 16px;background:var(--bg-elev);'>"
+                f"<table style='width:100%;border-collapse:collapse;'>{_cellules}</table>"
+                f"</div>", unsafe_allow_html=True)
+            _mob = _parcs[_parcs["parc"] == "parc_mobile"]
+            _ca = ratios_src.get("revenue") or fundamentals.get("revenue")
+            if not _mob.empty and _ca:
+                st.caption(
+                    f"Revenu moyen par client mobile ≈ "
+                    f"{_ca / _mob.iloc[0]['valeur']:,.0f} FCFA sur l'exercice — "
+                    f"ordre de grandeur, le parc étant un stock et le chiffre "
+                    f"d'affaires un flux.")
+
     # ── Grille bancaire ──
     # Le resultat net d'une banque est un symptome. Le diagnostic se lit dans
     # le croisement du coefficient d'exploitation (ce que coute la machine) et
