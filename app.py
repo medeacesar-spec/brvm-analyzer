@@ -631,10 +631,11 @@ render_auth_widget()
 
 # ─── Navigation par sections (Marché / Analyse / Outils) ──────────────
 # Historique Signaux est reservé aux administrateurs.
-_outils = ["Portefeuille", "Signaux", "Assistant IA"]
+_outils = ["Portefeuille", "Signaux", "Suivi des Données", "Assistant IA"]
 if is_admin():
-    _outils = ["Portefeuille", "Signaux", "Trajectoires Recommandations",
-               "Historique Signaux", "Assistant IA"]
+    _outils = ["Portefeuille", "Signaux", "Suivi des Données",
+               "Trajectoires Recommandations", "Historique Signaux",
+               "Assistant IA"]
 
 # Convention Title Case (chaque mot significatif capitalisé, prépositions
 # de/des/d'un en minuscules) pour uniformité des labels de navigation.
@@ -733,6 +734,10 @@ elif page == "Historique Signaux":
         render()
     else:
         st.warning("Page réservée aux administrateurs.")
+elif page == "Suivi des Données":
+    from views.p12_suivi_donnees import render
+    render()
+
 elif page == "Infos Marché":
     from views.p8_publications import render
     render()
