@@ -1569,6 +1569,15 @@ def _render_bloc_sectoriel(fundamentals, ratios_src):
 
     _secteur_bas = (fundamentals.get("sector") or "").lower()
 
+    # Les pairs sont calcules AVANT la grille : chaque ligne doit pouvoir se
+    # situer face a eux, pas seulement face a une borne.
+    try:
+        from analysis.sectors import comparaison_pairs, MIN_OBSERVATIONS
+        _pairs = comparaison_pairs(fundamentals.get("sector"))
+    except Exception:
+        _pairs = None
+    _medianes = (_pairs or {}).get("medianes") or {}
+
     def _render_grille(titre, definition, source):
         dispo = [(lib, cle, fmt, aide) for lib, cle, fmt, aide in definition
                  if source.get(cle) is not None]
@@ -1581,8 +1590,23 @@ def _render_bloc_sectoriel(fundamentals, ratios_src):
             val = source[cle]
             affiche = f"{val:.2f} ×" if fmt == "fois" else f"{val*100:.1f} %"
             niveau, commentaire = drapeaux.get(cle, ("", ""))
+            # L'avis croise deux lectures : la borne du metier dit si le
+            # niveau est tenable, la position face aux pairs dit s'il est
+            # competitif. Un coefficient d'exploitation de 55 % est
+            # acceptable dans l'absolu et mediocre si les concurrents sont
+            # a 40 %.
+            try:
+                from analysis.sectors import avis_indicateur
+                _avis = avis_indicateur(cle, val, fundamentals.get("sector"),
+                                        _medianes.get(cle))
+            except Exception:
+                _avis = {"niveau": niveau, "standard": commentaire, "pairs": None}
+            niveau = _avis.get("niveau") or niveau
+            commentaire = _avis.get("standard") or commentaire
             couleur = {"OK": "var(--up)", "Vigilance": "var(--ocre)",
                        "Risque": "var(--down)"}.get(niveau, "var(--ink-3)")
+            _vs_pairs = (f"<div style='font-size:11px;color:var(--ink-3);'>"
+                         f"{_avis['pairs']}</div>" if _avis.get("pairs") else "")
             lignes += (
                 f"<tr>"
                 f"<td style='padding:6px 14px 6px 0;font-size:12.5px;color:var(--ink);'>"
@@ -1590,7 +1614,7 @@ def _render_bloc_sectoriel(fundamentals, ratios_src):
                 f"<td style='padding:6px 14px 6px 0;font-size:15px;font-weight:600;"
                 f"text-align:right;font-variant-numeric:tabular-nums;'>{affiche}</td>"
                 f"<td style='padding:6px 0;font-size:11.5px;color:{couleur};'>"
-                f"{commentaire}</td></tr>"
+                f"{commentaire}{_vs_pairs}</td></tr>"
             )
         st.markdown(
             f"<div style='border:1px solid var(--border);border-radius:10px;"
@@ -1692,12 +1716,6 @@ def _render_bloc_sectoriel(fundamentals, ratios_src):
     # moyenne des credits sur depots ressortait a 8 612 % quand la mediane
     # affichait 71 % — un encours mille fois trop faible chez un pair, que la
     # mediane masquait entierement.
-    try:
-        from analysis.sectors import comparaison_pairs, MIN_OBSERVATIONS
-        _pairs = comparaison_pairs(fundamentals.get("sector"))
-    except Exception:
-        _pairs = None
-
     _mien = (fundamentals.get("ticker") or "").upper()
     _ma_ligne = None
     if _pairs:
@@ -2216,6 +2234,48 @@ def _render_recommendation(result, fundamentals):
         st.markdown(
             _pts_card("Points de vigilance", reco.get("warnings", []), "warn"),
             unsafe_allow_html=True,
+        )
+
+    # ── Lecture sectorielle : ce que le score ne dit pas ──
+    # Le score fondamental garde sa methode et son historique : il n'est PAS
+    # touche. Ce bloc attire l'attention sur ce que la grille du metier
+    # signale et qu'un score global, forcement generaliste, ne peut pas dire —
+    # un coefficient d'exploitation tenable dans l'absolu mais superieur d'un
+    # tiers a celui des concurrents, par exemple.
+    try:
+        from analysis.sectors import comparaison_pairs, alertes_sectorielles
+        _secteur = fundamentals.get("sector")
+        _ratios_grille = result.get("ratios") or {}
+        _alertes = alertes_sectorielles(_ratios_grille, _secteur,
+                                        comparaison_pairs(_secteur))
+    except Exception:
+        _alertes = []
+
+    if _alertes:
+        from utils.ui_helpers import section_heading
+        section_heading("Lecture sectorielle", spacing="loose")
+        _blocs = ""
+        for _a in _alertes:
+            _couleur = ("var(--down)" if _a["niveau"] == "Risque"
+                        else "var(--ocre)")
+            _details = " · ".join(x for x in (_a.get("standard"),
+                                              _a.get("pairs")) if x)
+            _blocs += (
+                f"<div style='border-left:2px solid {_couleur};"
+                f"padding:6px 0 6px 12px;margin:8px 0;'>"
+                f"<span style='font-size:12.5px;font-weight:600;'>"
+                f"{_a['libelle']}</span>"
+                f"<span style='font-size:13px;font-weight:600;color:{_couleur};"
+                f"margin-left:8px;'>{_a['valeur']}</span>"
+                f"<div style='font-size:11.5px;color:var(--ink-3);margin-top:2px;'>"
+                f"{_details}</div></div>")
+        st.markdown(_blocs, unsafe_allow_html=True)
+        st.caption(
+            "Ces points viennent de la grille propre au secteur, croisée avec "
+            "la position du titre face à ses pairs. Ils **n'entrent pas dans "
+            "le score** — celui-ci conserve sa méthode et son historique — "
+            "mais un score global ne peut pas dire qu'un niveau tenable dans "
+            "l'absolu est en retrait de ce que font les concurrents."
         )
 
     # ═══════════════════════════════════════════════════════════════════
