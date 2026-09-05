@@ -19,6 +19,10 @@ on:
         description: "Nombre de fils (2 recommande : l'OCR est gourmand)"
         required: false
         default: "2"
+      periodes:
+        description: "Enchainer la lecture des periodes ? (oui/non — 'non' si elle tourne a cote)"
+        required: false
+        default: "non"
 
 jobs:
   rattrapage:
@@ -42,7 +46,11 @@ jobs:
         run: |
           python scripts/backfill_sectoriel.py "${{ inputs.depuis }}" \
                  --ouvriers="${{ inputs.ouvriers }}"
+      # La lecture des periodes a son propre workflow, lancable EN PARALLELE
+      # (« Lecture des publications de periode »). On la garde ici en option,
+      # pour un rattrapage complet en une seule fois quand rien ne presse.
       - name: Lire les publications de periode
+        if: ${{ inputs.periodes == 'oui' }}
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: python scripts/extraire_periodes.py "${{ inputs.depuis }}"
