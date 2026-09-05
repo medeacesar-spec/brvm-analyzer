@@ -1,12 +1,20 @@
 name: Streamlit Keep-Alive
 
 # Streamlit Community Cloud endort une app apres ~12h sans session WebSocket.
-# On ouvre donc une vraie session navigateur toutes les 3h, 7j/7 (les jobs
+# On ouvre donc une vraie session navigateur toutes les 2h, 7j/7 (les jobs
 # metier ne tournent qu'en semaine 9h-16h UTC, ce qui laissait 18h de trou la
 # nuit et 66h le week-end).
 on:
   schedule:
-    - cron: "0 */3 * * *"
+    # Toutes les 2 h, a la minute 17 — et non toutes les 3 h a la minute 0.
+    #
+    # Mesure sur 95 declenchements du 19/08 au 04/09 : ecart median 3,1 h
+    # (cron respecte), mais ecart MAXIMUM 14,6 h, avec deux trous au-dela des
+    # 12 h qui declenchent la mise en veille. GitHub saute des declenchements
+    # programmes sous charge, et la minute :00 est la plus congestionnee —
+    # tout le monde y planifie ses crons. Doubler la frequence et se decaler
+    # sur une minute creuse rend une serie de sauts beaucoup moins probable.
+    - cron: "17 */2 * * *"
   workflow_dispatch: {}
 
 concurrency:
