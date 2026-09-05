@@ -82,59 +82,98 @@ TICKER_TO_BRVM_SLUG = {
 
 # Détection du type + fiscal_year depuis le nom de fichier brvm.org
 # Exemple : 20260423_-_rapport_dactivites_annuel_-_exercice_2025_-_coris_bank_international_bf.pdf
-_PDF_PATTERNS = [
-    # rapport annuel
-    (re.compile(r"rapport[_-]dactivit[eé]s?[_-]annuel.*exercice[_-](\d{4})", re.I),
-     "rapport_annuel"),
-    (re.compile(r"rapport[_-]annuel.*exercice[_-](\d{4})", re.I),
-     "rapport_annuel"),
-    (re.compile(r"rapport[_-]dactivit[eé]s?[_-]exercice[_-](\d{4})", re.I),
-     "rapport_annuel"),
-    # etats financiers
-    (re.compile(r"etats?[_-]financiers?.*exercice[_-](\d{4})", re.I),
-     "etats_financiers"),
-    # semestriel
-    (re.compile(r"rapport[_-]dactivit[eé]s?.*1er[_-]semestre[_-](\d{4})", re.I),
-     "rapport_semestriel"),
-    (re.compile(r"rapport[_-]dactivit[eé]s?.*2[eé]me[_-]semestre[_-](\d{4})", re.I),
-     "rapport_semestriel"),
-    # trimestriel
-    (re.compile(r"rapport[_-]dactivit[eé]s?.*1er[_-]trimestre[_-](\d{4})", re.I),
-     "rapport_trimestriel"),
-    (re.compile(r"rapport[_-]dactivit[eé]s?.*2[eé]me[_-]trimestre[_-](\d{4})", re.I),
-     "rapport_trimestriel"),
-    (re.compile(r"rapport[_-]dactivit[eé]s?.*3[eé]me[_-]trimestre[_-](\d{4})", re.I),
-     "rapport_trimestriel"),
-    (re.compile(r"rapport[_-]dactivit[eé]s?.*4[eé]me[_-]trimestre[_-](\d{4})", re.I),
-     "rapport_trimestriel"),
-]
+# Le nom de fichier brvm.org commence par la date de PUBLICATION, qui n'est
+# pas l'exercice : « 20260611_-_rapport_de_gestion_-_exercice_2025_... » a ete
+# publie en 2026 et porte sur 2025. On retire donc ce prefixe avant toute
+# recherche d'annee.
+_PREFIXE_PUBLICATION = re.compile(r"^\d{8}[_-]+")
+_ANNEE = re.compile(r"(?:19|20)\d{2}")
+_ANNEE_EXERCICE = re.compile(r"exercices?[_-]((?:19|20)\d{2})", re.I)
+
+# Certaines filiales publient sous intitule anglais.
+_ETATS = re.compile(
+    r"etats?[_-]financiers?|resultats?[_-]financiers?|(?:^|[_-])efp(?=[_.-])"
+    r"|financial[_-]statements?", re.I)
+_ANNUEL = re.compile(
+    r"rapport[_-](?:annuel[_-])?de[_-]gestion|rapport[_-]annuel"
+    r"|rapport[_-]dactivit[eé]s?[_-]annuel|annual[_-]report|(?:^|[_-])r[ga](?=[_.-])",
+    re.I)
+_SEMESTRE = re.compile(
+    r"1er[_-]semestre|premier[_-]semestre"
+    r"|2(?:nd|[eé]me|d)[_-]semestre|second[_-]semestre|deuxi[eè]me[_-]semestre", re.I)
+_TRIMESTRE = re.compile(r"[1-4](?:er|[eé]me|nd|d)?[_-]trimestre|trimestriel", re.I)
+_ACTIVITES = re.compile(r"rapport[_-]dactivit[eé]s?", re.I)
+_ANNEE_APRES_ETAT = re.compile(
+    r"(?:etats?[_-]financiers?|resultats?[_-]financiers?"
+    r"|financial[_-]statements?)[_-]*((?:19|20)\d{2})", re.I)
+
+# Un document porteur de chiffres, meme accompagne d'une attestation, doit
+# etre lu : « attestation_des_cac_sur_le_rapport_dactivites_du_1er_semestre »
+# EST le rapport semestriel. On n'ecarte que les pieces qui ne portent aucun
+# etat : communiques, convocations, resolutions, rapport RSE.
+_SANS_CHIFFRES = re.compile(
+    r"rapport[_-]rse|communiqu[eé]|convocation|ordre[_-]du[_-]jour"
+    r"|proces[_-]verbal|resolutions?[_-]", re.I)
 
 
-def _classify_pdf(url: str) -> tuple[str | None, int | None]:
+def _classify_pdf(url: str):
     """Retourne (report_type, fiscal_year) depuis l'URL du PDF brvm.org.
-    Retourne (None, None) si non reconnaissable.
+
+    Retourne (None, None) si non reconnaissable ou sans interet chiffre.
+
+    L'ordre des tests conserve le comportement anterieur sur les documents
+    deja collectes : un fichier portant « etats financiers » ET « exercice
+    AAAA » reste un jeu d'etats annuels, meme s'il mentionne aussi un
+    trimestre. Les formes nouvelles ne sont examinees qu'ensuite.
+
+    L'annee vient d'abord de « exercice AAAA », qui ne ment pas. A defaut —
+    un fichier sur sept ne la porte pas, « rapport_annuel_2023_-_eviosys… »
+    par exemple — on prend la DERNIERE annee du nom, la date de publication
+    ayant ete retiree au prealable.
     """
-    fname = url.rsplit("/", 1)[-1].lower()
-    for pat, kind in _PDF_PATTERNS:
-        m = pat.search(fname)
-        if m:
-            try:
-                year = int(m.group(1))
-            except (ValueError, IndexError):
-                year = None
-            return kind, year
-    return None, None
+    fichier = url.rsplit("/", 1)[-1].lower()
+    corps = _PREFIXE_PUBLICATION.sub("", fichier)
 
+    porte_un_etat = (_ETATS.search(corps) or _ANNUEL.search(corps)
+                     or _ACTIVITES.search(corps))
+    if _SANS_CHIFFRES.search(corps) and not porte_un_etat:
+        return None, None
 
-def _make_title(report_type: str, year: int, ticker: str) -> str:
-    name = ticker.split(".")[0]
-    type_label = {
-        "rapport_annuel": "Rapport activités annuel",
-        "etats_financiers": "Etats financiers",
-        "rapport_semestriel": "Rapport activités semestriel",
-        "rapport_trimestriel": "Rapport activités trimestriel",
-    }.get(report_type, report_type)
-    return f"{type_label} {year} - {name}"
+    exercice = _ANNEE_EXERCICE.search(corps)
+    genre = None
+
+    if exercice and _ETATS.search(corps):
+        genre = "etats_financiers"
+    elif exercice and (_ANNUEL.search(corps) or _ACTIVITES.search(corps)) \
+            and not _SEMESTRE.search(corps) and not _TRIMESTRE.search(corps):
+        genre = "rapport_annuel"
+    elif _ETATS.search(corps) and (_SEMESTRE.search(corps)
+                                   or _TRIMESTRE.search(corps)) \
+            and _ANNEE_APRES_ETAT.search(corps):
+        # Document combine : « etats financiers 2024 ET rapport d'activites du
+        # 1er trimestre 2025 ». L'annuel porte la substance, le trimestre n'est
+        # qu'une annexe. On retient donc l'annuel — et l'annee qui SUIT le
+        # libelle des etats, non la derniere du nom, qui est celle du
+        # trimestre.
+        genre = "etats_financiers"
+        return genre, int(_ANNEE_APRES_ETAT.search(corps).group(1))
+    elif _SEMESTRE.search(corps):
+        genre = "rapport_semestriel"
+    elif _TRIMESTRE.search(corps):
+        genre = "rapport_trimestriel"
+    elif _ETATS.search(corps):
+        genre = "etats_financiers"
+    elif _ANNUEL.search(corps) or _ACTIVITES.search(corps):
+        genre = "rapport_annuel"
+
+    if not genre:
+        return None, None
+    if exercice:
+        return genre, int(exercice.group(1))
+    annees = _ANNEE.findall(corps)
+    if not annees:
+        return None, None
+    return genre, int(annees[-1])
 
 
 def scrape_company_pdfs(slug: str, session: requests.Session) -> list[dict]:
