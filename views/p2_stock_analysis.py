@@ -1597,6 +1597,131 @@ def _render_recommendation(result, fundamentals):
             unsafe_allow_html=True,
         )
 
+    _secteur_bas = (fundamentals.get("sector") or "").lower()
+
+    def _render_grille(titre, definition, source):
+        dispo = [(lib, cle, fmt, aide) for lib, cle, fmt, aide in definition
+                 if source.get(cle) is not None]
+        if not dispo:
+            return
+        section_heading(titre, spacing="loose")
+        drapeaux = source.get("flags") or {}
+        lignes = ""
+        for lib, cle, fmt, aide in dispo:
+            val = source[cle]
+            affiche = f"{val:.2f} ×" if fmt == "fois" else f"{val*100:.1f} %"
+            niveau, commentaire = drapeaux.get(cle, ("", ""))
+            couleur = {"OK": "var(--up)", "Vigilance": "var(--ocre)",
+                       "Risque": "var(--down)"}.get(niveau, "var(--ink-3)")
+            lignes += (
+                f"<tr>"
+                f"<td style='padding:6px 14px 6px 0;font-size:12.5px;color:var(--ink);'>"
+                f"{lib}<div style='font-size:11px;color:var(--ink-3);'>{aide}</div></td>"
+                f"<td style='padding:6px 14px 6px 0;font-size:15px;font-weight:600;"
+                f"text-align:right;font-variant-numeric:tabular-nums;'>{affiche}</td>"
+                f"<td style='padding:6px 0;font-size:11.5px;color:{couleur};'>"
+                f"{commentaire}</td></tr>"
+            )
+        st.markdown(
+            f"<div style='border:1px solid var(--border);border-radius:10px;"
+            f"padding:6px 16px;background:var(--bg-elev);'>"
+            f"<table style='width:100%;border-collapse:collapse;'>{lignes}</table></div>",
+            unsafe_allow_html=True,
+        )
+
+    # ── Grille telecoms ──
+    # Les operateurs communiquent en EBITDAaL, pas en resultat net : la marge
+    # d'EBITDA, l'intensite capitalistique et le levier disent la trajectoire
+    # bien mieux que le bas du compte de resultat.
+    if "telecom" in _secteur_bas or "télécom" in _secteur_bas:
+        _grille_t = [
+            ("Marge d'EBITDA", "marge_ebitda", "pct",
+             "Rentabilité opérationnelle avant le poids des réseaux"),
+            ("Intensité capitalistique", "intensite_capex", "pct",
+             "Investissements rapportés au chiffre d'affaires"),
+            ("Dette / EBITDA", "dette_ebitda", "fois",
+             "Nombre d'années d'EBITDA pour rembourser la dette"),
+            ("Marge de flux libre", "fcf_margin", "pct",
+             "Trésorerie dégagée après investissements"),
+        ]
+        _render_grille("Grille télécoms", _grille_t, ratios_src)
+
+        # Parcs clients : le chiffre d'affaires n'est que la consequence du
+        # parc. Sonatel T1-2026 le montre — le mobile recule de 2,9 % pendant
+        # que la fibre gagne 26,5 % ; un seul chiffre d'affaires en croissance
+        # masquerait entierement ce mouvement.
+        try:
+            from data.storage import get_telecom_parcs, PARCS_LIBELLES
+            _parcs = get_telecom_parcs(fundamentals.get('ticker'))
+        except Exception:
+            _parcs = None
+        if _parcs is not None and not _parcs.empty:
+            _recent = _parcs.iloc[0]
+            _periode = f"{_recent['periode']} {int(_recent['fiscal_year'])}".strip()
+            st.markdown(
+                f"<div class='label-xs' style='margin:14px 0 4px;'>"
+                f"Parcs clients · {_periode}</div>", unsafe_allow_html=True)
+            _cellules = ""
+            for _, r in _parcs[
+                (_parcs["fiscal_year"] == _recent["fiscal_year"])
+                & (_parcs["periode"] == _recent["periode"])
+            ].iterrows():
+                _val = (f"{r['valeur']/1e6:,.1f} M" if r["valeur"] >= 1e6
+                        else f"{r['valeur']:,.0f}")
+                _var, _couleur = "", "var(--ink-3)"
+                if pd.notna(r["variation"]):
+                    _couleur = "var(--up)" if r["variation"] >= 0 else "var(--down)"
+                    _var = f"{r['variation']:+.1f} %"
+                _cellules += (
+                    f"<tr>"
+                    f"<td style='padding:5px 14px 5px 0;font-size:12.5px;'>"
+                    f"{PARCS_LIBELLES.get(r['parc'], r['parc'])}</td>"
+                    f"<td style='padding:5px 14px 5px 0;font-size:14px;font-weight:600;"
+                    f"text-align:right;font-variant-numeric:tabular-nums;'>{_val}</td>"
+                    f"<td style='padding:5px 0;font-size:12px;color:{_couleur};"
+                    f"text-align:right;'>{_var}</td></tr>"
+                )
+            st.markdown(
+                f"<div style='border:1px solid var(--border);border-radius:10px;"
+                f"padding:6px 16px;background:var(--bg-elev);'>"
+                f"<table style='width:100%;border-collapse:collapse;'>{_cellules}</table>"
+                f"</div>", unsafe_allow_html=True)
+            _mob = _parcs[_parcs["parc"] == "parc_mobile"]
+            _ca = ratios_src.get("revenue") or fundamentals.get("revenue")
+            if not _mob.empty and _ca:
+                st.caption(
+                    f"Revenu moyen par client mobile ≈ "
+                    f"{_ca / _mob.iloc[0]['valeur']:,.0f} FCFA sur l'exercice — "
+                    f"ordre de grandeur, le parc étant un stock et le chiffre "
+                    f"d'affaires un flux.")
+
+    # ── Grille bancaire ──
+    # Le resultat net d'une banque est un symptome. Le diagnostic se lit dans
+    # le croisement du coefficient d'exploitation (ce que coute la machine) et
+    # du cout du risque (ce que coute le portefeuille).
+    if "banque" in _secteur_bas or "bank" in _secteur_bas:
+        _grille_b = [
+            ("Coefficient d'exploitation", "coefficient_exploitation", "pct",
+             "Frais généraux rapportés au produit net bancaire"),
+            ("Coût du risque / PNB", "cout_risque_pnb", "pct",
+             "Part du PNB absorbée par le risque de crédit"),
+            ("Marge brute d'exploitation", "marge_brute_exploitation", "pct",
+             "Résultat brut d'exploitation rapporté au PNB"),
+            ("Crédits / dépôts", "credits_depots", "pct",
+             "Au-delà de 100 %, la banque prête plus qu'elle ne collecte"),
+            ("Rendement des actifs (ROA)", "roa", "pct",
+             "Ce que rapporte le bilan, pas seulement les fonds propres"),
+        ]
+        _render_grille("Grille bancaire", _grille_b, ratios_src)
+        _dep, _cre = ratios_src.get("depots"), ratios_src.get("credits")
+        if _dep or _cre:
+            _bouts = []
+            if _dep:
+                _bouts.append(f"dépôts clientèle {_dep/1e9:,.0f} Mds")
+            if _cre:
+                _bouts.append(f"crédits nets {_cre/1e9:,.0f} Mds")
+            st.caption(" · ".join(_bouts))
+
     # ═══════════════════════════════════════════════════════════════════
     # 3 cards : Score fondamental · Score technique · Conviction modèle
     # ═══════════════════════════════════════════════════════════════════

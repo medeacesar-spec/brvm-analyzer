@@ -688,6 +688,9 @@ def save_fundamentals(data: dict) -> int:
         "total_debt", "ebit", "interest_expense", "cfo", "capex",
         "dividends_total", "dps", "total_assets", "eps", "per",
         "ordinary_income", "hao_income", "cost_of_risk",
+        "ebitda",
+        "operating_expenses", "gross_operating_income", "pretax_income",
+        "deposits", "loans",
         "revenue_n3", "revenue_n2", "revenue_n1", "revenue_n0",
         "net_income_n3", "net_income_n2", "net_income_n1", "net_income_n0",
         "dps_n3", "dps_n2", "dps_n1", "dps_n0",
@@ -3032,3 +3035,65 @@ def compute_signal_performance(df: pd.DataFrame) -> pd.DataFrame:
 
 # Initialize DB on import
 init_db()
+
+
+# Libelles lisibles des parcs clients telecoms
+PARCS_LIBELLES = {
+    "parc_mobile": "Clients mobile",
+    "parc_mobile_money": "Clients mobile money",
+    "parc_fibre": "Clients fibre",
+    "parc_fixe_broadband": "Clients fixe haut débit",
+    "parc_data_mobile": "Clients data mobile",
+    "parc_4g": "Clients 4G actifs",
+    "parc_total": "Parc total",
+}
+
+
+def save_telecom_parcs(ticker: str, fiscal_year, periode, parcs: dict,
+                       source_url: str = None) -> int:
+    """Enregistre les parcs clients d'un operateur pour une periode.
+
+    Le parc est le moteur du chiffre d'affaires : le suivre separement permet
+    de voir un recul du mobile masque par la croissance de la fibre.
+    """
+    if not parcs:
+        return 0
+    conn = get_connection()
+    ecrits = 0
+    try:
+        for parc, detail in parcs.items():
+            valeur = detail.get("valeur") if isinstance(detail, dict) else detail
+            variation = detail.get("variation") if isinstance(detail, dict) else None
+            if not valeur:
+                continue
+            conn.execute(
+                """INSERT INTO telecom_parcs
+                   (ticker, fiscal_year, periode, parc, valeur, variation, source_url)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT (ticker, fiscal_year, periode, parc) DO UPDATE SET
+                     valeur = excluded.valeur, variation = excluded.variation,
+                     source_url = excluded.source_url,
+                     updated_at = CURRENT_TIMESTAMP""",
+                (ticker, fiscal_year, periode or "", parc, valeur, variation,
+                 source_url),
+            )
+            ecrits += 1
+        conn.commit()
+    except Exception:
+        conn.rollback()
+    finally:
+        conn.close()
+    return ecrits
+
+
+def get_telecom_parcs(ticker: str):
+    """Derniers parcs connus d'un operateur, du plus recent au plus ancien."""
+    try:
+        return read_sql_df(
+            """SELECT fiscal_year, periode, parc, valeur, variation
+               FROM telecom_parcs WHERE ticker = ?
+               ORDER BY fiscal_year DESC, periode DESC""",
+            params=(ticker,),
+        )
+    except Exception:
+        return None

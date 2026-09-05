@@ -44,7 +44,8 @@ def _parse_amount(text: str) -> Optional[float]:
     brut = text.strip().replace("\xa0", "").replace(" ", "")
     negative = ("(" in brut and ")" in brut) or brut.startswith("-")
     brut = brut.replace("(", "").replace(")", "").lstrip("-")
-    brut = brut.rstrip(".").rstrip("%")
+    # L'OCR laisse des scories en fin de cellule : « 268537063| », « 1 234] »
+    brut = re.sub(r"[|\]\)\}»\*]+$", "", brut).rstrip(".").rstrip("%")
 
     if "," in brut:
         # La virgule est decimale : les points ne peuvent etre que des milliers.
@@ -488,6 +489,20 @@ _TABLE_LABELS = [
     (r"r.sultat\s+des\s+activit.s(?:\s+ordinaires)?", "ordinary_income"),
     (r"r.sultat\s+hao\b", "hao_income"),
     (r"co.t\s+du\s+risque", "cost_of_risk"),
+    # Lignes du compte de resultat bancaire (plan PCEB) : elles portent le
+    # diagnostic que le seul resultat net ne donne pas.
+    (r"frais\s+g.n.raux", "operating_expenses"),
+    (r"charges\s+g.n.rales\s+d.exploitation", "operating_expenses"),
+    (r"r.sultat\s+brut\s+d.exploitation", "gross_operating_income"),
+    (r"r.sultat\s+avant\s+imp.t", "pretax_income"),
+    # Les telecoms communiquent en EBITDAaL (« after Leases »), pas en EBITDA :
+    # c'est l'indicateur de reference du secteur, celui que suit le marche.
+    (r"ebitda\s*a?\s*l?\b", "ebitda"),
+    (r"exc.dent\s+brut\s+d.exploitation", "ebitda"),
+    (r"d.p.ts?\s+(?:de\s+la\s+)?client[eè]le", "deposits"),
+    (r"ressources\s+client[eè]le", "deposits"),
+    (r"cr.dits?\s+nets?\s+[àa]\s+la\s+client[eè]le", "loans"),
+    (r"cr.dits?\s+[àa]\s+la\s+client[eè]le", "loans"),
     (r"r.sultat\s+net", "net_income"),
     (r"capitaux\s+propres", "equity"),
     (r"total\s+bilan", "total_assets"),
@@ -717,7 +732,7 @@ def _detect_multiplier(text: str):
 _MONEY_FIELDS = ("revenue", "revenue_bank", "net_income", "equity", "total_assets")
 
 
-def _resolve_multiplier(text: str) -> int:
+def _resolve_multiplier(text: str, lignes_cellules: list = None) -> int:
     """Multiplicateur a appliquer, indice faible arbitre par l'ordre de grandeur.
 
     Un en-tete ("Indicateurs en MFCFA") fait foi. Une tournure en prose
@@ -730,7 +745,24 @@ def _resolve_multiplier(text: str) -> int:
     if mult == 1:
         return mult
 
-    brut = _extract_from_text(text, 1, appliquer_plancher=False)
+    # La sonde doit lire les colonnes correctement, sinon deux colonnes fusionnees
+    # ("122 316 132 725") gonflent le maximum et font sauter le multiplicateur.
+    if lignes_cellules:
+        brut = {}
+        for cellules in lignes_cellules:
+            if len(cellules) < 2:
+                continue
+            lib = cellules[0].lower().strip()
+            for motif, champ in _TABLE_LABELS:
+                if champ in brut or not re.match(r"\s*" + motif + r"\b", lib):
+                    continue
+                for cel in cellules[1:]:
+                    v = _parse_amount(cel)
+                    if v and len(re.sub(r"\D", "", cel)) >= 3:
+                        brut[champ] = v
+                        break
+    else:
+        brut = _extract_from_text(text, 1, appliquer_plancher=False)
     valeurs = [abs(v) for k, v in brut.items() if k in _MONEY_FIELDS and v]
     maxi = max(valeurs) if valeurs else 0
 
@@ -843,6 +875,101 @@ def _lignes_exploitables(texte: str) -> int:
     return sum(1 for l in (texte or "").split("\n") if _LIGNE_UTILE.search(l))
 
 
+def _ocr_cellules(img, psm: int = 6) -> list:
+    """Lignes decoupees en cellules a partir des coordonnees rendues par l'OCR.
+
+    Meme principe que `_lignes_par_coordonnees` pour le texte natif : sur un
+    tableau scanne, l'espace qui separe deux colonnes est indistinguable de
+    celui qui separe deux groupes de milliers *dans le texte*, mais pas dans
+    les positions. Sans cela, un meme rapport rend un produit net bancaire de
+    78,9 Mds a une extraction et 65,1 Mds a la suivante, selon la facon dont
+    tesseract a recolle les colonnes ce jour-la.
+    """
+    try:
+        import pytesseract
+        from pytesseract import Output
+    except ImportError:
+        return []
+
+    gris = img.convert("L")
+    try:
+        d = pytesseract.image_to_data(gris, lang="fra+eng",
+                                      config=f"--psm {psm}", output_type=Output.DICT)
+    except Exception:
+        try:
+            d = pytesseract.image_to_data(gris, config=f"--psm {psm}",
+                                          output_type=Output.DICT)
+        except Exception:
+            return []
+
+    mots = []
+    for i, texte in enumerate(d.get("text", [])):
+        texte = (texte or "").strip()
+        if not texte:
+            continue
+        try:
+            conf = float(d["conf"][i])
+        except (ValueError, TypeError):
+            conf = -1
+        if conf < 40:          # en dessous, tesseract devine plus qu'il ne lit
+            continue
+        mots.append({
+            "texte": texte, "x0": d["left"][i], "x1": d["left"][i] + d["width"][i],
+            "hauteur": d["height"][i],
+            "ligne": (d["block_num"][i], d["par_num"][i], d["line_num"][i]),
+        })
+    if not mots:
+        return []
+
+    hauteur = sorted(m["hauteur"] for m in mots)[len(mots) // 2] or 20
+    ecart_colonne = 2.0 * hauteur
+
+    groupes = {}
+    for m in mots:
+        groupes.setdefault(m["ligne"], []).append(m)
+
+    out = []
+    for cle in sorted(groupes):
+        ligne = sorted(groupes[cle], key=lambda m: m["x0"])
+        cellules, courante, precedent = [], [], None
+        for m in ligne:
+            if precedent is not None and m["x0"] - precedent["x1"] > ecart_colonne:
+                cellules.append(" ".join(courante))
+                courante = []
+            courante.append(m["texte"])
+            precedent = m
+        if courante:
+            cellules.append(" ".join(courante))
+        if cellules:
+            out.append(cellules)
+    return out
+
+
+def _extract_with_ocr_cellules(pdf_path: str) -> list:
+    """Lignes-cellules de toutes les pages d'un PDF scanne."""
+    try:
+        import fitz
+        from PIL import Image
+    except ImportError:
+        return []
+    try:
+        doc = fitz.open(pdf_path)
+    except Exception:
+        return []
+    lignes = []
+    try:
+        for i in range(min(len(doc), 15)):
+            try:
+                pix = doc[i].get_pixmap(dpi=300)
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                lignes.extend(_ocr_cellules(img))
+            except Exception as e:
+                print(f"OCR cellules page {i + 1}: {e}", flush=True)
+    finally:
+        doc.close()
+    return lignes
+
+
 def _extract_with_ocr(pdf_path: str) -> str:
     """Rend chaque page en image via PyMuPDF puis l'OCR.
 
@@ -907,6 +1034,15 @@ _PROSE = [
      r"(milliers|millions|milliards)", "net_income"),
     (r"r.sultat\s+des\s+activit.s\s+ordinaires[^.]{0,100}?([\d][\d\s.,]*)\s*"
      r"(milliers|millions|milliards)", "ordinary_income"),
+    # Encours clientele : les banques BRVM les citent dans leur commentaire, pas
+    # dans le tableau. « Les ressources clientele enregistrent une evolution de
+    # 7,4 % pour s'etablir a 942 692 millions de FCFA ».
+    (r"ressources\s+client[eè]le[^.]{0,120}?([\d][\d\s.,]*)\s*"
+     r"(milliers|millions|milliards)", "deposits"),
+    (r"d[ée]p[oô]ts?\s+(?:de\s+la\s+)?client[eè]le[^.]{0,120}?([\d][\d\s.,]*)\s*"
+     r"(milliers|millions|milliards)", "deposits"),
+    (r"cr[ée]dits?\s+nets?\s+[àa]\s+la\s+client[eè]le[^.]{0,120}?([\d][\d\s.,]*)\s*"
+     r"(milliers|millions|milliards)", "loans"),
 ]
 
 
@@ -985,6 +1121,155 @@ def extract_commentary(texte: str, maxi: int = 1500) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Reconstruction des colonnes par coordonnees
+# ---------------------------------------------------------------------------
+
+def _lignes_par_coordonnees(page, ecart_colonne: float = 12.0,
+                            avec_positions: bool = False) -> list:
+    """Reconstitue les lignes d'un tableau en cellules, a partir des positions.
+
+    Sans cela, « Produit Net Bancaire 122 316 132 725 +8,5% » est illisible :
+    l'espace qui separe deux colonnes est le meme que celui qui separe les
+    milliers, et le tokeniseur fusionne 122 316 et 132 725 en un seul nombre de
+    122 milliards. Le nombre monstrueux fait ensuite sauter le multiplicateur
+    puis le plancher de plausibilite, et toute la ligne est perdue.
+
+    Les coordonnees, elles, ne mentent pas : un blanc large separe deux
+    colonnes, un blanc etroit separe deux groupes de chiffres.
+    """
+    try:
+        mots = page.extract_words(use_text_flow=False, keep_blank_chars=False)
+    except Exception:
+        return []
+
+    lignes = {}
+    for m in mots:
+        cle = round(m["top"] / 3)          # tolerance verticale
+        lignes.setdefault(cle, []).append(m)
+
+    out = []
+    for cle in sorted(lignes):
+        mots_ligne = sorted(lignes[cle], key=lambda m: m["x0"])
+        cellules, courante = [], []
+        precedent = None
+
+        def _fermer():
+            if not courante:
+                return
+            texte = " ".join(m["text"] for m in courante)
+            cellules.append({"texte": texte, "x0": courante[0]["x0"],
+                             "x1": courante[-1]["x1"]}
+                            if avec_positions else texte)
+
+        for m in mots_ligne:
+            if precedent is not None and m["x0"] - precedent["x1"] > ecart_colonne:
+                _fermer()
+                courante = []
+            courante.append(m)
+            precedent = m
+        _fermer()
+        if cellules:
+            out.append(cellules)
+    return out
+
+
+# Parcs clients des operateurs telecoms. Le chiffre d'affaires n'est que la
+# consequence du parc : c'est lui qui dit si l'operateur recrute ou s'erode.
+_PARCS = [
+    (r"clients?\s+mobile\b", "parc_mobile"),
+    (r"actifs?\s+orange\s+money|clients?\s+orange\s+money|mobile\s+money",
+     "parc_mobile_money"),
+    (r"clients?\s+fibre", "parc_fibre"),
+    (r"clients?\s+fixe\s+broadband|fixe\s+haut\s+d.bit", "parc_fixe_broadband"),
+    (r"data\s+mobile", "parc_data_mobile"),
+    (r"actifs?\s+4g", "parc_4g"),
+    (r"parc\s+fmi", "parc_total"),
+]
+
+_UNITES_PARC = {"millions": 1_000_000, "million": 1_000_000,
+                "milliers": 1_000, "k": 1_000, "millier": 1_000}
+
+
+def _extract_parcs(pages_cellules: list) -> dict:
+    """Parcs clients lus dans les vignettes ou tableaux d'un rapport telecom.
+
+    La mise en page est en tuiles : une ligne de libelles, puis la valeur, puis
+    l'unite, puis la variation annuelle — chaque tuile occupant sa colonne. On
+    rattache donc la valeur au libelle par le RECOUVREMENT HORIZONTAL, seul
+    lien fiable entre des lignes distinctes.
+    """
+    parcs = {}
+    for lignes in pages_cellules:
+        for i, cellules in enumerate(lignes):
+            for cel in cellules:
+                bas = cel["texte"].lower().strip()
+                champ = next((c for motif, c in _PARCS if re.search(motif, bas)), None)
+                if champ is None or champ in parcs:
+                    continue
+                # On cherche, dans les lignes suivantes, un nombre dont la
+                # colonne recouvre celle du libelle.
+                valeur = variation = None
+                # L'unite peut etre dans le libelle — « Parc FMI (en milliers) »
+                m_unite = re.search(r"\((?:en\s+)?(milliers?|millions?)\)", bas)
+                unite = _UNITES_PARC.get(m_unite.group(1)) if m_unite else None
+
+                # On parcourt toute la fenetre sans s'arreter : la variation
+                # annuelle arrive apres l'unite, deux ou trois lignes plus bas.
+                # Fenetre large : du texte narratif s'intercale entre le
+                # libelle, la valeur et sa variation dans les mises en page en
+                # tuiles. Le recouvrement horizontal reste le garde-fou.
+                for suivante in lignes[i + 1:i + 9]:
+                    for c2 in suivante:
+                        if c2["x1"] < cel["x0"] - 5 or c2["x0"] > cel["x1"] + 5:
+                            continue          # autre colonne
+                        t = c2["texte"].strip()
+                        if re.search(r"[-+]?[\d.,]+\s*%", t):
+                            if variation is None:
+                                v = re.search(r"([-+]?[\d.,]+)\s*%", t)
+                                variation = _parse_amount(v.group(1).lstrip("+"))
+                                if v.group(1).startswith("-") and variation:
+                                    variation = -abs(variation)
+                        elif valeur is None and re.fullmatch(r"[\d][\d\s.,]*", t):
+                            valeur = _parse_amount(t)
+                        elif unite is None and t.lower() in _UNITES_PARC:
+                            unite = _UNITES_PARC[t.lower()]
+                if valeur:
+                    parcs[champ] = {"valeur": valeur * (unite or 1),
+                                    "variation": variation}
+    return parcs
+
+
+def _extract_from_cells(lignes: list, mult: float) -> dict:
+    """Lit les libelles connus dans des lignes deja decoupees en cellules."""
+    data = {}
+    for cellules in lignes:
+        if len(cellules) < 2:
+            continue
+        libelle = cellules[0].lower().strip()
+        for motif, champ in _TABLE_LABELS:
+            if champ in data:
+                continue
+            if not re.match(r"\s*" + motif + r"\b", libelle):
+                continue
+            # La periode courante est la PREMIERE colonne chiffree. Si elle est
+            # inexploitable, on abandonne ce libelle : continuer reviendrait a
+            # prendre la colonne suivante, qui est un autre exercice ou une
+            # variation. Sur un scan SITAB, cette errance ramenait 513 728 —
+            # la colonne « variation en valeur » — comme chiffre d'affaires.
+            for cel in cellules[1:]:
+                val = _parse_amount(cel)
+                if val is None or val == 0 or len(re.sub(r"\D", "", cel)) < 3:
+                    continue                      # cellule vide ou parasite
+                if float(val).is_integer() and 1990 <= abs(val) <= 2100:
+                    continue                      # millesime
+                montant = val * mult
+                if abs(montant) >= 100_000_000:
+                    data[champ] = montant
+                break
+    return data
+
+
+# ---------------------------------------------------------------------------
 # Main extraction
 # ---------------------------------------------------------------------------
 
@@ -1009,6 +1294,12 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
         "ordinary_income": None,
         "hao_income": None,
         "cost_of_risk": None,
+        "parcs": None,
+        "operating_expenses": None,
+        "gross_operating_income": None,
+        "pretax_income": None,
+        "deposits": None,
+        "loans": None,
     }
 
     is_scanned = False
@@ -1018,9 +1309,14 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
             all_text = ""
             all_tables = []
 
+            lignes_cellules = []
+            pages_positions = []
             for page in pdf.pages[:20]:
                 text = page.extract_text() or ""
                 all_text += text + "\n"
+                lignes_cellules.extend(_lignes_par_coordonnees(page))
+                pages_positions.append(
+                    _lignes_par_coordonnees(page, avec_positions=True))
                 tables = page.extract_tables()
                 for table in tables:
                     if table and len(table) > 1:
@@ -1037,7 +1333,7 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
 
             if not is_scanned:
                 # Detect multiplier
-                data["multiplier"] = _resolve_multiplier(all_text)
+                data["multiplier"] = _resolve_multiplier(all_text, lignes_cellules)
 
                 mult = data["multiplier"]
 
@@ -1056,6 +1352,10 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
                 # Layer 1: text extraction
                 text_data = _extract_from_text(all_text, mult)
 
+                # Couche coordonnees : elle tranche l'ambiguite des colonnes
+                # separees par des espaces, que le texte brut ne permet pas.
+                cell_data = _extract_from_cells(lignes_cellules, mult)
+
                 # Layer 2: row-by-row label matching
                 label_data = _extract_from_tables_rowlabel(all_tables, mult)
 
@@ -1069,9 +1369,20 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
                 ref_data = _extract_syscohada(all_tables, mult) if is_syscohada else {}
 
                 # Merge (higher layers override)
-                # Order: text < bank < label < ifrs < ref (IFRS/SYSCOHADA most reliable)
+                # Order: text < bank < label < cells < ifrs < ref.
+                #
+                # La lecture par coordonnees passe DEVANT `label_data` : cette
+                # derniere depend de la detection de tableaux de pdfplumber, qui
+                # associe parfois un libelle a la mauvaise cellule. Sur le
+                # rapport Orange CI 2025 elle rendait un resultat net de 857 Mds
+                # — superieur a l'EBITDA, donc impossible — la ou le texte et
+                # les coordonnees s'accordaient tous deux sur 167,8 Mds.
+                # IFRS et SYSCOHADA restent au-dessus : leurs codes REF ancrent
+                # semantiquement la valeur, ce qu'aucune heuristique de mise en
+                # page ne peut garantir.
                 all_extracted = {}
-                for d in [text_data, bank_data, label_data, ifrs_data, ref_data]:
+                for d in [text_data, bank_data, label_data, cell_data,
+                          ifrs_data, ref_data]:
                     all_extracted.update({k: v for k, v in d.items() if v is not None})
 
                 # Map to output
@@ -1088,9 +1399,18 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
                 # Lignes du « Tableau d'activité et de résultats » : elles
                 # servent a neutraliser l'exceptionnel et, pour les banques,
                 # a lire le coût du risque rapporté au PNB.
+                # Parcs clients : pour un operateur telecom, le chiffre
+                # d'affaires n'est que la consequence du parc.
+                parcs = _extract_parcs(pages_positions)
+                if parcs:
+                    data["parcs"] = parcs
+
                 data["ordinary_income"] = all_extracted.get("ordinary_income")
                 data["hao_income"] = all_extracted.get("hao_income")
                 data["cost_of_risk"] = all_extracted.get("cost_of_risk")
+                for champ in ("operating_expenses", "gross_operating_income",
+                              "pretax_income", "deposits", "loans"):
+                    data[champ] = all_extracted.get(champ)
                 if data.get("revenue_bank") is None:
                     data["revenue_bank"] = all_extracted.get("revenue_bank")
 
@@ -1123,15 +1443,24 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
             if ocr_text and len(ocr_text) > 100:
                 if not data.get("commentary"):
                     data["commentary"] = extract_commentary(ocr_text)
-                ocr_mult = _resolve_multiplier(ocr_text)
+                # Les coordonnees de l'OCR tranchent l'ambiguite des colonnes,
+                # que le texte recolle ne permet pas de lever.
+                ocr_cellules = _extract_with_ocr_cellules(pdf_path)
+                ocr_mult = _resolve_multiplier(ocr_text, ocr_cellules)
                 data["multiplier"] = ocr_mult
                 ocr_data = _extract_from_text(ocr_text, ocr_mult)
+                # Les cellules priment : elles savent ou s'arrete une colonne.
+                ocr_data.update({k: v for k, v in
+                                 _extract_from_cells(ocr_cellules, ocr_mult).items()
+                                 if v is not None})
                 # Merge tous les champs extractibles depuis l'OCR (couvre ebit,
                 # ebitda, capex, cfo en plus des 5 fields originaux).
                 for field in ("revenue", "revenue_bank", "net_income", "equity",
                                "total_assets", "shares", "ebit", "ebitda",
                                "capex", "cfo", "ordinary_income", "hao_income",
-                               "cost_of_risk"):
+                               "cost_of_risk", "operating_expenses",
+                               "gross_operating_income", "pretax_income",
+                               "deposits", "loans"):
                     if data.get(field) is None and ocr_data.get(field):
                         data[field] = ocr_data[field]
                 if data.get("revenue") is None and ocr_data.get("revenue_bank"):
@@ -1172,7 +1501,10 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
     for k, plancher in (("revenue", 1e8), ("revenue_bank", 1e8),
                         ("total_assets", 1e8), ("equity", 1e8),
                         ("net_income", 1e6), ("ordinary_income", 1e6),
-                        ("hao_income", 1e6), ("cost_of_risk", 1e6)):
+                        ("hao_income", 1e6), ("cost_of_risk", 1e6),
+                        ("operating_expenses", 1e6),
+                        ("gross_operating_income", 1e6),
+                        ("pretax_income", 1e6), ("deposits", 1e8), ("loans", 1e8)):
         v = data.get(k)
         if v is not None and 0 < abs(v) < plancher:
             data[k] = None
