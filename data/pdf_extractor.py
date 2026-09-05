@@ -458,14 +458,44 @@ def _extract_bank_chiffres_cles(all_tables: list, mult: float) -> dict:
 # premier nombre.
 _NUM_TOKEN = re.compile(r"-?\d+(?:[ .]\d{3})*(?:,\d+)?(?!\d)")
 
+# L'ordre compte : "resultat des activites ordinaires" doit etre teste AVANT
+# "resultat net", sinon le motif le plus court capterait la ligne.
 _TABLE_LABELS = [
     (r"chiffre\s+d.affaires", "revenue"),
     (r"produit\s+net\s+bancaire", "revenue_bank"),
+    # « ordinaires » est optionnel : SOGB intercale la ligne de montants entre
+    # « Résultat des activités » et sa fin de libelle. Aucune ambiguite, il n'y
+    # a pas d'autre ligne commencant par « Résultat des activités » dans ces
+    # tableaux (le titre « Tableau d'activité et de résultat » ne commence pas
+    # la ligne par ce libelle).
+    (r"r.sultat\s+des\s+activit.s(?:\s+ordinaires)?", "ordinary_income"),
+    (r"r.sultat\s+hao\b", "hao_income"),
+    (r"co.t\s+du\s+risque", "cost_of_risk"),
     (r"r.sultat\s+net", "net_income"),
     (r"capitaux\s+propres", "equity"),
     (r"total\s+bilan", "total_assets"),
     (r"total\s+(?:de\s+l.)?actif", "total_assets"),
 ]
+
+
+# Les extracteurs PDF coupent les libelles longs en fin de ligne : SOGB rend
+# « Résultat des activités » puis « ordinaires » sur la ligne suivante, ce qui
+# rend le libelle introuvable. On recolle avant d'analyser.
+_LIBELLES_SCINDES = [
+    (r"(activit[ée]s)\s*\n\s*(ordinaires)", r"\1 \2"),
+    (r"(r[ée]sultat)\s*\n\s*(des\s+activit[ée]s)", r"\1 \2"),
+    (r"(r[ée]sultat)\s*\n\s*(net|hao\b)", r"\1 \2"),
+    (r"(co[uû]t)\s*\n\s*(du\s+risque)", r"\1 \2"),
+    (r"(produit\s+net)\s*\n\s*(bancaire)", r"\1 \2"),
+    (r"(chiffre)\s*\n\s*(d.affaires)", r"\1 \2"),
+    (r"(capitaux)\s*\n\s*(propres)", r"\1 \2"),
+]
+
+
+def _recoller_libelles(texte: str) -> str:
+    for motif, remplacement in _LIBELLES_SCINDES:
+        texte = re.sub(motif, remplacement, texte, flags=re.IGNORECASE)
+    return texte
 
 
 def _extract_from_text(all_text: str, mult: float,
@@ -478,7 +508,7 @@ def _extract_from_text(all_text: str, mult: float,
     structure (Sonatel Q1 — voir notes/parser_slides.md).
     """
     data = {}
-    text_lower = all_text.lower()
+    text_lower = _recoller_libelles(all_text).lower()
 
     # `{0,80}` et non `*` : sans borne de distance, un label allait chercher
     # le premier `:` du document (souvent un numero de registre en pied de
@@ -539,6 +569,42 @@ def _extract_from_text(all_text: str, mult: float,
                     if appliquer_plancher and abs(montant) < 100_000_000:
                         continue
                     data[field] = montant
+                    break
+
+    # Deuxieme passe : libelle SEUL sur sa ligne, montants sur les lignes
+    # suivantes. Tesseract rend le meme tableau tantot ligne par ligne, tantot
+    # colonne par colonne — dans le second cas on lit "Résultat net" puis
+    # "8 640 318" sur la ligne d'apres. Une ligne portant PLUSIEURS libelles
+    # est ignoree : impossible de savoir a qui appartient le premier montant.
+    if not devise_etrangere:
+        lignes = text_lower.split("\n")
+        for i, ligne in enumerate(lignes):
+            libelles = [(pat, champ) for pat, champ in _TABLE_LABELS
+                        if re.search(pat, ligne)]
+            if len(libelles) != 1:
+                continue
+            label_pat, field = libelles[0]
+            if field in data:
+                continue
+            if not re.match(r"\s*" + label_pat + r"[\s:.]*$", ligne):
+                continue
+            for suivante in lignes[i + 1:i + 4]:
+                trouve = False
+                for tok in _NUM_TOKEN.findall(suivante):
+                    val = _parse_amount(tok)
+                    if val is None or val == 0:
+                        continue
+                    if len(re.sub(r"\D", "", tok)) < 3:
+                        continue
+                    if float(val).is_integer() and 1990 <= abs(val) <= 2100:
+                        continue
+                    montant = val * mult
+                    if appliquer_plancher and abs(montant) < 100_000_000:
+                        continue
+                    data[field] = montant
+                    trouve = True
+                    break
+                if trouve:
                     break
 
     # Patterns "label suivi de chiffre + unité explicite" (slides type
@@ -700,9 +766,14 @@ def ocr_available() -> bool:
         return False
 
 
-def _ocr_image(img) -> str:
+def _ocr_image(img, psm: int = 6) -> str:
     """OCR d'une image PIL. easyocr si dispo, sinon pytesseract (tesseract-ocr
-    + packs fra/eng au niveau OS, cf packages.txt)."""
+    + packs fra/eng au niveau OS, cf packages.txt).
+
+    `psm` = page segmentation mode de tesseract. Le 6 ("bloc uniforme") rend en
+    general un tableau ligne par ligne ; le 4 ("colonne de texte de taille
+    variable") s'en sort mieux quand le 6 separe les libelles des chiffres.
+    """
     reader = _get_ocr_reader()
     if reader is not None:
         try:
@@ -730,14 +801,29 @@ def _ocr_image(img) -> str:
     for lang in ("fra+eng", "fra", "eng", None):
         try:
             if lang is None:
-                return pytesseract.image_to_string(gray, config="--psm 6")
-            return pytesseract.image_to_string(gray, lang=lang, config="--psm 6")
+                return pytesseract.image_to_string(gray, config=f"--psm {psm}")
+            return pytesseract.image_to_string(gray, lang=lang,
+                                               config=f"--psm {psm}")
         except Exception as e:
             # Pack de langue absent → on retente avec le suivant
             last_err = e
             continue
     print(f"OCR pytesseract error: {last_err}")
     return ""
+
+
+# Ancre en debut de ligne, comme le parseur de tableau : sans cela, une phrase
+# du commentaire ("le resultat des activites ordinaires atteint 11,5 milliards")
+# passait pour une ligne de tableau et masquait l'echec de segmentation.
+_LIGNE_UTILE = re.compile(
+    r"^\s*(?:chiffre\s+d.affaires|produit\s+net\s+bancaire|r.sultat|"
+    r"co.t\s+du\s+risque|capitaux\s+propres|total\s+bilan)[^\d\n]{0,40}[-\u2212]?\d",
+    re.IGNORECASE)
+
+
+def _lignes_exploitables(texte: str) -> int:
+    """Nombre de lignes ou un libelle comptable est suivi d'un montant."""
+    return sum(1 for l in (texte or "").split("\n") if _LIGNE_UTILE.search(l))
 
 
 def _extract_with_ocr(pdf_path: str) -> str:
@@ -757,20 +843,128 @@ def _extract_with_ocr(pdf_path: str) -> str:
         print(f"OCR error: ouverture PDF ({e})")
         return ""
 
-    all_text = ""
-    try:
+    def _rendu(psm):
+        texte = ""
         from PIL import Image
-        max_pages = min(len(doc), 15)
-        for i in range(max_pages):
+        for i in range(min(len(doc), 15)):
             try:
                 pix = doc[i].get_pixmap(dpi=300)
                 img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                all_text += _ocr_image(img) + "\n\n"
+                texte += _ocr_image(img, psm=psm) + "\n\n"
             except Exception as e:
                 print(f"OCR error page {i + 1}: {e}")
+        return texte
+
+    try:
+        all_text = _rendu(6)
+        # Le decoupage de tesseract n'est pas stable d'un document a l'autre :
+        # il lui arrive de rendre les libelles dans un bloc et les chiffres dans
+        # un autre, ce qui rend le tableau illisible ligne par ligne. Quand
+        # aucune ligne "libelle + montant" ne ressort, on retente avec un autre
+        # mode de segmentation plutot que d'abandonner le tableau.
+        if _lignes_exploitables(all_text) == 0:
+            autre = _rendu(4)
+            if _lignes_exploitables(autre) > 0:
+                print("OCR: segmentation psm 6 sterile, bascule en psm 4",
+                      flush=True)
+                all_text = autre
     finally:
         doc.close()
     return all_text
+
+
+# Lecture par la PROSE, en dernier recours. Quand l'OCR desorganise le tableau
+# (BOA Burkina S1-2026 : les six libelles fusionnes sur une ligne, les montants
+# eparpilles), le commentaire de l'emetteur reste lisible et chiffre : « Le
+# produit net bancaire totalise 27 539 millions de FCFA ». L'unite est prise
+# DANS la phrase, pas dans le multiplicateur du document : c'est ce qui rend
+# cette lecture independante des autres.
+_ECHELLES = {"milliers": 1_000, "millions": 1_000_000, "milliards": 1_000_000_000}
+
+_PROSE = [
+    (r"produit\s+net\s+bancaire[^.]{0,80}?([\d][\d\s.,]*)\s*"
+     r"(milliers|millions|milliards)", "revenue_bank"),
+    (r"chiffre\s+d.affaires[^.]{0,80}?([\d][\d\s.,]*)\s*"
+     r"(milliers|millions|milliards)", "revenue"),
+    (r"r.sultat\s+net[^.]{0,100}?([\d][\d\s.,]*)\s*"
+     r"(milliers|millions|milliards)", "net_income"),
+    (r"r.sultat\s+des\s+activit.s\s+ordinaires[^.]{0,100}?([\d][\d\s.,]*)\s*"
+     r"(milliers|millions|milliards)", "ordinary_income"),
+]
+
+
+def _extract_from_prose(texte: str) -> dict:
+    """Montants cites en toutes lettres dans le commentaire de l'emetteur."""
+    bas = re.sub(r"\s+", " ", (texte or "").lower())
+    trouve = {}
+    for motif, champ in _PROSE:
+        if champ in trouve:
+            continue
+        m = re.search(motif, bas)
+        if not m:
+            continue
+        val = _parse_amount(m.group(1))
+        if val is None or val == 0:
+            continue
+        montant = val * _ECHELLES[m.group(2)]
+        if abs(montant) >= 100_000_000:
+            trouve[champ] = montant
+    return trouve
+
+
+# ---------------------------------------------------------------------------
+# Commentaire de l'emetteur
+# ---------------------------------------------------------------------------
+
+# Les rapports d'activite BRVM suivent un plan normalise : un tableau chiffre,
+# puis une section de commentaire redigee. C'est la seule prose de premiere
+# main disponible sur une societe cotee — elle alimente la revue de presse.
+_COMMENT_DEBUT = re.compile(
+    r"(?:^|\n)\s*(?:i{1,3}|2|II)\s*[-.)\s]*\s*commentaires?\b[^\n]*",
+    re.IGNORECASE,
+)
+
+# Fin de section : mentions de bas de page et formules de cloture
+_COMMENT_FIN = re.compile(
+    r"(?:^|\n)\s*(?:fait\s+[àa]\s|le\s+directeur|la\s+direction\s+g[ée]n[ée]rale"
+    r"|si[èe]ge\s+social|soci[ée]t[ée]\s+anonyme\s+[àa]\s+conseil"
+    r"|www\.|t[ée]l\s*\.?\s*:)",
+    re.IGNORECASE,
+)
+
+
+def extract_commentary(texte: str, maxi: int = 1500) -> str:
+    """Section "Commentaires" d'un rapport d'activite, ou chaine vide.
+
+    Le texte est renvoye tel quel, sans reformulation : c'est une citation de
+    l'emetteur, pas une synthese.
+    """
+    if not texte:
+        return ""
+
+    m = _COMMENT_DEBUT.search(texte)
+    if m is None:
+        return ""
+
+    suite = texte[m.end():]
+    fin = _COMMENT_FIN.search(suite)
+    if fin is not None:
+        suite = suite[:fin.start()]
+
+    # Normalisation : les retours a la ligne du PDF coupent au milieu des
+    # phrases, on ne garde que les vrais changements de paragraphe.
+    suite = re.sub(r"\n{2,}", "\x00", suite)
+    suite = re.sub(r"\s*\n\s*", " ", suite)
+    suite = suite.replace("\x00", "\n")
+    suite = re.sub(r"[ \t]{2,}", " ", suite).strip()
+
+    if len(suite) < 80:
+        return ""
+    if len(suite) > maxi:
+        coupe = suite[:maxi]
+        dernier = max(coupe.rfind(". "), coupe.rfind(" ; "))
+        suite = (coupe[:dernier + 1] if dernier > maxi // 2 else coupe).strip() + " […]"
+    return suite
 
 
 # ---------------------------------------------------------------------------
@@ -793,6 +987,11 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
         "dividends_total": None,
         "shares": None,
         "multiplier": 1,
+        "commentary": "",
+        "revenue_bank": None,
+        "ordinary_income": None,
+        "hao_income": None,
+        "cost_of_risk": None,
     }
 
     is_scanned = False
@@ -813,6 +1012,11 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
             text_stripped = all_text.strip()
             if len(text_stripped) < 100 and not all_tables:
                 is_scanned = True
+
+            # Prose de l'emetteur : alimente la revue de presse, sans effet
+            # sur les chiffres.
+            if not data.get("commentary"):
+                data["commentary"] = extract_commentary(all_text)
 
             if not is_scanned:
                 # Detect multiplier
@@ -864,6 +1068,14 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
                 data["ebitda"] = all_extracted.get("ebitda")
                 data["total_assets"] = all_extracted.get("total_assets")
                 data["shares"] = all_extracted.get("shares")
+                # Lignes du « Tableau d'activité et de résultats » : elles
+                # servent a neutraliser l'exceptionnel et, pour les banques,
+                # a lire le coût du risque rapporté au PNB.
+                data["ordinary_income"] = all_extracted.get("ordinary_income")
+                data["hao_income"] = all_extracted.get("hao_income")
+                data["cost_of_risk"] = all_extracted.get("cost_of_risk")
+                if data.get("revenue_bank") is None:
+                    data["revenue_bank"] = all_extracted.get("revenue_bank")
 
                 if all_extracted.get("total_debt") is not None:
                     data["total_debt"] = abs(all_extracted["total_debt"])
@@ -892,17 +1104,35 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
         try:
             ocr_text = _extract_with_ocr(pdf_path)
             if ocr_text and len(ocr_text) > 100:
+                if not data.get("commentary"):
+                    data["commentary"] = extract_commentary(ocr_text)
                 ocr_mult = _resolve_multiplier(ocr_text)
                 data["multiplier"] = ocr_mult
                 ocr_data = _extract_from_text(ocr_text, ocr_mult)
                 # Merge tous les champs extractibles depuis l'OCR (couvre ebit,
                 # ebitda, capex, cfo en plus des 5 fields originaux).
-                for field in ("revenue", "net_income", "equity", "total_assets",
-                               "shares", "ebit", "ebitda", "capex", "cfo"):
+                for field in ("revenue", "revenue_bank", "net_income", "equity",
+                               "total_assets", "shares", "ebit", "ebitda",
+                               "capex", "cfo", "ordinary_income", "hao_income",
+                               "cost_of_risk"):
                     if data.get(field) is None and ocr_data.get(field):
                         data[field] = ocr_data[field]
                 if data.get("revenue") is None and ocr_data.get("revenue_bank"):
                     data["revenue"] = ocr_data["revenue_bank"]
+
+                # Dernier recours : les montants cites dans le commentaire.
+                prose = _extract_from_prose(ocr_text)
+                for champ, montant in prose.items():
+                    if data.get(champ) is None:
+                        data[champ] = montant
+                        # L'emetteur arrondit dans sa prose (« 70,0 milliards »
+                        # pour 70 045 411 000) : on trace la provenance pour
+                        # que l'audit ne prenne pas cet arrondi pour une erreur.
+                        data.setdefault("champs_prose", []).append(champ)
+                        print(f"[prose] {champ} = {montant:,.0f} "
+                              f"(lu dans le commentaire)", flush=True)
+                if data.get("revenue") is None and prose.get("revenue_bank"):
+                    data["revenue"] = prose["revenue_bank"]
                 data["ocr_used"] = True
         except Exception as e:
             data["ocr_error"] = str(e)
@@ -924,7 +1154,8 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
     # de 50 000 milliards on lit un numero de registre, pas un montant.
     for k, plancher in (("revenue", 1e8), ("revenue_bank", 1e8),
                         ("total_assets", 1e8), ("equity", 1e8),
-                        ("net_income", 1e6)):
+                        ("net_income", 1e6), ("ordinary_income", 1e6),
+                        ("hao_income", 1e6), ("cost_of_risk", 1e6)):
         v = data.get(k)
         if v is not None and 0 < abs(v) < plancher:
             data[k] = None
