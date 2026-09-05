@@ -581,8 +581,17 @@ def comparaison_pairs(secteur: str) -> dict:
         return {"colonnes": [], "lignes": [], "medianes": {}}
     cles = [cle for _, cle, _ in colonnes]
 
+    from data.storage import exercices_annuels
+
+    par_titre = _exercices_du_secteur(secteur)
+    # Le dernier exercice ANNUEL fait foi, pour tout le monde et de la meme
+    # facon que sur la fiche du titre. Retenir « l'exercice qui remplit le
+    # mieux la grille » faisait apparaitre la SIB sur 2024 alors que son
+    # exercice 2025 est publie, et Coris Bank sur un 2026 qui n'existe pas.
+    annuels = exercices_annuels(list(par_titre.keys()))
+
     lignes = []
-    for ticker, exercices in _exercices_du_secteur(secteur).items():
+    for ticker, exercices in par_titre.items():
         # Repere d'echelle : la mediane des chiffres d'affaires du titre. Un
         # exercice qui s'en ecarte d'un facteur cinq porte une periode
         # partielle rangee dans une ligne annuelle — Orange CI affiche 197 Mds
@@ -591,23 +600,31 @@ def comparaison_pairs(secteur: str) -> dict:
                      if e.get("revenue") and e["revenue"] == e["revenue"])
         _repere = _ca[len(_ca) // 2] if _ca else None
 
-        meilleur, meilleur_compte, meilleure_annee = None, 0, None
-        for exercice in exercices[:5]:          # au-dela, l'info est trop vieille
+        # On ne retient QU'UN exercice : le dernier annuel publie. S'il est
+        # pauvre, la ligne sera clairsemee — c'est l'etat reel de la donnee,
+        # et le dire vaut mieux que d'aligner des titres sur des annees
+        # differentes en croyant comparer.
+        annees_titre = annuels.get(ticker) or set()
+        retenu = None
+        for exercice in exercices[:6]:
+            annee = exercice.get("fiscal_year")
+            if annees_titre and annee not in annees_titre:
+                continue
             _valeur = exercice.get("revenue")
             if (_repere and _valeur
                     and (abs(_valeur) * 3 < _repere or abs(_valeur) > 3 * _repere)):
-                continue
-            try:
-                ratios = compute_ratios(exercice)
-            except Exception:
-                continue
-            compte = sum(1 for c in cles if ratios.get(c) is not None)
-            # A egalite, l'exercice le plus recent l'emporte : la liste est
-            # deja triee du plus recent au plus ancien.
-            if compte > meilleur_compte:
-                meilleur, meilleur_compte = ratios, compte
-                meilleure_annee = exercice.get("fiscal_year")
-        if not meilleur or not meilleur_compte:
+                continue          # periode partielle logee dans une ligne annuelle
+            retenu = exercice
+            break
+
+        if retenu is None:
+            continue
+        try:
+            meilleur = compute_ratios(retenu)
+        except Exception:
+            continue
+        meilleure_annee = retenu.get("fiscal_year")
+        if not any(meilleur.get(c) is not None for c in cles):
             continue
         lignes.append({
             "ticker": ticker,
@@ -625,17 +642,24 @@ def comparaison_pairs(secteur: str) -> dict:
             return valeurs[milieu]
         return (valeurs[milieu - 1] + valeurs[milieu]) / 2
 
-    medianes = {}
+    medianes, bornes, effectifs = {}, {}, {}
     for cle in cles:
         observees = [l["valeurs"].get(cle) for l in lignes]
         observees = [v for v in observees if v is not None]
+        effectifs[cle] = len(observees)
         # Meme exigence qu'ailleurs : une mediane sur moins de trois
         # observations decrit une societe, pas un secteur.
         medianes[cle] = (_mediane(observees)
                          if len(observees) >= MIN_OBSERVATIONS else None)
+        # Les bornes situent le titre dans la dispersion du secteur : une
+        # valeur proche de la mediane ne dit pas la meme chose selon que les
+        # pairs sont groupes ou disperses.
+        bornes[cle] = ((min(observees), max(observees))
+                       if len(observees) >= MIN_OBSERVATIONS else None)
 
     lignes.sort(key=lambda l: -sum(1 for v in l["valeurs"].values() if v is not None))
-    return {"colonnes": colonnes, "lignes": lignes, "medianes": medianes}
+    return {"colonnes": colonnes, "lignes": lignes, "medianes": medianes,
+            "bornes": bornes, "effectifs": effectifs}
 
 
 def parcs_du_secteur() -> dict:

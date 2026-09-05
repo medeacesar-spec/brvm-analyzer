@@ -823,6 +823,54 @@ def save_fundamentals(data: dict) -> int:
     return row_id
 
 
+TYPES_ANNUELS = ("rapport_annuel", "etats_financiers")
+
+
+def exercices_annuels(tickers=None) -> dict:
+    """Exercices pour lesquels un document ANNUEL est reference.
+
+    C'est le seul signal qui ne se devine pas. Le cycle de publication UEMOA
+    veut qu'un exercice N paraisse au printemps N+1 ; pendant l'annee N il
+    n'existe que des trimestriels et des semestriels. Un exercice sans
+    document annuel n'est donc pas un exercice clos, quoi qu'en dise la table
+    des fondamentaux.
+
+    Une seule requete, pour que la fiche d'un titre et la comparaison
+    sectorielle s'accordent toujours sur la meme annee — c'est precisement
+    leur desaccord qui faisait apparaitre la SIB sur 2024 dans le tableau des
+    pairs alors que son exercice 2025 est publie.
+    """
+    conn = get_connection()
+    try:
+        marques = ",".join("?" * len(TYPES_ANNUELS))
+        if tickers:
+            liste = list(tickers)
+            place = ",".join("?" * len(liste))
+            lignes = conn.execute(
+                f"""SELECT DISTINCT ticker, fiscal_year FROM report_links
+                    WHERE report_type IN ({marques}) AND ticker IN ({place})""",
+                (*TYPES_ANNUELS, *liste),
+            ).fetchall()
+        else:
+            lignes = conn.execute(
+                f"""SELECT DISTINCT ticker, fiscal_year FROM report_links
+                    WHERE report_type IN ({marques})""",
+                TYPES_ANNUELS,
+            ).fetchall()
+    except Exception:
+        conn.close()
+        return {}
+    conn.close()
+
+    sortie = {}
+    for ligne in lignes:
+        d = dict(ligne)
+        annee = d.get("fiscal_year")
+        if d.get("ticker") and annee:
+            sortie.setdefault(d["ticker"], set()).add(int(annee))
+    return sortie
+
+
 def get_fundamentals(ticker: str, fiscal_year: Optional[int] = None) -> Optional[dict]:
     """Récupère les données fondamentales d'un titre.
     Sans fiscal_year, prend la dernière année ayant revenue + net_income.
@@ -865,19 +913,7 @@ def get_fundamentals(ticker: str, fiscal_year: Optional[int] = None) -> Optional
             # pendant l'année N, il n'existe que des trimestriels et des
             # semestriels. Un exercice sans document annuel n'est donc pas un
             # exercice clos, quoi qu'en dise la table.
-            annuels = set()
-            try:
-                for ligne in conn.execute(
-                    """SELECT DISTINCT fiscal_year FROM report_links
-                       WHERE ticker = ? AND report_type IN
-                             ('rapport_annuel', 'etats_financiers')""",
-                    (ticker,),
-                ).fetchall():
-                    annee = dict(ligne).get("fiscal_year")
-                    if annee:
-                        annuels.add(int(annee))
-            except Exception:
-                annuels = set()
+            annuels = exercices_annuels([ticker]).get(ticker, set())
 
             for candidat in candidats:
                 if candidat.get("fiscal_year") in annuels:
