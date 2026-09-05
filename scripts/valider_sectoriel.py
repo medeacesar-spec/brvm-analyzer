@@ -67,7 +67,8 @@ def main(dry_run: bool = False) -> None:
     conn = get_connection()
     lignes = [dict(l) for l in conn.execute(
         "SELECT id, ticker, fiscal_year, sector, revenue, ebitda, cost_of_risk, "
-        "operating_expenses, gross_operating_income, deposits, loans "
+        "operating_expenses, gross_operating_income, deposits, loans, "
+        "total_assets, net_income "
         "FROM fundamentals "
         "ORDER BY ticker, fiscal_year"
     ).fetchall()]
@@ -99,6 +100,32 @@ def main(dry_run: bool = False) -> None:
                 annulations.append((
                     l, ["operating_expenses", "gross_operating_income"],
                     f"identite non tenue ({ecart*100:.0f} % d'ecart)"))
+
+        # Un resultat net ne peut pas exceder le total de bilan : l'actif
+        # porte tout ce que la societe possede, le benefice d'un exercice en
+        # est une fraction. Sept lignes violaient cette impossibilite.
+        traites = set()
+        actif_v = _valeur(l, "total_assets")
+        rn_v = _valeur(l, "net_income")
+        if actif_v and rn_v and abs(rn_v) > abs(actif_v):
+            autres = [abs(x["total_assets"]) for x in lignes
+                      if x["ticker"] == l["ticker"] and x is not l
+                      and _valeur(x, "total_assets")]
+            repere_actif = statistics.median(autres) if len(autres) >= 2 else None
+            corrigee = _corriger_echelle(actif_v, repere_actif)
+            if corrigee:
+                traites.add((l["id"], "total_assets"))
+                corrections.append((
+                    l, "total_assets", corrigee,
+                    f"echelle retablie : total de bilan "
+                    f"{abs(actif_v)/1e9:,.2f} Mds -> {abs(corrigee)/1e9:,.1f} Mds "
+                    f"(resultat net {abs(rn_v)/1e9:,.1f} Mds superieur au bilan)"))
+            else:
+                traites.add((l["id"], "total_assets"))
+                annulations.append((
+                    l, ["total_assets"],
+                    f"total de bilan impossible : {abs(actif_v)/1e9:,.2f} Mds "
+                    f"pour un resultat net de {abs(rn_v)/1e9:,.1f} Mds"))
 
         # Marge brute d'exploitation : un resultat brut represente entre 5 et
         # 100 % du produit net bancaire. ETI affichait 0,05 % — son RBE etait
@@ -132,9 +159,14 @@ def main(dry_run: bool = False) -> None:
         # quand ses autres exercices en donnent 1 090 a 1 289 MILLIARDS —
         # facteur mille. Le ratio credits/depots ressortait a 85 548 %, ce
         # que la mediane du secteur masquait et que la moyenne a revele.
-        for champ in ("deposits", "loans"):
+        for champ in ("deposits", "loans", "total_assets"):
             valeur = _valeur(l, champ)
             if not valeur:
+                continue
+            # Les deux regles se recoupent sur le total de bilan : la premiere
+            # le juge face au resultat net, celle-ci face a l'historique. Sans
+            # ce garde, la meme correction serait rapportee deux fois.
+            if (l["id"], champ) in traites:
                 continue
             autres = [abs(x[champ]) for x in lignes
                       if x["ticker"] == l["ticker"] and x is not l
@@ -148,10 +180,22 @@ def main(dry_run: bool = False) -> None:
             # fois trop faible ; la mediane bascule alors du mauvais cote et
             # un controle symetrique condamnerait les bonnes annees.
             if repere and abs(valeur) * FACTEUR_ECHELLE < repere:
-                annulations.append((
-                    l, [champ],
-                    f"encours aberrant : {champ} a {abs(valeur)/1e9:,.2f} Mds "
-                    f"contre {repere/1e9:,.1f} Mds les autres exercices"))
+                # Comme ailleurs : on retablit l'echelle quand elle se deduit
+                # sans ambiguite, on n'annule qu'a defaut. BICI Benin portait
+                # 1,84 Md de bilan en 2025 entre 1 517 et 1 908 Mds les annees
+                # voisines — un facteur mille, et un resultat net de 7,9 Mds
+                # superieur a son propre bilan.
+                corrigee = _corriger_echelle(valeur, repere)
+                if corrigee:
+                    corrections.append((
+                        l, champ, corrigee,
+                        f"echelle retablie : {champ} {abs(valeur)/1e9:,.2f} Mds "
+                        f"-> {abs(corrigee)/1e9:,.1f} Mds"))
+                else:
+                    annulations.append((
+                        l, [champ],
+                        f"encours aberrant : {champ} a {abs(valeur)/1e9:,.2f} Mds "
+                        f"contre {repere/1e9:,.1f} Mds les autres exercices"))
 
         # Echelle : on compare aux AUTRES exercices du meme titre.
         autres = [v for v in par_ticker.get(l["ticker"], []) if ca is None or v != abs(ca)]
