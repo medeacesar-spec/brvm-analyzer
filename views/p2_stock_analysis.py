@@ -1464,8 +1464,29 @@ def _render_tendance_periodes(ticker):
                 f"<td style='padding:8px 12px 8px 0;font-size:12.5px;"
                 f"white-space:nowrap;'>{intitule}</td>{cases}</tr>")
 
+    def _rangee_variation(champ):
+        """Le MEME trimestre de l'exercice precedent — seule comparaison qui
+        neutralise la saisonnalite. Confronter un trimestre au precedent
+        ferait passer un creux saisonnier pour un recul."""
+        cases = ""
+        for t in reversed(quatre):
+            var = t.get(champ)
+            if var is None:
+                contenu = "<span style='color:var(--ink-3);'>—</span>"
+            else:
+                couleur = "var(--up)" if var >= 0 else "var(--down)"
+                contenu = (f"<span style='color:{couleur};font-weight:600;'>"
+                           f"{var:+.1f} %</span>")
+            cases += (f"<td style='padding:4px 12px 8px;font-size:11.5px;"
+                      f"text-align:right;'>{contenu}</td>")
+        return (f"<tr><td style='padding:4px 12px 8px 0;font-size:11px;"
+                f"color:var(--ink-3);white-space:nowrap;'>"
+                f"vs même trimestre n-1</td>{cases}</tr>")
+
     ligne_ca = _rangee("Chiffre d’affaires", "revenue")
+    ligne_ca += _rangee_variation("revenue_var")
     ligne_rn = _rangee("Résultat net", "net_income")
+    ligne_rn += _rangee_variation("net_income_var")
     st.markdown(
         f"<div style='overflow-x:auto;border:1px solid var(--border);"
         f"border-radius:10px;padding:6px 14px;background:var(--bg-elev);'>"
@@ -1476,10 +1497,12 @@ def _render_tendance_periodes(ticker):
 
     deduits = sum(1 for t in quatre if t.get("deduit"))
     manquants = sum(1 for t in quatre if t.get("absent"))
-    note = ("Les émetteurs publient en **cumul** depuis le début de "
-            "l'exercice : chaque trimestre est déduit par différence entre "
-            "deux publications — un deuxième trimestre est le semestre moins "
-            "le premier trimestre.")
+    note = ("Chaque trimestre est confronté au **même trimestre de l'exercice "
+            "précédent** : c'est la seule comparaison qui neutralise la "
+            "saisonnalité. Les émetteurs publiant en **cumul** depuis le début "
+            "de l'exercice, un trimestre est déduit par différence entre deux "
+            "publications — un deuxième trimestre est le semestre moins le "
+            "premier trimestre.")
     if deduits:
         note += f" {deduits} trimestre(s) sur 4 obtenu(s) ainsi."
     if manquants:
