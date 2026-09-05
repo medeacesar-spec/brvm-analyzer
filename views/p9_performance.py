@@ -400,6 +400,74 @@ def render():
         ticker_quick_picker(picker_options, key="perf_goto",
                              label="Ouvrir l'analyse d'un titre")
 
+    _render_comparaison_secteurs()
+
+
+def _render_comparaison_secteurs():
+    """Situe les secteurs les uns par rapport aux autres.
+
+    Ce tableau a sa place ici, sur une page qui regarde le marche dans son
+    ensemble, et non sur la fiche d'un titre : quand on analyse une banque, on
+    veut la comparer aux autres banques, pas a la mediane de la cote. Il ne
+    retient donc que les mesures qui gardent le meme sens d'un metier a
+    l'autre — rentabilite, valorisation, rendement.
+    """
+    try:
+        from analysis.sectors import (medianes_intersecteurs,
+                                      COMPARABLES_INTERSECTEURS,
+                                      MIN_OBSERVATIONS)
+        inter = medianes_intersecteurs()
+    except Exception:
+        return
+    if not inter:
+        return
+
+    with st.expander("Comparaison entre secteurs", expanded=False):
+        entetes = "".join(
+            f"<th style='padding:6px 10px;font-size:11px;font-weight:500;"
+            f"color:var(--ink-3);text-align:right;white-space:nowrap;'>{lib}</th>"
+            for lib, _, _ in COMPARABLES_INTERSECTEURS)
+        corps = ""
+        for e in inter:
+            cellules = ""
+            for _, cle, forme in COMPARABLES_INTERSECTEURS:
+                v = e.get(cle)
+                if v is None:
+                    txt = "<span style='color:var(--ink-3);'>—</span>"
+                elif forme == "fois":
+                    txt = f"{v:.1f} ×"
+                else:
+                    txt = f"{v*100:.1f} %"
+                cellules += (
+                    f"<td style='padding:6px 10px;font-size:12.5px;"
+                    f"text-align:right;font-variant-numeric:tabular-nums;'>"
+                    f"{txt}</td>")
+            corps += (
+                f"<tr style='border-top:1px solid var(--border);'>"
+                f"<td style='padding:6px 10px 6px 0;font-size:12.5px;'>"
+                f"{e['secteur']}</td>"
+                f"<td style='padding:6px 10px;font-size:11.5px;"
+                f"color:var(--ink-3);text-align:right;'>{e['effectif']}</td>"
+                f"{cellules}</tr>")
+        st.markdown(
+            f"<div style='overflow-x:auto;'>"
+            f"<table style='width:100%;border-collapse:collapse;'>"
+            f"<thead><tr>"
+            f"<th style='padding:6px 10px;font-size:11px;font-weight:500;"
+            f"color:var(--ink-3);text-align:left;'>Secteur</th>"
+            f"<th style='padding:6px 10px;font-size:11px;font-weight:500;"
+            f"color:var(--ink-3);text-align:right;'>Sociétés</th>"
+            f"{entetes}</tr></thead><tbody>{corps}</tbody></table></div>",
+            unsafe_allow_html=True)
+        st.caption(
+            f"Médianes sectorielles, publiées seulement à partir de "
+            f"{MIN_OBSERVATIONS} sociétés renseignées — en deçà, la médiane "
+            f"refléterait une société et non un secteur, et la case reste "
+            f"vide. Pour les banques, la marge nette se rapporte au produit "
+            f"net bancaire et non à un chiffre d'affaires : elle n'est pas "
+            f"comparable telle quelle aux autres secteurs."
+        )
+
 
 def _display_perf_table(df: pd.DataFrame, col_perf: str):
     """Display a compact performance table."""
