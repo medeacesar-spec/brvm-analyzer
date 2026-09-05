@@ -10,7 +10,7 @@ import re
 
 from config import load_tickers
 from data.storage import (
-    get_all_company_profiles, get_company_news,
+    get_all_company_profiles, get_company_news, get_portfolio,
     save_company_news, save_company_profile,
     get_connection, get_publication_calendar,
     save_fundamentals, save_quarterly_data,
@@ -93,17 +93,89 @@ def render():
     st.title("Infos Marché")
     st.caption("Actualités, panorama des sociétés et calendrier des publications BRVM")
 
-    tab1, tab2, tab3 = st.tabs([
+    tab0, tab1, tab2, tab3 = st.tabs([
+        "Revue de presse",
         "Fil d'actualités",
         "Panorama des sociétés",
         "Calendrier des publications",
     ])
+    with tab0:
+        _render_revue()
     with tab1:
         _render_news_feed()
     with tab2:
         _render_company_overview()
     with tab3:
         _render_publication_calendar()
+
+
+# ════════════════════════════════════════════════════════════════════
+# Tab 0 : Revue de presse
+# ════════════════════════════════════════════════════════════════════
+
+def _render_revue():
+    """Depeches croisees avec les chiffres extraits et le portefeuille.
+
+    On ne reformule jamais : chaque entree combine des chiffres CALCULES par
+    l'app et une citation TEXTUELLE de la source. Le fil brut reste disponible
+    dans l'onglet voisin, pour verifier qu'aucune publication officielle n'est
+    passee a la trappe.
+    """
+    from analysis.revue import build_revue, RUBRIQUES
+
+    col_j, col_p = st.columns([1, 3])
+    with col_j:
+        jours = st.selectbox("Période", [7, 15, 30], index=1,
+                             format_func=lambda j: f"{j} derniers jours")
+
+    try:
+        df_pf = get_portfolio()
+        portefeuille = (df_pf["ticker"].dropna().unique().tolist()
+                        if df_pf is not None and not df_pf.empty else [])
+    except Exception:
+        portefeuille = []
+
+    try:
+        rubriques = build_revue(jours=jours, portefeuille=portefeuille)
+    except Exception as e:
+        st.info(f"Revue indisponible : {e}")
+        return
+
+    if not rubriques or not any(rubriques.values()):
+        st.info(
+            "Aucune dépêche collectée pour l'instant. La collecte tourne avec "
+            "le job quotidien (16h UTC, jours ouvrés)."
+        )
+        return
+
+    for cle, titre in RUBRIQUES:
+        entrees = rubriques.get(cle) or []
+        if not entrees:
+            continue
+        st.markdown(f"#### {titre}  ·  {len(entrees)}")
+        for e in entrees:
+            badges = " ".join(f"`{t}`" for t, _ in e["sujets"])
+            etoile = ("  ★ " + ", ".join(n for _, n in e["portefeuille"])
+                      if e["portefeuille"] else "")
+            st.markdown(
+                f"<div style='border-left:2px solid var(--border);padding:2px 0 10px 12px;"
+                f"margin-bottom:10px;'>"
+                f"<div style='font-size:11px;color:var(--ink-3);'>{e['date']}{etoile}</div>"
+                f"<div style='font-size:14px;font-weight:600;margin:2px 0 4px;'>"
+                f"<a href='{e['url']}' target='_blank' style='color:inherit;"
+                f"text-decoration:none;'>{e['titre']}</a></div>"
+                + (f"<div style='font-size:12px;color:var(--ink-2);'>{e['chiffres']}</div>"
+                   if e["chiffres"] else "")
+                + (f"<div style='font-size:12px;color:var(--ink-3);'>Vos lignes exposées : "
+                   f"{', '.join(n for _, n in e['exposees'])}</div>"
+                   if e.get("exposees") and not e["portefeuille"] else "")
+                + f"<div style='font-size:12.5px;color:var(--ink-2);margin-top:4px;'>"
+                f"{e['texte']}</div>"
+                + (f"<div style='font-size:11px;color:var(--ink-3);margin-top:3px;'>"
+                   f"{badges}</div>" if badges else "")
+                + "</div>",
+                unsafe_allow_html=True,
+            )
 
 
 # ════════════════════════════════════════════════════════════════════

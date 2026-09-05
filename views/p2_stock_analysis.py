@@ -2095,8 +2095,9 @@ def _render_profile(ticker: str, fundamentals: dict):
         # son PER est fige au jour du scraping. On recoupe malgre tout avec la
         # valeur de la source et on signale les ecarts sous la table.
         fund = read_sql_df(
-            "SELECT fiscal_year, revenue, net_income, dps, eps, per, shares "
-            "FROM fundamentals WHERE ticker = ? ORDER BY fiscal_year DESC LIMIT 5",
+            "SELECT fiscal_year, revenue, net_income, dps, eps, per, shares, "
+            "dps_note FROM fundamentals WHERE ticker = ? "
+            "ORDER BY fiscal_year DESC LIMIT 5",
             params=(ticker,),
         )
         if not fund.empty:
@@ -2105,6 +2106,10 @@ def _render_profile(ticker: str, fundamentals: dict):
             cours = fundamentals.get("price") or 0
             nb_titres = fundamentals.get("shares") or 0
             desaccords = []
+            # Un dividende peut melanger de l'ordinaire et de l'exceptionnel :
+            # FILTISAC 2024 verse 2 000,67 F dont 680,67 F de prime de fusion.
+            # L'asterisque evite de laisser croire a un rendement reconductible.
+            notes_dps = []
 
             def _bnpa_calcule(row):
                 titres = row.get("shares") or nb_titres
@@ -2170,12 +2175,17 @@ def _render_profile(ticker: str, fundamentals: dict):
             for _, row in fund.sort_values("fiscal_year", ascending=False).iterrows():
                 bnpa = _bnpa_calcule(row)
                 per = _per_calcule(row, bnpa)
+                note = row.get("dps_note")
+                etoile = ""
+                if note and not pd.isna(note):
+                    etoile = "*"
+                    notes_dps.append(f"**{int(row['fiscal_year'])}** — {note}")
                 rows_html += (
                     f"<tr>"
                     f"<td style='{cell};text-align:left;font-weight:500;'>{int(row['fiscal_year'])}</td>"
                     f"<td style='{cell}'>{_money(row['revenue'])}</td>"
                     f"<td style='{cell}'>{_money(row['net_income'])}</td>"
-                    f"<td style='{cell}'>{_int(row['dps'])}</td>"
+                    f"<td style='{cell}'>{_int(row['dps'])}{etoile}</td>"
                     f"<td style='{cell}'>{_int(bnpa)}</td>"
                     f"<td style='{cell}'>{_dec(per)}</td>"
                     f"</tr>"
@@ -2193,6 +2203,8 @@ def _render_profile(ticker: str, fundamentals: dict):
                 if nb_titres and cours else
                 "BNPA et PER recalculés à partir du résultat net et du cours du jour."
             )
+            for n in notes_dps:
+                st.caption("\\* " + n)
             if desaccords:
                 st.caption("⚠ Écart avec la fiche sikafinance — " + " · ".join(desaccords))
 
