@@ -85,6 +85,34 @@ total, lui, vaut 1 274 638 puis 1 399 263.
 total des capitaux propres + passifs non courants + passifs courants = total
 du passif. La part du groupe ne referme rien.
 
+## 4 ter. Une opération sur titre rend deux dividendes incomparables
+
+La BRVM publie ses opérations sur titre à côté des avis de dividende —
+`/fr/esv/fractionnement`, `/fr/esv/augmentation-de-capital`,
+`/fr/esv/consolidation`. Elles changent le nombre d'actions, donc tout ce qui
+se compte **par action**.
+
+Les quatre Bank of Africa de Côte d'Ivoire, du Bénin, du Sénégal et du Burkina
+ont émis en juin 2017 « une action nouvelle pour une ancienne » : le nombre
+d'actions double, et un dividende par action d'avant vaut le double d'un
+dividende d'après, pour une distribution totale inchangée. BOA Côte d'Ivoire et
+la SIB ont recommencé fin 2024, BOA Niger avec « trois actions nouvelles pour
+une ». Neuf autres sociétés ont fractionné leur titre en 2016 et 2017, de cinq
+pour un jusqu'à cinquante pour un.
+
+D'où deux lectures d'un même dividende, toutes deux justes :
+
+- **retraitée** — ramenée au nombre d'actions d'aujourd'hui, seule façon de
+  tracer une série de rendements comparable ;
+- **telle que payée** — ce que l'avis BRVM annonce, seule façon de retrouver le
+  montant réellement versé à l'époque.
+
+Les mélanger dans une même série produit des ruptures qui ressemblent à des
+erreurs sans en être : sur trente-cinq écarts relevés entre notre base et les
+avis, **vingt-six portaient sur un titre ayant subi une telle opération**.
+
+Une valeur doit donc toujours dire laquelle des deux elle est.
+
 ## 5. Les recoupements qui tranchent
 
 À utiliser systématiquement avant d'écrire une valeur :
