@@ -450,6 +450,28 @@ _AVANT_LIBELLE = re.compile(r"^[\s\d.,()\-\u2013\u2014']*")
 # Un libelle de total se lit comme le poste qu'il totalise.
 _PREFIXE_TOTAL = re.compile(r"^totaux?\s+(?:des?\s+|de\s+l[ae\u2019']\s*)?")
 
+def _serie_pluriannuelle(cellules) -> bool:
+    """Six colonnes de montants ou plus : ce n'est pas un etat financier.
+
+    Une note d'analyse aligne l'historique et ses projections sur la meme
+    ligne — « Capitaux propres 108 810 132 524 164 905 189 719 215 330 275 713
+    359 475 476 382 » chez NSIA Banque. Aucune convention de position n'y
+    tient : la premiere colonne est l'annee la plus ancienne, la derniere une
+    prevision a quatre ans, et la valeur de l'exercice se trouve au milieu.
+    Prendre l'une ou l'autre donnait 108,8 ou 476,4 milliards quand la prose
+    du meme document annonce 215,3. Sans en-tete pour designer la colonne, on
+    s'abstient.
+    """
+    montants = 0
+    for cellule in cellules:
+        texte = str(cellule or "")
+        if "%" in texte or len(re.sub(r"\D", "", texte)) < 3:
+            continue
+        if _parse_amount(texte) not in (None, 0):
+            montants += 1
+    return montants >= 6
+
+
 _LIBELLE_QUALIFIE = re.compile(
     r"^\s*(?:autres?|dont|flux|variation|mouvements?|part\b|quote[-\s]part"
     r"|sous[-\s]total|report)\b")
@@ -481,6 +503,10 @@ def _extract_bank_chiffres_cles(all_tables: list, mult: float) -> dict:
         # For each row, try to match label and find the LAST numeric column (most recent year)
         for row in table:
             if not row or len(row) < 2:
+                continue
+            # Cette lecture retient la DERNIERE colonne chiffree. Sur une serie
+            # pluriannuelle, c'est la projection la plus lointaine.
+            if _serie_pluriannuelle(row):
                 continue
 
             # Collect all labels from multi-line cells
@@ -896,7 +922,18 @@ def _resolve_multiplier(text: str, lignes_cellules: list = None) -> int:
                         brut[champ] = v
                         break
     else:
+        brut = {}
+
+    # La sonde par cellules ne regarde que le PREMIER champ de chaque ligne.
+    # Un bilan SYSCOHADA a codes REF y met le code, jamais le libelle : « CP |
+    # TOTAL CAPITAUX PROPRES ET RESSOURCES ASSIMILEES | 45 642 447 915 ». Elle
+    # ne trouvait donc rien sur le rapport annuel de la SITAB, et le
+    # multiplicateur de 10^9 lu quelque part dans ses soixante pages n'etait
+    # pas arbitre : les capitaux propres devenaient 4,6 x 10^19 et sautaient au
+    # plafond de vraisemblance. Sonde muette, on retombe sur le texte.
+    if not brut:
         brut = _extract_from_text(text, 1, appliquer_plancher=False)
+
     valeurs = [abs(v) for k, v in brut.items() if k in _MONEY_FIELDS and v]
     maxi = max(valeurs) if valeurs else 0
 
@@ -1843,6 +1880,116 @@ def _contexte_des_entetes(lignes: list) -> dict:
     return contexte
 
 
+# Les postes qui COMPOSENT les capitaux propres d'un bilan SYSCOHADA. Le
+# plan comptable les enumere dans cet ordre, du capital au resultat de
+# l'exercice, et leur somme EST le total.
+_COMPOSANTES_CAPITAUX_PROPRES = (
+    r"capital(?:\s+social|\s+souscrit)?\b",
+    r"apporteurs?\s+capital\s+non\s+appel",
+    r"primes?\s+(?:li[ée]es?\s+au\s+capital|de\s+fusion|et\s+r[ée]serves)",
+    r"[ée]carts?\s+de\s+r[ée][ée]valuation",
+    r"r[ée]serves?\s+indisponibles?",
+    r"r[ée]serves?\s+libres?",
+    r"r[ée]serve\s+l[ée]gale",
+    # Les banques n'en detaillent pas toujours la nature : le bilan de BOA
+    # Burkina porte « RESERVES » tout court. Ce motif vient APRES les formes
+    # detaillees, faute de quoi il les absorberait toutes.
+    r"r[ée]serves?\s*$",
+    r"report\s+[àa]\s+nouveau",
+    r"r[ée]sultat\s+net\s+de\s+l.exercice",
+    # « RESULTAT DE L'EXERCICE (+/-) », sans « net » : meme raison d'ordre.
+    r"r[ée]sultat\s+de\s+l.exercice",
+    r"subventions?\s+d.investissement",
+    r"provisions?\s+r[ée]glement[ée]es?",
+    r"autres\s+capitaux\s+propres",
+)
+
+
+def _capitaux_propres_par_composantes(lignes: list, mult: float,
+                                      rang: int = 0) -> Optional[float]:
+    """Somme les postes qui composent les capitaux propres, faute de total.
+
+    Tous les bilans n'ecrivent pas leur total. Celui de Nestle Cote d'Ivoire
+    enumere capital, prime de fusion, ecart de reevaluation, reserves, report
+    a nouveau et resultat de l'exercice — puis passe aux dettes sans totaliser.
+    Filtisac fait de meme. Leurs capitaux propres etaient donc absents, alors
+    que le bilan les donne poste par poste.
+
+    C'est une identite comptable a l'interieur d'UN SEUL bilan, pas une
+    estimation d'une annee sur l'autre : aucun dividende a deviner, aucune
+    erreur qui se cumule. Le report « capitaux propres N-1 plus resultat N »
+    se trompe en moyenne de 15 % — exactement le taux de distribution ; la
+    somme des composantes, elle, se recoupe au franc pres avec les bilans qui
+    portent leur total.
+
+    Trois postes au moins, dont le capital : en dessous, ce n'est pas un bloc
+    de capitaux propres mais des libelles isoles rencontres par hasard.
+    """
+    entetes = _contexte_des_entetes(lignes)
+    reperes = []
+    for indice, cellules in enumerate(lignes):
+        if not cellules or len(cellules) < 2:
+            continue
+        if indice not in entetes and _serie_pluriannuelle(cellules[1:]):
+            continue
+        rang_ligne, mult_ligne = entetes.get(indice, (rang, None))
+        unite = entetes.get(indice, (0, None))[1]
+        mult_ligne = mult_ligne or mult
+        for depart, cellule in enumerate(cellules):
+            texte = (cellule or "").lower()
+            if depart:
+                texte = _AVANT_LIBELLE.sub("", texte)
+            texte = texte.strip()
+            if not texte or len(texte) > 60:
+                continue
+            for motif in _COMPOSANTES_CAPITAUX_PROPRES:
+                if not re.match(r"\s*" + motif, texte):
+                    continue
+                vus = 0
+                for cel in cellules[depart + 1:]:
+                    val = _parse_amount(cel)
+                    if (val is None or val == 0
+                            or len(re.sub(r"\D", "", cel or ""))
+                            < (1 if unite else 3)):
+                        continue
+                    if float(val).is_integer() and 1990 <= abs(val) <= 2100:
+                        continue
+                    if vus < rang_ligne:
+                        vus += 1
+                        continue
+                    reperes.append((indice, motif, val * mult_ligne))
+                    break
+                break
+
+    # Le bloc des capitaux propres d'un bilan est CONTIGU : capital, primes,
+    # reserves, report a nouveau et resultat se suivent. Un poste isole
+    # quarante lignes plus bas appartient a autre chose — chez Filtisac, la
+    # note d'affectation du resultat porte son propre « report a nouveau »,
+    # 468 millions qui n'ont rien a faire dans le total du bilan. On ne
+    # additionne donc qu'un bloc, celui qui reunit le plus de postes.
+    blocs, courant = [], []
+    for repere in reperes:
+        if courant and repere[0] - courant[-1][0] > 8:
+            blocs.append(courant)
+            courant = []
+        courant.append(repere)
+    if courant:
+        blocs.append(courant)
+
+    def _distincts(bloc):
+        return {motif: valeur for _, motif, valeur in bloc}
+
+    if not blocs:
+        return None
+    meilleur = max(blocs, key=lambda b: len(_distincts(b)))
+    trouves = _distincts(meilleur)
+
+    if len(trouves) < 3 or not any(m.startswith("capital") for m in trouves):
+        return None
+    total = sum(trouves.values())
+    return total if abs(total) >= 1e8 else None
+
+
 def _extract_from_cells(lignes: list, mult: float, rang: int = 0,
                         rang_impose: bool = False,
                         declares: set = None) -> dict:
@@ -1924,6 +2071,20 @@ def _extract_from_cells(lignes: list, mult: float, rang: int = 0,
         rang_ligne, mult_ligne = entetes.get(indice, (rang, None))
         unite_declaree = entetes.get(indice, (0, None))[1]
         mult_ligne = mult_ligne or mult
+
+        # Une ligne a SIX colonnes de montants n'est pas un etat financier :
+        # c'est la serie pluriannuelle d'une note d'analyse, ou les dernieres
+        # colonnes sont des projections et la PREMIERE l'annee la plus
+        # ancienne. « Capitaux propres 108 810 132 524 164 905 189 719 215 330
+        # 275 713 359 475 476 382 » chez NSIA Banque : prendre la premiere
+        # colonne rendait 108,8 milliards quand la prose du meme document
+        # annonce 215,3 pour l'exercice en cours. Sans en-tete pour designer
+        # la bonne colonne, aucune convention de position ne tient — on
+        # s'abstient. La regle ne s'applique pas quand `_colonne_fcfa` a deja
+        # tranche : un etat bi-devise aligne legitimement six colonnes.
+        if (not rang_impose and indice not in entetes
+                and _serie_pluriannuelle(cellules[1:])):
+            continue
         # Trois chiffres au moins, sauf quand l'en-tete a declare l'unite du
         # tableau : « Donnees (en milliards FCFA) » rend « -3,6 » parfaitement
         # lisible, et l'exiger a trois chiffres faisait disparaitre le cout du
@@ -1975,6 +2136,21 @@ def _extract_from_cells(lignes: list, mult: float, rang: int = 0,
 # Main extraction
 # ---------------------------------------------------------------------------
 
+# Pages depouillees d'office, puis limite au-dela de laquelle on ne cherche
+# plus. Un rapport annuel BRVM depasse rarement quatre-vingts pages.
+_PAGES_PREMIERE_PASSE = 20
+_PAGES_MAXI = 80
+
+# Ce qui signale une page de bilan ou de compte de resultat au-dela de la
+# premiere passe. Les codes REF SYSCOHADA (CP, DZ, XI, BZ) sont le repere le
+# plus sur : ils n'apparaissent nulle part ailleurs.
+_MARQUEURS_BILAN = re.compile(
+    r"total\s+capitaux\s+propres|capitaux\s+propres\s+et\s+ressources"
+    r"|total\s+g[ée]n[ée]ral|total\s+(?:de\s+l.)?actif|total\s+passif"
+    r"|total\s+bilan|produit\s+net\s+bancaire"
+    r"|^\s*(?:CP|DZ|BZ|XI|XB)\s+[A-ZÉ]", re.IGNORECASE | re.MULTILINE)
+
+
 def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
     """Extrait les chiffres cles depuis un PDF d'etats financiers BRVM."""
     data = {
@@ -2015,7 +2191,9 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
             lignes_cellules = []
             pages_positions = []
             diapo_data = {}
-            for page in pdf.pages[:20]:
+            def _depouiller(page):
+                """Toutes les lectures d'UNE page."""
+                nonlocal all_text
                 text = page.extract_text() or ""
                 all_text += text + "\n"
                 # Presentation : les valeurs sont posees sous leurs libelles,
@@ -2030,10 +2208,28 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
                 lignes_cellules.extend(_lignes_par_coordonnees(page))
                 pages_positions.append(
                     _lignes_par_coordonnees(page, avec_positions=True))
-                tables = page.extract_tables()
-                for table in tables:
+                for table in page.extract_tables():
                     if table and len(table) > 1:
                         all_tables.append(table)
+
+            for page in pdf.pages[:_PAGES_PREMIERE_PASSE]:
+                _depouiller(page)
+
+            # Les etats financiers d'un rapport annuel viennent APRES le
+            # rapport de gestion. Le bilan de la SITAB occupe la page 31 d'un
+            # document de soixante : s'arreter a la vingtieme laissait ses
+            # capitaux propres — 45,6 milliards, ligne « CP TOTAL CAPITAUX
+            # PROPRES ET RESSOURCES ASSIMILEES » — introuvables, alors qu'ils
+            # etaient bien collectes.
+            #
+            # On ne depouille pas pour autant tout le document : la lecture par
+            # coordonnees et la detection de tableaux coutent cher. Le texte
+            # seul est bien moins cher, et il suffit a reconnaitre une page de
+            # bilan. Seules ces pages-la sont ensuite depouillees entierement.
+            for page in pdf.pages[_PAGES_PREMIERE_PASSE:_PAGES_MAXI]:
+                apercu = page.extract_text() or ""
+                if _MARQUEURS_BILAN.search(apercu):
+                    _depouiller(page)
 
             text_stripped = all_text.strip()
             if len(text_stripped) < 100 and not all_tables:
@@ -2171,6 +2367,9 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
 
                 data["net_income"] = all_extracted.get("net_income")
                 data["equity"] = all_extracted.get("equity")
+                if data["equity"] is None:
+                    data["equity"] = _capitaux_propres_par_composantes(
+                        lignes_cellules, mult, rang=_rang_fcfa)
                 data["ebit"] = all_extracted.get("ebit")
                 data["ebitda"] = all_extracted.get("ebitda")
                 data["total_assets"] = all_extracted.get("total_assets")
@@ -2282,13 +2481,6 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
         except Exception as e:
             data["ocr_error"] = str(e)
 
-    # Sanity checks
-    for k in ["revenue", "net_income", "equity", "total_assets", "total_debt",
-              "ebit", "ebitda", "interest_expense", "cfo", "capex", "dividends_total"]:
-        v = data.get(k)
-        if v is not None and abs(v) > 1e16:
-            data[k] = None
-
     # Plancher de sortie : sous ces seuils, la valeur ne vient pas d'un etat
     # financier de societe cotee mais d'une unite non identifiee (tableau en
     # millions lu comme des francs) ou d'un fragment de nombre. Mieux vaut un
@@ -2297,18 +2489,35 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
     # Plafond : la BRVM entiere capitalise ~18 000 milliards FCFA et le plus
     # gros bilan bancaire de la cote tourne autour de 28 000 milliards. Au-dela
     # de 50 000 milliards on lit un numero de registre, pas un montant.
-    for k, plancher in (("revenue", 1e8), ("revenue_bank", 1e8),
-                        ("total_assets", 1e8), ("equity", 1e8),
-                        ("net_income", 1e6), ("ordinary_income", 1e6),
-                        ("hao_income", 1e6), ("cost_of_risk", 1e6),
-                        ("operating_expenses", 1e6),
-                        ("gross_operating_income", 1e6),
-                        ("pretax_income", 1e6), ("deposits", 1e8), ("loans", 1e8)):
+    _PLAFOND = 5e13
+    _PLANCHERS = {"revenue": 1e8, "revenue_bank": 1e8, "total_assets": 1e8,
+                  "equity": 1e8, "deposits": 1e8, "loans": 1e8,
+                  "net_income": 1e6, "ordinary_income": 1e6, "hao_income": 1e6,
+                  "cost_of_risk": 1e6, "operating_expenses": 1e6,
+                  "gross_operating_income": 1e6, "pretax_income": 1e6,
+                  "total_debt": 1e6, "ebit": 1e6, "ebitda": 1e6,
+                  "interest_expense": 1e5, "cfo": 1e6, "capex": 1e6,
+                  "dividends_total": 1e6}
+
+    for k, plancher in _PLANCHERS.items():
         v = data.get(k)
-        if v is not None and 0 < abs(v) < plancher:
+        if v is None or v == 0:
+            continue
+        if abs(v) < plancher:
             data[k] = None
-        elif v is not None and abs(v) > 5e13:
-            data[k] = None
+        elif abs(v) > _PLAFOND:
+            # Une valeur qui ne devient absurde qu'APRES multiplication etait
+            # deja exprimee en francs. Un rapport annuel de soixante pages
+            # raconte ses resultats en milliards dans sa prose et depose ses
+            # etats en francs pleins : le multiplicateur du document, lu dans
+            # la prose, ne vaut rien pour le bilan. Les capitaux propres de la
+            # SITAB — 45 642 447 915 francs — devenaient 4,6 x 10^19 et
+            # disparaissaient. On rend la valeur brute quand elle, et elle
+            # seule, redevient plausible.
+            mult = data.get("multiplier") or 1
+            brute = v / mult
+            data[k] = (brute if mult > 1 and plancher <= abs(brute) <= _PLAFOND
+                       else None)
 
     # Un signe qui ne peut pas exister. Une societe ne vend pas pour moins que
     # rien, un bilan ne totalise pas un montant negatif, une banque ne prete
