@@ -176,7 +176,31 @@ CURRENCY = "FCFA"
 CURRENCY_CODE = "XOF"
 
 
-def load_tickers():
-    """Charge la liste des tickers BRVM depuis le fichier JSON."""
+def load_tickers(inclure_retires: bool = False):
+    """Charge la liste des tickers BRVM depuis le fichier JSON.
+
+    Un titre RETIRE de la cote n'est plus un titre : il ne se selectionne
+    pas, ne se compare pas, n'entre dans aucune mediane sectorielle et ne se
+    rescane pas. Movis CI en est sorti, et son dernier exercice publie
+    remonte a 2019 — le laisser dans la liste, c'est proposer une analyse
+    sur des comptes vieux de sept ans a cote de societes qui publient
+    chaque trimestre.
+
+    Le filtre est pose ICI, a la source, plutot que dans la vingtaine
+    d'appelants : une exclusion oubliee dans un seul d'entre eux suffirait
+    a faire reapparaitre le titre dans un classement.
+
+    Son historique reste en base : `inclure_retires=True` le rend a qui en
+    a besoin — on ne reecrit pas le passe d'une cotation.
+    """
     with open(TICKERS_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
+        tickers = json.load(f)
+    if inclure_retires:
+        return tickers
+    return [t for t in tickers if not t.get("retire")]
+
+
+def tickers_retires() -> set:
+    """Les tickers sortis de la cote, pour qui doit les signaler."""
+    with open(TICKERS_PATH, "r", encoding="utf-8") as f:
+        return {t["ticker"] for t in json.load(f) if t.get("retire")}
