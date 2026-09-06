@@ -2310,6 +2310,22 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
         elif v is not None and abs(v) > 5e13:
             data[k] = None
 
+    # Un signe qui ne peut pas exister. Une societe ne vend pas pour moins que
+    # rien, un bilan ne totalise pas un montant negatif, une banque ne prete
+    # pas -188 milliards. Quand un de ces postes ressort negatif, c'est qu'une
+    # colonne de VARIATION a ete lue a la place de la valeur — BOA Burkina
+    # sortait un chiffre d'affaires de -1,53 milliard au premier trimestre
+    # 2026, Oragroup des credits a -188,75 milliards. La valeur est ecartee :
+    # un poste absent se voit, un poste negatif se propage en ratios.
+    #
+    # Les capitaux propres et le resultat net n'y figurent PAS : ils peuvent
+    # legitimement etre negatifs, et Oragroup a bel et bien perdu 44 milliards
+    # en 2024.
+    for k in ("revenue", "revenue_bank", "total_assets", "deposits",
+              "loans", "shares"):
+        if (data.get(k) or 0) < 0:
+            data[k] = None
+
     return data
 
 
