@@ -17,6 +17,7 @@ les periodes qui couvrent bien douze mois — le « S2 » de BOA Burkina est un
 cumul annuel, sa valeur est a sa place.
 """
 
+import datetime
 import os
 import sys
 
@@ -36,6 +37,35 @@ FLUX = ("revenue", "net_income", "ebit", "ebitda", "operating_expenses",
 
 # Tolerance d'egalite : l'extraction peut arrondir au millier pres.
 ECART_MAX = 0.005
+
+
+def _exercices_non_clos(conn):
+    """Exercices qui portent des FLUX alors qu'ils ne peuvent pas etre clos.
+
+    Un exercice N se publie au printemps N+1 : en septembre 2026, l'exercice
+    2026 n'existe pas encore. Tout chiffre d'affaires ou resultat net porte
+    par une telle ligne vient forcement d'une publication de PERIODE.
+
+    La sonde d'egalite exacte ne les attrape pas tous : la ligne 2026
+    d'Ecobank porte 1 281,3 milliards, qui est le produit net bancaire du
+    semestre lu dans sa colonne en DOLLARS — il ne correspond a aucune ligne
+    trimestrielle en francs. Le calendrier, lui, ne se trompe pas.
+    """
+    limite = datetime.date.today().year
+    lignes = [dict(r) for r in conn.execute(
+        "SELECT ticker, fiscal_year, revenue, net_income FROM fundamentals "
+        "WHERE fiscal_year >= ? "
+        "AND ((revenue IS NOT NULL AND revenue <> 0) "
+        "     OR (net_income IS NOT NULL AND net_income <> 0))",
+        (limite,)).fetchall()]
+    # Un rapport ANNUEL depose sur cet exercice dementirait le calendrier :
+    # on le respecte plutot que la regle.
+    annuels = {(dict(r)["ticker"], dict(r)["fiscal_year"]) for r in conn.execute(
+        "SELECT ticker, fiscal_year FROM report_links "
+        "WHERE report_type IN ('rapport_annuel', 'etats_financiers') "
+        "AND fiscal_year >= ?", (limite,)).fetchall()}
+    return [l for l in lignes
+            if (l["ticker"], l["fiscal_year"]) not in annuels]
 
 
 def _suspects(conn):
@@ -63,14 +93,25 @@ def _suspects(conn):
 
 def main(appliquer: bool = False) -> None:
     conn = get_connection()
+
+    non_clos = _exercices_non_clos(conn)
+    print(f"{len(non_clos)} exercice(s) portant des flux sans pouvoir etre "
+          f"clos :\n")
+    for ligne in non_clos:
+        print(f"   {ligne['ticker']:10s} {ligne['fiscal_year']}   "
+              f"CA={(ligne['revenue'] or 0) / 1e9:9,.1f}   "
+              f"RN={(ligne['net_income'] or 0) / 1e9:8,.2f}")
+
     trouves = _suspects(conn)
+    print()
 
     print(f"{len(trouves)} ligne(s) annuelle(s) portant un flux de periode :\n")
     for (ticker, annee), (periode, mois, valeur) in sorted(trouves.items()):
         print(f"   {ticker:10s} exercice {annee} = {periode:3s} "
               f"({mois} mois)   CA={valeur / 1e9:9,.2f} Mds")
 
-    if not trouves:
+    cibles = set(trouves) | {(l["ticker"], l["fiscal_year"]) for l in non_clos}
+    if not cibles:
         conn.close()
         return
 
@@ -80,12 +121,12 @@ def main(appliquer: bool = False) -> None:
         return
 
     colonnes = ", ".join(f"{c} = NULL" for c in FLUX)
-    for ticker, annee in trouves:
+    for ticker, annee in cibles:
         conn.execute(
             f"UPDATE fundamentals SET {colonnes} "
             "WHERE ticker = ? AND fiscal_year = ?", (ticker, annee))
     conn.commit()
-    print(f"\n{len(trouves)} ligne(s) nettoyee(s) — les stocks sont conserves")
+    print(f"\n{len(cibles)} ligne(s) nettoyee(s) — les stocks sont conserves")
     conn.close()
 
 
