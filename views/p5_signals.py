@@ -29,10 +29,46 @@ def _load_scoring_snapshot() -> pd.DataFrame:
         return read_sql_df(
             "SELECT ticker, company_name, sector, price, hybrid_score, "
             "fundamental_score, technical_score, verdict, stars, trend, "
-            "nb_signals, signals_json, consolidated_json FROM scoring_snapshot"
+            "nb_signals, signals_json, consolidated_json, computed_at "
+            "FROM scoring_snapshot"
         )
     except Exception:
         return pd.DataFrame()
+
+
+def _instantane_perime(snap: pd.DataFrame):
+    """L'instantane est-il plus vieux que les donnees qu'il resume ?
+
+    L'instantane existe pour la vitesse : recalculer quarante-huit scores
+    coutait une minute sur Cloud. Mais il n'est reconstruit qu'en semaine, a
+    16 h UTC, et rien ne signalait qu'il avait vieilli. Le 6 septembre 2026,
+    apres un week-end de saisie, QUARANTE-TROIS titres sur quarante-sept
+    affichaient un score different de celui d'Analyse titre, et QUINZE
+    verdicts s'opposaient d'une page a l'autre — « Conserver » ici, « Achat »
+    la, sans que rien ne le dise.
+
+    On compare donc la date de l'instantane a la derniere ecriture en base.
+    Si les donnees sont plus recentes, l'instantane est ignore et le calcul se
+    refait en direct : une minute d'attente vaut mieux qu'un verdict faux.
+
+    Rend (perime, date_instantane, date_donnees).
+    """
+    if snap.empty or "computed_at" not in snap.columns:
+        return False, None, None
+    calcule = pd.to_datetime(snap["computed_at"], errors="coerce").max()
+    if pd.isna(calcule):
+        return False, None, None
+    try:
+        ecrit = read_sql_df(
+            "SELECT max(updated_at) AS ecrit FROM fundamentals")["ecrit"].iloc[0]
+        ecrit = pd.to_datetime(ecrit, errors="coerce")
+    except Exception:
+        return False, calcule, None
+    if pd.isna(ecrit):
+        return False, calcule, None
+    # Une minute de tolerance : l'instantane s'ecrit lui-meme apres avoir lu
+    # les fondamentaux, les deux horodatages ne sont jamais exactement egaux.
+    return (ecrit > calcule + pd.Timedelta(minutes=1)), calcule, ecrit
 
 
 def render():
@@ -114,7 +150,21 @@ def render():
     target_set = {t["ticker"] for t in target_tickers}
     ticker_name_map = {t["ticker"]: t.get("name", "") for t in target_tickers}
 
-    snapshot_used = bool(snap_by_ticker) and any(tk in snap_by_ticker for tk in target_set)
+    perime, _calcule, _ecrit = _instantane_perime(snap)
+    snapshot_used = (bool(snap_by_ticker)
+                     and any(tk in snap_by_ticker for tk in target_set)
+                     and not perime)
+    if perime:
+        # Le dire, meme quand on recalcule : le lecteur doit savoir pourquoi la
+        # page met une minute, et qu'il regarde bien l'etat du moment.
+        st.info(
+            f"Les données ont changé depuis le dernier instantané "
+            f"(**{_calcule:%d/%m %H:%M}**, dernière écriture **{_ecrit:%d/%m %H:%M}**). "
+            f"Les scores sont recalculés en direct pour rester alignés sur "
+            f"Analyse titre — comptez une minute."
+        )
+    elif _calcule is not None:
+        st.caption(f"Scores de l'instantané du {_calcule:%d/%m/%Y à %H:%M}.")
 
     if snapshot_used:
         for t in target_tickers:
