@@ -1926,6 +1926,111 @@ _COMPOSANTES_CAPITAUX_PROPRES = (
 )
 
 
+# La dette FINANCIERE, poste par poste. Aucun bilan n'en ecrit le total : elle
+# se repartit entre emprunts non courants, emprunts courants, locations
+# financieres et titres emis. On la somme donc, comme les capitaux propres.
+_COMPOSANTES_DETTE = (
+    r"emprunts?\s+et\s+dettes?\s+financi[eè]res?",
+    r"emprunts?\s+li[eé]s?\s+aux\s+droits\s+d.utilisation",
+    r"emprunts?\s+(?:[àa]\s+)?(?:long|court)\s+terme",
+    r"emprunts?\s+part\s+(?:long|court)\s+terme",
+    r"emprunts?\s+obligataires?",
+    r"dettes?\s+financi[eè]res?",
+    r"dettes?\s+de\s+location",
+    r"dettes?\s+subordonn[eé]es?",
+    r"passifs?\s+financiers?",
+    r"passifs?\s+locatifs?",
+    r"emprunts?\s*$",
+)
+
+# Ce qui porte le mot « dette » ou « passif » sans etre de la dette financiere.
+# Trois familles s'y melent, et les confondre multiplie le ratio par cinq :
+#   — l'exploitation : fournisseurs, fiscal, social, crediteurs divers ;
+#   — le passif d'une BANQUE : depots de la clientele et interbancaire, qui
+#     sont sa matiere premiere et non son endettement ;
+#   — les totaux : « total passif » recouvre tout, capitaux propres compris.
+# Un piege particulier : « obligations et autres titres a revenu fixe » figure
+# chez trois banques a l'ACTIF — c'est leur portefeuille, pas leur dette.
+_DETTE_EXCLUE = re.compile(
+    r"fournisseur|fiscal|social|crediteur|cr[eé]diteur|imp[oô]t|retraite"
+    r"|client[eè]le|interbancaire|[eé]tablissements?\s+de\s+cr[eé]dit"
+    r"|titres?\s+[àa]\s+revenus?\s+fixes?|avantages?\s+au\s+personnel"
+    # Le tableau de flux emploie le vocabulaire du bilan : « + Emprunts »,
+    # « Remboursements des emprunts », « Encaissements lies aux emprunts »,
+    # « Cout de l'endettement financier ». Ce sont des MOUVEMENTS de
+    # l'exercice, pas un encours a la cloture.
+    r"|encaissement|d[eé]caissement|remboursement|augmentation|diminution"
+    r"|variation|co[uû]t\s+de\s+l.endettement|charges?\s+financi[eè]res?"
+    r"|provisions?|divers\s*$|circulant|total\s+(?:du\s+|des\s+)?passif",
+    re.IGNORECASE)
+
+
+def _dette_financiere_par_composantes(lignes: list, mult: float,
+                                      rang: int = 0) -> Optional[float]:
+    """Somme les postes de dette FINANCIERE d'un bilan.
+
+    Les capitaux propres avaient un total ecrit, qui servait de recoupement.
+    La dette financiere n'en a pas : elle se lit ligne a ligne, et le mot
+    « dettes » designe aussi bien un emprunt bancaire que ce qu'on doit a ses
+    fournisseurs. Chez la SODECI, retenir tout ce qui porte ce mot donne
+    444 874 millions au lieu de 92 830 — un ratio d'endettement de 15,95 la ou
+    la realite est 3,33.
+
+    Chaque ligne est donc confrontee a `_DETTE_EXCLUE` avant d'etre retenue.
+    """
+    entetes = _contexte_des_entetes(lignes)
+    trouves = {}
+    for indice, cellules in enumerate(lignes):
+        if not cellules or len(cellules) < 2:
+            continue
+        if indice not in entetes and _serie_pluriannuelle(cellules[1:]):
+            continue
+        rang_ligne, mult_ligne = entetes.get(indice, (rang, None))
+        unite = entetes.get(indice, (0, None))[1]
+        mult_ligne = mult_ligne or mult
+        for depart, cellule in enumerate(cellules):
+            texte = (cellule or "").lower()
+            if depart:
+                texte = _AVANT_LIBELLE.sub("", texte)
+            texte = texte.strip()
+            if not texte or len(texte) > 70 or _DETTE_EXCLUE.search(texte):
+                continue
+            for motif in _COMPOSANTES_DETTE:
+                if not re.match(r"\s*" + motif, texte):
+                    continue
+                # Un meme poste revient au non courant ET au courant : la cle
+                # retient le libelle complet pour additionner les deux.
+                if texte in trouves:
+                    break
+                # Une colonne « Note » s'intercale souvent entre le libelle
+                # et les montants : « Emprunts et dettes financieres non
+                # courants | 13 | 66 | 79 » chez Servair Abidjan. Le renvoi de
+                # note se confond avec un montant a deux chiffres, et l'ecarter
+                # en exigeant trois chiffres ferait perdre les vraies valeurs —
+                # 66 et 79 millions. On l'ecarte plutot par sa NATURE : un
+                # entier inferieur a cent suivi d'un nombre plus grand.
+                suite = cellules[depart + 1:]
+                valeurs = []
+                for cel in suite:
+                    val = _parse_amount(cel)
+                    if val is None or val == 0:
+                        continue
+                    if float(val).is_integer() and 1990 <= abs(val) <= 2100:
+                        continue
+                    valeurs.append(abs(val))
+                if (len(valeurs) > 1 and valeurs[0] < 100
+                        and valeurs[1] >= valeurs[0]):
+                    valeurs = valeurs[1:]          # renvoi de note
+                if len(valeurs) > rang_ligne:
+                    trouves[texte] = valeurs[rang_ligne] * mult_ligne
+                break
+
+    if not trouves:
+        return None
+    total = sum(trouves.values())
+    return total if total >= 1e6 else None
+
+
 def _capitaux_propres_par_composantes(lignes: list, mult: float,
                                       rang: int = 0) -> Optional[float]:
     """Somme les postes qui composent les capitaux propres, faute de total.
@@ -2436,6 +2541,9 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
                 if data["equity"] is None:
                     data["equity"] = _capitaux_propres_par_composantes(
                         lignes_cellules, mult, rang=_rang_fcfa)
+                if data.get("total_debt") is None:
+                    data["total_debt"] = _dette_financiere_par_composantes(
+                        lignes_cellules, mult, rang=_rang_fcfa)
                 data["ebit"] = all_extracted.get("ebit")
                 data["ebitda"] = all_extracted.get("ebitda")
                 data["total_assets"] = all_extracted.get("total_assets")
@@ -2597,6 +2705,17 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
             brute = v / mult
             data[k] = (brute if mult > 1 and plancher <= abs(brute) <= _PLAFOND
                        else None)
+
+    # La dette financiere ne peut pas depasser le passif exigible. L'identite
+    # est exacte — actif = capitaux propres + passif exigible — et les deux
+    # termes sont deja lus. Elle offre a la dette le recoupement que les
+    # capitaux propres avaient dans leur propre total : si la somme des
+    # emprunts excede ce plafond, c'est qu'une dette d'exploitation ou un
+    # total s'y est glisse. Mieux vaut alors ne rien rendre.
+    _actif, _cp, _dette = (data.get("total_assets"), data.get("equity"),
+                           data.get("total_debt"))
+    if _dette and _actif and _cp is not None and _dette > (_actif - _cp) * 1.02:
+        data["total_debt"] = None
 
     # Un signe qui ne peut pas exister. Une societe ne vend pas pour moins que
     # rien, un bilan ne totalise pas un montant negatif, une banque ne prete
