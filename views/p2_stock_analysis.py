@@ -331,8 +331,15 @@ def render():
         is_good = (diff < 0 and prefer_low) or (diff > 0 and not prefer_low) or abs(diff) < 0.05
         color = "var(--up)" if (is_good and abs(diff) >= 0.05) else \
                 "var(--down)" if not is_good else "var(--ink-3)"
+        # Le repere n'est pas toujours sectoriel : faute de trois pairs,
+        # `compare_to_sector` bascule sur la mediane de toute la cote et le
+        # signale par `scope`. L'affichage ecrivait « Secteur » dans les deux
+        # cas — le lecteur croyait se comparer a son metier quand il se
+        # comparait au marche entier.
+        _ou = "Secteur" if cmp.get("scope") == "secteur" else "Marché"
         return (
-            f"<span style='color:{color};font-weight:500;'>{arrow} Secteur {med_str}</span>"
+            f"<span style='color:{color};font-weight:500;'>"
+            f"{arrow} {_ou} {med_str}</span>"
         )
 
     def _stat_card(label: str, value: str, sub_html: str = "", tone: str = "neutral"):
