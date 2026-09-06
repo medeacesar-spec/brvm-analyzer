@@ -15,6 +15,9 @@ Mis à jour le 2026-09-06.
 | 4 | **Routine quinzomadaire** — lire toutes les deux semaines les états financiers nouvellement publiés et les avis de la BRVM, et signaler ce qui entre en base. | demandée de longue date | jamais construite |
 | 15 | **Trente-cinq dividendes en contradiction avec l'avis BRVM** — ce ne sont pas des retenues à la source. Les Bank of Africa et la SIB tombent sur des rapports de 0,50 · 0,6667 · 0,625 (acompte enregistré seul ?), SOLIBRA 2020 et 2021 sont au dixième de l'avis, Filtisac 2024 porte 145 contre 1 320. | 2026-09-06 | à instruire |
 | 16 | **ETI hors collecte** — la BRVM publie ses dividendes tantôt en dollars, tantôt en cents, tantôt étiquetés « FCFA » alors qu'ils sont en dollars. Deux lignes contradictoires pour le seul exercice 2025. | 2026-09-06 | à trancher |
+| 19 | **BOABF.bf — coût du risque figé.** +4,303 Md en 2024 et −4,303 Md en 2025 : même valeur, signe opposé. Le stock de provisions du bilan (5 650 328 968 fin 2025) n'est pas le coût du risque, qui est un flux du compte de résultat. | 2026-09-06 | à relire |
+| 17 | **BOAB.bj — la page parle de deux exercices.** La grille bancaire recule à 2023 (7 indicateurs sur 10) pendant que le tableau des pairs lit 2025 (4 sur 10). C'est une lacune de données, pas un défaut d'affichage : il manque dépôts, crédits, coût du risque, RBE et résultat avant impôt sur l'exercice 2025. | 2026-09-06 | à combler |
+| 18 | **La sonde « vocabulaire » du diagnostic classe à tort.** Elle range en « vocabulaire » tout champ manquant dans un document qui contient du texte, sans vérifier que le poste y figure : 6 des 8 constats sont en réalité des bilans absents ou en image. | 2026-09-06 | à corriger |
 | 5 | **Bilans en image** — NEI-CEDA, TotalEnergies Sénégal et d'autres publient un bilan qui n'existe qu'en image ; la lecture optique ne les traite pas encore. | 2026-09-06 | à instruire |
 
 ## Défauts de données connus
