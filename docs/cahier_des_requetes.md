@@ -9,10 +9,12 @@ Mis à jour le 2026-09-06.
 
 | # | Requête | Origine | État |
 |---|---|---|---|
-| 1 | **Collecte des avis de dividendes de la BRVM** — une source courte et non ambiguë pour tout le marché. L'avis n°211 (LNBB) a prouvé la qualité : « 164,1709 FCFA net par action, au titre de l'exercice 2025 ». | 2026-09-05 | prochain chantier |
+| 1 | ~~Collecte des avis de dividendes de la BRVM~~ | 2026-09-05 | **livré 2026-09-06** — 414 avis, 43 sociétés, exercices 2015-2025 |
 | 2 | **Les deux sondes manquantes** — une distribution n'excède pas durablement le résultat net ; un rendement au-dessus de 25 % n'existe pas sur cette place. | 2026-09-05 | à faire |
 | 3 | **Correctifs des repères sectoriels** — libellé « Secteur » quand le repère est le marché entier ; médiane calculée sur deux sociétés ; cinq ratios annoncés jamais calculés (dette/CP, taux de distribution, marge de trésorerie libre, couverture des intérêts, rendement de l'actif). Correctifs écrits, non livrés. | 2026-09-05 | correctifs prêts |
 | 4 | **Routine quinzomadaire** — lire toutes les deux semaines les états financiers nouvellement publiés et les avis de la BRVM, et signaler ce qui entre en base. | demandée de longue date | jamais construite |
+| 15 | **Trente-cinq dividendes en contradiction avec l'avis BRVM** — ce ne sont pas des retenues à la source. Les Bank of Africa et la SIB tombent sur des rapports de 0,50 · 0,6667 · 0,625 (acompte enregistré seul ?), SOLIBRA 2020 et 2021 sont au dixième de l'avis, Filtisac 2024 porte 145 contre 1 320. | 2026-09-06 | à instruire |
+| 16 | **ETI hors collecte** — la BRVM publie ses dividendes tantôt en dollars, tantôt en cents, tantôt étiquetés « FCFA » alors qu'ils sont en dollars. Deux lignes contradictoires pour le seul exercice 2025. | 2026-09-06 | à trancher |
 | 5 | **Bilans en image** — NEI-CEDA, TotalEnergies Sénégal et d'autres publient un bilan qui n'existe qu'en image ; la lecture optique ne les traite pas encore. | 2026-09-06 | à instruire |
 
 ## Défauts de données connus
@@ -42,3 +44,4 @@ Mis à jour le 2026-09-06.
 | Suppression des quatre pages (Suivi des données, Panorama, Calendrier, Assistant IA) | 2026-09-05 |
 | Campagne capitaux propres — 47 titres sur 48 | 2026-09-05 |
 | Campagne dette — tous les titres non bancaires sauf SAFCA (nulle) et SEMC (non publiée) | 2026-09-06 |
+| Collecte des avis de dividendes — 168 valeurs écrites, exercice 2025 de 23 à 35 titres sur 44 | 2026-09-06 |
