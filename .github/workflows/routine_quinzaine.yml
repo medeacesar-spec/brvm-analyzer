@@ -1,0 +1,108 @@
+name: Routine de quinzaine
+
+# La cote publie en continu ; personne ne regarde en continu. Cette routine
+# passe toutes les deux semaines, recense ce que la BRVM a mis en ligne, le
+# traite, et OUVRE UN BILLET si quelque chose a echoue — c'est la seule facon
+# qu'un silence ne passe pas pour un succes.
+#
+# Le lundi a 6 h UTC, une semaine sur deux : cron ne sait pas dire « toutes
+# les deux semaines », on filtre donc sur la parite du numero de semaine.
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      jours:
+        description: "Fenetre consideree, en jours"
+        required: false
+        default: "15"
+      forcer:
+        description: "Passer meme en semaine impaire"
+        required: false
+        default: "false"
+
+permissions:
+  contents: read
+  issues: write          # le billet d'alerte, sans autre secret a configurer
+
+jobs:
+  routine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    outputs:
+      sortie: ${{ steps.passe.outputs.sortie }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Installer tesseract
+        # Les bilans en image ne se lisent pas autrement.
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq tesseract-ocr tesseract-ocr-fra tesseract-ocr-eng
+
+      - name: Une semaine sur deux
+        id: quinzaine
+        run: |
+          semaine=$(date -u +%V)
+          if [ "${{ inputs.forcer }}" = "true" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "passe=oui" >> "$GITHUB_OUTPUT"
+          elif [ $((10#$semaine % 2)) -eq 0 ]; then
+            echo "passe=oui" >> "$GITHUB_OUTPUT"
+          else
+            echo "passe=non" >> "$GITHUB_OUTPUT"
+            echo "Semaine $semaine impaire — la routine passe la prochaine."
+          fi
+
+      - name: Relever et traiter
+        id: passe
+        if: steps.quinzaine.outputs.passe == 'oui'
+        continue-on-error: true
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          set -o pipefail
+          python scripts/routine_quinzaine.py --jours="${{ inputs.jours || 15 }}" \
+            2>&1 | tee releve.txt
+          echo "sortie=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Conserver le releve
+        if: always() && steps.quinzaine.outputs.passe == 'oui'
+        uses: actions/upload-artifact@v4
+        with:
+          name: releve-quinzaine
+          path: releve.txt
+          if-no-files-found: ignore
+
+      - name: Ouvrir un billet en cas d'echec
+        # Un billet plutot qu'un courriel : aucun secret a configurer, et
+        # GitHub previent deja le proprietaire du depot.
+        if: failure() || steps.passe.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let releve = '';
+            try { releve = fs.readFileSync('releve.txt', 'utf8').slice(-8000); }
+            catch (e) { releve = '(relevé indisponible)'; }
+            const jour = new Date().toISOString().slice(0, 10);
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Routine de quinzaine du ${jour} — échec`,
+              labels: ['routine'],
+              body: [
+                `La routine de quinzaine a signalé un problème.`,
+                ``,
+                `[Voir l'exécution](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`,
+                ``,
+                `Le relevé se termine ainsi :`,
+                '```',
+                releve,
+                '```',
+              ].join('\n'),
+            });
