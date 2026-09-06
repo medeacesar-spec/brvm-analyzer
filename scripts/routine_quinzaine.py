@@ -14,6 +14,8 @@ La routine fait quatre choses, dans cet ordre, et rend compte de chacune :
                 parus
   3. COLLECTER  les avis de paiement de dividendes
   4. CONTROLER  ce qui vient d'etre ecrit, avec les neuf sondes de coherence
+  5. RECALCULER l'instantane des scores, sans quoi la page Signaux continue
+                d'afficher l'etat d'avant
 
 Elle ne juge pas la qualite des chiffres — `coherence_interne.py` le fait — et
 ne corrige rien. Elle DIT : voila ce qui est paru, voila ce qui est entre en
@@ -137,6 +139,15 @@ def main() -> int:
     # 4. CONTROLER ----------------------------------------------------------
     _lancer("4. Sondes de coherence",
             [python, "scripts/coherence_interne.py"], journal)
+
+    # 5. RECALCULER ---------------------------------------------------------
+    # La page Signaux lit un instantane pre-calcule, pas la base. Ecrire sans
+    # le refaire, c'est laisser deux pages de l'application se contredire : le
+    # 6 septembre 2026, quarante-trois titres sur quarante-sept affichaient un
+    # score different d'Analyse titre, et quinze verdicts s'opposaient.
+    if not args.simuler:
+        _lancer("5. Instantane des scores",
+                [python, "scripts/build_daily_snapshot.py"], journal)
 
     cnx = get_connection()
     apres = _etat(cnx)
