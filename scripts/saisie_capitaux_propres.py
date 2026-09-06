@@ -38,6 +38,17 @@ RELEVES = {
     ("BOAB.bj", 2025): (117_506_988_771, "RBP_0090, colonne 31/12/2025"),
     ("BOAB.bj", 2024): (117_396_355_692, "RBP_0090, colonne 31/12/2024"),
 
+    # BOA Cote d'Ivoire — bilan publie, en MILLIONS de FCFA. Le total est
+    # recoupe par ses composantes, au chiffre pres dans les deux exercices :
+    #   2025  40 000 + 51 709 +  91 + 35 540 = 127 340
+    #   2024  40 000 + 39 902 + 698 + 32 044 = 112 644
+    ("BOAC.ci", 2025): (127_340_000_000,
+                        "capital 40 000 + reserves 51 709 + report 91 "
+                        "+ resultat 35 540, en millions"),
+    ("BOAC.ci", 2024): (112_644_000_000,
+                        "capital 40 000 + reserves 39 902 + report 698 "
+                        "+ resultat 32 044, en millions"),
+
     # BOA Burkina — la ligne 9 est VIDE dans ce bilan : le total se
     # reconstitue par ses composantes, capital souscrit + primes + reserves
     # + report a nouveau + resultat de l'exercice.
