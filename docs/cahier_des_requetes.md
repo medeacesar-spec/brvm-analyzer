@@ -11,7 +11,7 @@ Mis à jour le 2026-09-06.
 |---|---|---|---|
 | 1 | ~~Collecte des avis de dividendes de la BRVM~~ | 2026-09-05 | **livré 2026-09-06** — 414 avis, 43 sociétés, exercices 2015-2025 |
 | 2 | ~~Les deux sondes manquantes~~ | 2026-09-05 | **livré 2026-09-06** — `distribution` et `rendement` dans `coherence_interne.py` |
-| 3 | **Correctifs des repères sectoriels** — libellé « Secteur » quand le repère est le marché entier ; médiane calculée sur deux sociétés ; cinq ratios annoncés jamais calculés (dette/CP, taux de distribution, marge de trésorerie libre, couverture des intérêts, rendement de l'actif). Correctifs écrits, non livrés. | 2026-09-05 | correctifs prêts |
+| 3 | ~~Correctifs des repères sectoriels~~ | 2026-09-05 | **livré 2026-09-06** — 5 ratios construits, seuil porté à 3 observations, portée nommée |
 | 4 | **Routine quinzomadaire** — lire toutes les deux semaines les états financiers nouvellement publiés et les avis de la BRVM, et signaler ce qui entre en base. | demandée de longue date | jamais construite |
 | 15 | **Trente-cinq dividendes en contradiction avec l'avis BRVM** — ce ne sont pas des retenues à la source. Les Bank of Africa et la SIB tombent sur des rapports de 0,50 · 0,6667 · 0,625 (acompte enregistré seul ?), SOLIBRA 2020 et 2021 sont au dixième de l'avis, Filtisac 2024 porte 145 contre 1 320. | 2026-09-06 | à instruire |
 | 16 | **ETI hors collecte** — la BRVM publie ses dividendes tantôt en dollars, tantôt en cents, tantôt étiquetés « FCFA » alors qu'ils sont en dollars. Deux lignes contradictoires pour le seul exercice 2025. | 2026-09-06 | à trancher |

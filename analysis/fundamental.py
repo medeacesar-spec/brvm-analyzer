@@ -35,6 +35,14 @@ def get_sector_benchmarks(sector: str = None) -> dict:
         equity = d.get("equity") or 0
         dps = d.get("dps") or 0
 
+        debt = d.get("total_debt")
+        assets = d.get("total_assets") or 0
+        interest = abs(d.get("interest_expense") or 0)
+        ebit = d.get("ebit") or 0
+        cfo = d.get("cfo") or 0
+        capex = abs(d.get("capex") or 0)
+        div_total = d.get("dividends_total") or 0
+
         eps = (ni / shares) if shares and shares > 0 and ni else None
         per = (price / eps) if eps and eps > 0 else None
         bvps = (equity / shares) if shares and shares > 0 and equity else None
@@ -51,6 +59,20 @@ def get_sector_benchmarks(sector: str = None) -> dict:
             "roe": roe if roe and -1 < roe < 2 else None,
             "net_margin": margin if margin and -1 < margin < 1 else None,
             "dividend_yield": yield_ if yield_ and 0 < yield_ < 0.5 else None,
+            # Ces cinq ratios etaient reclames par `_stats` sans avoir jamais
+            # ete construits ici : `if col not in subdf.columns: continue` les
+            # avalait en silence, et AUCUN repere sectoriel n'existait pour
+            # eux. Le ratio d'endettement notamment, que la fiche affiche.
+            "debt_equity": (debt / equity) if debt is not None and equity
+                           and equity > 0 and 0 <= debt / equity < 20 else None,
+            "payout_ratio": (div_total / ni) if ni and ni > 0 and div_total
+                            and 0 < div_total / ni < 3 else None,
+            "fcf_margin": ((cfo - capex) / revenue) if revenue and revenue > 0
+                          and cfo and -1 < (cfo - capex) / revenue < 1 else None,
+            "interest_coverage": (ebit / interest) if interest and ebit
+                                 and 0 < ebit / interest < 100 else None,
+            "roa": (ni / assets) if assets and assets > 0 and ni
+                   and -0.5 < ni / assets < 0.5 else None,
         })
 
     df_r = pd.DataFrame(records)
@@ -62,12 +84,16 @@ def get_sector_benchmarks(sector: str = None) -> dict:
         for col in [
             "per", "pb", "roe", "net_margin", "dividend_yield",
             "payout_ratio", "fcf_margin", "debt_equity",
-            "interest_coverage", "dividend_cash_coverage",
+            "interest_coverage", "roa",
         ]:
             if col not in subdf.columns:
                 continue
             vals = subdf[col].dropna()
-            if len(vals) >= 2:
+            # TROIS observations, pas deux : la grille sectorielle l'exige
+            # deja — « une mediane sur moins de trois observations decrit une
+            # societe, pas un secteur ». Les deux regles se contredisaient
+            # dans la meme application.
+            if len(vals) >= 3:
                 out[col] = {
                     "median": float(vals.median()),
                     "min": float(vals.min()),
@@ -79,7 +105,7 @@ def get_sector_benchmarks(sector: str = None) -> dict:
     result = {"global": _stats(df_r)}
     if sector:
         sub = df_r[df_r["sector"] == sector]
-        if len(sub) >= 2:
+        if len(sub) >= 3:
             result["sector"] = _stats(sub)
             result["sector_name"] = sector
             result["sector_peers"] = sub["ticker"].tolist()
