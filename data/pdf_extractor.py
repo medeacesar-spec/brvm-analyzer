@@ -1474,6 +1474,113 @@ def extract_commentary(texte: str, maxi: int = 1500) -> str:
 # Reconstruction des colonnes par coordonnees
 # ---------------------------------------------------------------------------
 
+def _corriger_glyphes_surcharges(mots: list) -> list:
+    """Redresse les glyphes qui se decodent en plusieurs chiffres.
+
+    Certains PDF portent une table de correspondance fautive : un glyphe
+    unique, large d'un seul chiffre, rend deux caracteres. Chez SOLIBRA le
+    « 2 » qui termine 18 832 sort en « 22 », et la tresorerie-passif — donc la
+    dette bancaire a court terme — passe de 18 832 a 188 322 millions, dix
+    fois trop. Rien ne le signale : le nombre reste plausible.
+
+    La boite du mot ne ment pas, a une condition : comparer des chiffres de
+    MEME CORPS. SUCRIVOIRE imprime son bilan en 7,6 points et ses titres en
+    10,8 ; confondre les deux fait passer l'unite de 3,4 a 4,2 point, et des
+    nombres parfaitement justes deviennent alors « trop etroits » — 17 243 172
+    de capitaux propres rabotes a 172 417. L'unite se mesure donc corps par
+    corps, et on n'intervient que si le mot est nettement trop etroit : moins
+    de six dixiemes de la largeur que ses caracteres exigent.
+
+    Verification chez SOLIBRA, exercice 2024, en millions : capitaux propres
+    169 443 + dettes financieres 58 381 + passif circulant 60 888 +
+    tresorerie-passif 18 832 + ecart de conversion 2 = 307 546, le total du
+    bilan au franc pres. Avec 188 322 l'egalite est rompue.
+    """
+    corps = {}
+    for m in mots:
+        if m["text"].isdigit() and len(m["text"]) == 1:
+            corps.setdefault(round(m["height"], 1), []).append(m["x1"] - m["x0"])
+    unites = {h: sorted(v)[len(v) // 2] for h, v in corps.items() if len(v) >= 20}
+    if not unites:
+        return mots
+    # Les glyphes fautifs forment leur PROPRE corps de police — chez SOLIBRA
+    # une police de 16,6 points qui ne contient pas un seul chiffre isole, donc
+    # pas d'etalon. Faute de mieux on les confronte au chiffre le plus etroit
+    # de la page : la comparaison la plus prudente qui soit, puisqu'aucun
+    # nombre legitime ne peut etre plus serre que cela.
+    plancher = min(unites.values())
+    corriges = []
+    for m in mots:
+        texte = m["text"]
+        unite = unites.get(round(m.get("height", 0), 1), plancher)
+        if unite and texte.isdigit() and len(texte) > 1:
+            largeur = m["x1"] - m["x0"]
+            if largeur < 0.6 * len(texte) * unite:
+                tenable = max(1, round(largeur / unite))
+                if tenable < len(texte):
+                    m = dict(m, text=texte[:tenable])
+        corriges.append(m)
+    return corriges
+
+
+def _seuil_de_recollement(mots: list) -> float:
+    """En dessous de quel blanc deux fragments appartiennent au meme mot.
+
+    Trois emetteurs sur quarante-huit — SOLIBRA, SUCRIVOIRE, SONATEL —
+    exportent leur bilan avec une espace entre CHAQUE glyphe. Le PDF affiche
+    « Dettes financieres diverses », le texte extrait dit « D e tte s fin an c
+    ie re s d ive rse s », et plus aucun libelle du moteur ne s'y reconnait :
+    ni le poste, ni l'exercice (« 2 0 2 5 »), ni l'unite. Chez SOLIBRA c'est
+    tout le bilan qui disparait — 46 424 millions de dettes financieres lues
+    comme rien du tout.
+
+    Les coordonnees, elles, distinguent les deux blancs sans ambiguite : chez
+    ces emetteurs l'ecart entre deux glyphes d'un meme mot vaut 0,19 point
+    quand l'ecart entre deux mots en vaut 1,9 — un facteur dix. On ne recolle
+    donc que si la page porte VRAIMENT cette signature ; sinon le seuil est
+    nul et l'assemblage des cellules reste celui d'avant, au point pres.
+    """
+    jetons = [m["text"] for m in mots if any(c.isalpha() for c in m["text"])]
+    if len(jetons) < 40:
+        return 0.0
+    isoles = sum(1 for j in jetons if len(j) == 1)
+    if isoles / len(jetons) < 0.15:
+        return 0.0
+    hauteurs = sorted(m["bottom"] - m["top"] for m in mots)
+    corps = hauteurs[len(hauteurs) // 2] or 7.0
+    return corps * 0.15
+
+
+def _montant_de_cellule(cellule: str) -> Optional[float]:
+    """Le montant d'une cellule, meme si une note lui colle au chiffre.
+
+    `_parse_amount` refuse a bon droit de piocher un nombre au milieu d'une
+    phrase. Mais une cellule de tableau qui COMMENCE par un montant reste un
+    montant, quand bien meme un commentaire la termine : chez SOLIBRA le total
+    du bilan de l'exercice sort en « 339 517 NB: "Comptes certifies par les
+    commissaires aux comptes" », devient illisible, et le moteur retombe sur la
+    colonne de l'exercice precedent — 307 546, l'actif de l'annee d'avant.
+
+    On n'accepte donc que le cas sans ambiguite : la cellule debute par le
+    nombre, et ce qui suit commence par une lettre ou un guillemet — jamais par
+    un chiffre, qui signalerait deux colonnes collees.
+    """
+    val = _parse_amount(cellule)
+    if val is not None or not cellule:
+        return val
+    tete = re.match(r"\s*([-+(]?\s*[\d  .,]+?)\s+([^\W\d_\"«(].*)", cellule)
+    if not tete:
+        return None
+    val = _parse_amount(tete.group(1))
+    # Une cellule qui porte DEUX colonnes collees suivies d'un libelle —
+    # « 1 8 535 854 210 1 6 508 009 202 Controle Treso » chez Bernabe — a bien
+    # cette forme, et la lire d'un bloc donne 3,7 x 10^21. Passe la longueur
+    # d'un montant, on rend la main au decoupeur des colonnes collees.
+    if val is not None and abs(val) > 10 ** _CHIFFRES_MAX_MONTANT:
+        return None
+    return val
+
+
 def _lignes_par_coordonnees(page, ecart_colonne: float = 12.0,
                             avec_positions: bool = False) -> list:
     """Reconstitue les lignes d'un tableau en cellules, a partir des positions.
@@ -1492,6 +1599,9 @@ def _lignes_par_coordonnees(page, ecart_colonne: float = 12.0,
     except Exception:
         return []
 
+    mots = _corriger_glyphes_surcharges(mots)
+    colle = _seuil_de_recollement(mots)
+
     lignes = {}
     for m in mots:
         cle = round(m["top"] / 3)          # tolerance verticale
@@ -1506,7 +1616,13 @@ def _lignes_par_coordonnees(page, ecart_colonne: float = 12.0,
         def _fermer():
             if not courante:
                 return
-            texte = " ".join(m["text"] for m in courante)
+            texte = courante[0]["text"]
+            for gauche, droite in zip(courante, courante[1:]):
+                # Sur une page ecrite glyphe par glyphe, le blanc etroit est
+                # une soudure a l'interieur d'un mot, le blanc large une vraie
+                # separation. Ailleurs `colle` vaut zero et rien ne change.
+                liant = "" if droite["x0"] - gauche["x1"] < colle else " "
+                texte += liant + droite["text"]
             cellules.append({"texte": texte, "x0": courante[0]["x0"],
                              "x1": courante[-1]["x1"]}
                             if avec_positions else texte)
@@ -2032,7 +2148,13 @@ _DETTE_EXCLUE = re.compile(
     # l'exercice, pas un encours a la cloture.
     r"|encaissement|d[eé]caissement|remboursement|augmentation|diminution"
     r"|variation|co[uû]t\s+de\s+l.endettement|charges?\s+financi[eè]res?"
-    r"|provisions?|divers\s*$|circulant|total\s+(?:du\s+|des\s+)?passif",
+    r"|provisions?|divers\s*$|circulant|total\s+(?:du\s+|des\s+)?passif"
+    # « Dettes financieres ET RESSOURCES ASSIMILEES » est le total
+    # SYSCOHADA du poste : il agrege les emprunts ET les provisions pour
+    # risques. Le retenir a cote de ses propres composantes compte deux
+    # fois la meme dette — chez SOLIBRA 46 424 + 56 254 = 102 678 au lieu
+    # de 46 424.
+    r"|ressources?\s+assimil",
     re.IGNORECASE)
 
 
@@ -2083,7 +2205,7 @@ def _dette_financiere_par_composantes(lignes: list, mult: float,
                 suite = cellules[depart + 1:]
                 valeurs = []
                 for cel in suite:
-                    val = _parse_amount(cel)
+                    val = _montant_de_cellule(cel)
                     if val is None or abs(val) > 10 ** _CHIFFRES_MAX_MONTANT:
                         val = _scinder_montants_colles(cel) or val
                     if val is None or val == 0:
@@ -2146,7 +2268,7 @@ def _capitaux_propres_par_composantes(lignes: list, mult: float,
                     continue
                 vus = 0
                 for cel in cellules[depart + 1:]:
-                    val = _parse_amount(cel)
+                    val = _montant_de_cellule(cel)
                     if (val is None or val == 0
                             or len(re.sub(r"\D", "", cel or ""))
                             < (1 if unite else 3)):
@@ -2220,7 +2342,7 @@ def _extract_from_cells(lignes: list, mult: float, rang: int = 0,
         """
         vus = 0
         for cel in cellules[depart:]:
-            val = _parse_amount(cel)
+            val = _montant_de_cellule(cel)
             # La cellule fusionnee traine souvent le libelle du panneau
             # voisin — « 4 9 140 780 873 5 0 176 045 881 - Decaissements
             # lies aux acquisitions » — et la lecture echoue AVANT d'avoir
@@ -2393,6 +2515,27 @@ def _page_lisible(texte: str) -> bool:
     return lettres / len(utiles) >= _LISIBILITE_MINIMALE
 
 
+def _texte_de_page(page) -> str:
+    """Le texte d'une page, remis d'aplomb si elle est ecrite glyphe a glyphe.
+
+    Reparer les seules cellules ne suffisait pas : le multiplicateur, la
+    convention de virgule et l'echelle se lisent dans le TEXTE de la page.
+    Chez SOLIBRA la mention « (en millions de FCFA) » sortait
+    « (e n m illio n s d e F C F A) », le document etait donc lu au franc pres
+    et tout le bilan — 195 142 millions de capitaux propres — tombait sous le
+    plancher de plausibilite puis disparaissait.
+    """
+    brut = page.extract_text() or ""
+    try:
+        mots = page.extract_words(use_text_flow=False, keep_blank_chars=False)
+    except Exception:
+        return brut
+    if not _seuil_de_recollement(mots):
+        return brut
+    return "\n".join(" | ".join(c for c in ligne if c)
+                      for ligne in _lignes_par_coordonnees(page))
+
+
 def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
     """Extrait les chiffres cles depuis un PDF d'etats financiers BRVM."""
     data = {
@@ -2438,7 +2581,7 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
             def _depouiller(page):
                 """Toutes les lectures d'UNE page."""
                 nonlocal all_text, pages_illisibles
-                text = page.extract_text() or ""
+                text = _texte_de_page(page)
                 if not _page_lisible(text):
                     # Le texte de cette page est du bruit : le retenir
                     # empoisonnerait la sonde du multiplicateur et la
@@ -2477,7 +2620,7 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
             # seul est bien moins cher, et il suffit a reconnaitre une page de
             # bilan. Seules ces pages-la sont ensuite depouillees entierement.
             for page in pdf.pages[_PAGES_PREMIERE_PASSE:_PAGES_MAXI]:
-                apercu = page.extract_text() or ""
+                apercu = _texte_de_page(page)
                 if _MARQUEURS_BILAN.search(apercu):
                     _depouiller(page)
 
