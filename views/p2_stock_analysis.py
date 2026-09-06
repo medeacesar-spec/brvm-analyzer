@@ -680,12 +680,11 @@ def _render_fundamental(fundamentals, ratios):
     # un ratio peut tenir le seuil du metier et rester sous la mediane de ses
     # pairs. C'etait le cas de Coris Bank — « Bon » et barre rouge.
     st.caption(
-        "**Statut** compare la valeur au **seuil** de la colonne précédente ; "
-        "**Position** et **Écart** la comparent aux **pairs**. Un ratio peut "
-        "donc tenir le seuil et rester sous la médiane du secteur : les deux "
-        "colonnes ne se contredisent pas, elles ne répondent pas à la même "
-        "question. Sur la barre, le trait vertical est la médiane, la couleur "
-        "suit la même règle que l'écart — neutre à moins de 5 % de la médiane."
+        "**Statut** juge la valeur face au **seuil**. **Position** et "
+        "**Écart** la situent face aux **pairs** — le trait vertical est leur "
+        "médiane. Tenir le seuil tout en restant sous la médiane du secteur "
+        "n'est pas une contradiction : les deux colonnes ne répondent pas à "
+        "la même question."
     )
 
     # ═══════════════════════════════════════════════════════════════════
