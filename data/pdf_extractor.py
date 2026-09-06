@@ -448,7 +448,10 @@ def _extract_ifrs_dual(all_tables: list, mult: float) -> dict:
 # libelle du panneau droit.
 _AVANT_LIBELLE = re.compile(r"^[\s\d.,()\-\u2013\u2014']*")
 # Un libelle de total se lit comme le poste qu'il totalise.
-_PREFIXE_TOTAL = re.compile(r"^totaux?\s+(?:des?\s+|de\s+l[ae\u2019']\s*)?")
+# « tota » + « l » ou « ux » : ecrit `totaux?`, le motif exigeait « totau » et
+# ne reconnaissait donc JAMAIS le mot « total ». Servair Abidjan, la SODECI et
+# la CIE ecrivent pourtant « Total capitaux propres » en toutes lettres.
+_PREFIXE_TOTAL = re.compile(r"^tota(?:l|ux)\s+(?:des?\s+|de\s+l[ae\u2019']\s*)?")
 
 def _serie_pluriannuelle(cellules) -> bool:
     """Six colonnes de montants ou plus : ce n'est pas un etat financier.
@@ -611,7 +614,12 @@ _TABLE_LABELS = [
     (r"r.sultat\s+net", "net_income"),
     (r"capitaux\s+propres", "equity"),
     (r"total\s+bilan", "total_assets"),
-    (r"total\s+(?:de\s+l.)?actif", "total_assets"),
+    # « Total de l'actif NON COURANT » n'est pas le total de l'actif : chez
+    # Servair Abidjan, le prendre ramenait 1,84 milliard au lieu de 9,63. Les
+    # sous-totaux du bilan portent tous une qualification — courant, non
+    # courant, circulant, immobilise — que le total, lui, n'a pas.
+    (r"total\s+(?:de\s+l.)?actif(?!\s*(?:non\s+)?"
+     r"(?:courant|circulant|immobilis))", "total_assets"),
 
     # ── Variantes rencontrees d'un emetteur a l'autre ──
     # Le vocabulaire ci-dessus decrivait les libelles observes sur quelques
@@ -2062,7 +2070,15 @@ def _extract_from_cells(lignes: list, mult: float, rang: int = 0,
         qu'il totalise — « Total des capitaux propres » vaut « capitaux
         propres ».
         """
-        couples = [(0, (cellules[0] or "").lower().strip())]
+        premier = (cellules[0] or "").lower().strip()
+        couples = [(0, premier)]
+        # « Total capitaux propres » en tete de ligne echouait a l'ancrage : le
+        # prefixe n'etait retire que sur les cellules du MILIEU, celles des
+        # bilans a deux panneaux. Servair Abidjan ecrit pourtant « Total
+        # capitaux propres 5 512 4 182 » en clair, premiere cellule.
+        sans_total_premier = _PREFIXE_TOTAL.sub("", premier)
+        if sans_total_premier != premier:
+            couples.append((0, sans_total_premier))
         for indice_cel, cellule in enumerate(cellules[1:], start=1):
             texte = _AVANT_LIBELLE.sub("", (cellule or "").lower()).strip()
             if not texte or len(texte) > 60 or _LIBELLE_QUALIFIE.match(texte):
@@ -2171,6 +2187,27 @@ _MARQUEURS_BILAN = re.compile(
     r"|^\s*(?:CP|DZ|BZ|XI|XB)\s+[A-ZÉ]", re.IGNORECASE | re.MULTILINE)
 
 
+# Une page peut porter du texte SANS etre lisible : sa police n'expose pas de
+# table Unicode, et « Immobilisations incorporelles » s'extrait en
+# « !""#$%&%\'()%#*\'+%*,#-.#-/&&/\' ». Aucun libelle n'y est reconnaissable, et
+# aucun elargissement de vocabulaire n'y changera rien — seul l'OCR la lit.
+#
+# Le jugement se porte PAGE PAR PAGE : les etats financiers de la SODECI
+# ouvrent sur un communique parfaitement lisible (0,89) et poursuivent sur deux
+# pages de bilan illisibles (0,17 et 0,13). Juger le document entier l'aurait
+# declare sain. Les pages saines de la cote tiennent entre 0,62 et 0,98.
+_LISIBILITE_MINIMALE = 0.40
+
+
+def _page_lisible(texte: str) -> bool:
+    """Part de lettres parmi les caracteres non blancs d'une page."""
+    utiles = [c for c in texte if not c.isspace()]
+    if len(utiles) < 200:
+        return True          # trop court pour juger : ce n'est pas un tableau
+    lettres = sum(1 for c in utiles if c.isalpha())
+    return lettres / len(utiles) >= _LISIBILITE_MINIMALE
+
+
 def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
     """Extrait les chiffres cles depuis un PDF d'etats financiers BRVM."""
     data = {
@@ -2211,10 +2248,18 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
             lignes_cellules = []
             pages_positions = []
             diapo_data = {}
+            pages_illisibles = 0
+
             def _depouiller(page):
                 """Toutes les lectures d'UNE page."""
-                nonlocal all_text
+                nonlocal all_text, pages_illisibles
                 text = page.extract_text() or ""
+                if not _page_lisible(text):
+                    # Le texte de cette page est du bruit : le retenir
+                    # empoisonnerait la sonde du multiplicateur et la
+                    # convention de virgule sans rien apporter.
+                    pages_illisibles += 1
+                    return
                 all_text += text + "\n"
                 # Presentation : les valeurs sont posees sous leurs libelles,
                 # centrees, sans tableau. L'echelle est declaree sur la page
@@ -2254,6 +2299,7 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
             text_stripped = all_text.strip()
             if len(text_stripped) < 100 and not all_tables:
                 is_scanned = True
+            data["pages_illisibles"] = pages_illisibles
 
             # Prose de l'emetteur : alimente la revue de presse, sans effet
             # sur les chiffres.
@@ -2447,7 +2493,8 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
         data.get(f) is not None
         for f in ("revenue", "net_income", "ebit", "ebitda", "equity")
     )
-    if (is_scanned or not _has_data) and use_ocr:
+    # Une page illisible se lit comme une page image : l'OCR est la seule voie.
+    if (is_scanned or not _has_data or data.get("pages_illisibles")) and use_ocr:
         try:
             # Un seul parcours du document pour les deux lectures.
             ocr_text, ocr_cellules = _ocr_document(pdf_path)
