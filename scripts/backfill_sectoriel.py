@@ -65,6 +65,14 @@ def rapports_a_traiter(conn, depuis: int) -> list:
     lignes = conn.execute(
         "SELECT ticker, fiscal_year, url, report_type FROM report_links "
         "WHERE fiscal_year >= ? AND url IS NOT NULL "
+        # Une note de recherche n'est pas un etat financier. Elle aligne
+        # l'historique et ses PROJECTIONS sur une meme ligne — « Capitaux
+        # propres 108 810 132 524 164 905 189 719 215 330 275 713 359 475
+        # 476 382 » chez NSIA Banque — et aucune convention de colonne n'y
+        # tient : la premiere valeur est l'annee la plus ancienne, la derniere
+        # une prevision a quatre ans. Meme reduits aux postes de bilan, ces
+        # documents n'apportent que des chiffres invérifiables.
+        "AND report_type <> 'analyse' "
         # Exercices recents d'abord : la fiche d'un titre affiche son
         # dernier exercice renseigne (2025 pour 35 societes sur 48). Traiter
         # ticker par ticker ferait attendre la moitie de la cote.
