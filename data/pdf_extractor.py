@@ -443,6 +443,13 @@ def _extract_ifrs_dual(all_tables: list, mult: float) -> dict:
 # chiffre d'affaires de 92 milliards, et son ratio cours/actif net grimpait a
 # 244. La recherche du libelle ici n'est pas ancree en debut de chaine, il
 # faut donc ecarter explicitement ces prefixes.
+# Ce qui precede un libelle dans une cellule de bilan a deux panneaux :
+# « 4 946 Total des capitaux propres » colle la valeur du panneau gauche au
+# libelle du panneau droit.
+_AVANT_LIBELLE = re.compile(r"^[\s\d.,()\-\u2013\u2014']*")
+# Un libelle de total se lit comme le poste qu'il totalise.
+_PREFIXE_TOTAL = re.compile(r"^totaux?\s+(?:des?\s+|de\s+l[ae\u2019']\s*)?")
+
 _LIBELLE_QUALIFIE = re.compile(
     r"^\s*(?:autres?|dont|flux|variation|mouvements?|part\b|quote[-\s]part"
     r"|sous[-\s]total|report)\b")
@@ -1837,7 +1844,8 @@ def _contexte_des_entetes(lignes: list) -> dict:
 
 
 def _extract_from_cells(lignes: list, mult: float, rang: int = 0,
-                        rang_impose: bool = False) -> dict:
+                        rang_impose: bool = False,
+                        declares: set = None) -> dict:
     """Lit les libelles connus dans des lignes deja decoupees en cellules.
 
     `rang_impose` protege le cas bi-devise : quand `_colonne_fcfa` a deja
@@ -1845,87 +1853,120 @@ def _extract_from_cells(lignes: list, mult: float, rang: int = 0,
     contredire. Ecobank titre ses colonnes « 30 Juin 2026 | 30 Juin 2025 »
     une ligne au-dessus de « milliers $EU | millions FCFA » : suivre les
     millesimes y ramenerait la colonne en dollars.
+
+    `declares` recueille les champs dont l'unite vient de l'EN-TETE du tableau
+    plutot que d'une sonde sur l'ensemble du document. La fusion s'en sert
+    d'arbitre : une unite lue prime sur une unite devinee.
     """
     entetes = {} if rang_impose else _contexte_des_entetes(lignes)
+    if declares is None:
+        declares = set()
     data = {}
+
+    def _valeur_apres(cellules, depart, rang_ligne, mult_ligne, chiffres_min):
+        """Premier montant exploitable a partir de la cellule `depart`.
+
+        Si la premiere colonne chiffree est inexploitable, on abandonne le
+        libelle : continuer reviendrait a prendre la colonne suivante, qui est
+        un autre exercice ou une variation. Sur un scan SITAB, cette errance
+        ramenait 513 728 — la colonne « variation en valeur » — comme chiffre
+        d'affaires.
+        """
+        vus = 0
+        for cel in cellules[depart:]:
+            val = _parse_amount(cel)
+            if (val is None or val == 0
+                    or len(re.sub(r"\D", "", cel or "")) < chiffres_min):
+                continue                          # cellule vide ou parasite
+            if float(val).is_integer() and 1990 <= abs(val) <= 2100:
+                continue                          # millesime
+            # `rang` vaut 0 dans le cas courant. Il vaut 1 sur un etat
+            # bi-devise ou la colonne en francs suit celle en dollars, ou
+            # lorsque l'en-tete place l'exercice recent en deuxieme position.
+            if vus < rang_ligne:
+                vus += 1
+                continue
+            montant = val * mult_ligne
+            return montant if abs(montant) >= 100_000_000 else None
+        return None
+
+    def _candidats(cellules):
+        """Les couples (indice de cellule, libelle) a confronter aux motifs.
+
+        Un bilan SYSCOHADA se presente en DEUX PANNEAUX, actif a gauche et
+        passif a droite, et la ligne rendue melange les deux : « Actifs
+        circulants HAO | 0 | 0 CHIFFRE D'AFFAIRES | 197 629 996 ». Le poste du
+        panneau droit etait invisible tant qu'on ne regardait que la premiere
+        cellule. Les cellules suivantes sont donc essayees, debarrassees de ce
+        qui precede le libelle, et un libelle de total se lit comme le poste
+        qu'il totalise — « Total des capitaux propres » vaut « capitaux
+        propres ».
+        """
+        couples = [(0, (cellules[0] or "").lower().strip())]
+        for indice_cel, cellule in enumerate(cellules[1:], start=1):
+            texte = _AVANT_LIBELLE.sub("", (cellule or "").lower()).strip()
+            if not texte or len(texte) > 60 or _LIBELLE_QUALIFIE.match(texte):
+                continue
+            couples.append((indice_cel, texte))
+            sans_total = _PREFIXE_TOTAL.sub("", texte)
+            if sans_total != texte:
+                couples.append((indice_cel, sans_total))
+        return couples
+
     for indice, cellules in enumerate(lignes):
         # Une cellule unique n'est pas forcement une ligne vide : ce peut etre
-        # un libelle dont les chiffres sont tombes sur la ligne suivante. On
-        # la garde si elle est COURTE — un libelle de poste comptable, pas une
+        # un libelle dont les chiffres sont tombes sur la ligne suivante. On la
+        # garde si elle est COURTE — un libelle de poste comptable, pas une
         # phrase de commentaire qui irait ensuite s'emparer des chiffres d'un
         # tableau voisin.
         if not cellules or (len(cellules) < 2 and len(cellules[0] or "") > 60):
             continue
         rang_ligne, mult_ligne = entetes.get(indice, (rang, None))
+        unite_declaree = entetes.get(indice, (0, None))[1]
         mult_ligne = mult_ligne or mult
-        libelle = cellules[0].lower().strip()
-        for motif, champ in _TABLE_LABELS:
-            if champ in data:
-                continue
-            if not re.match(r"\s*" + motif + r"\b", libelle):
-                continue
-            # La periode courante est la PREMIERE colonne chiffree. Si elle est
-            # inexploitable, on abandonne ce libelle : continuer reviendrait a
-            # prendre la colonne suivante, qui est un autre exercice ou une
-            # variation. Sur un scan SITAB, cette errance ramenait 513 728 —
-            # la colonne « variation en valeur » — comme chiffre d'affaires.
-            # Trois chiffres au moins, sauf quand l'en-tete a declare l'unite
-            # du tableau : « Donnees (en milliards FCFA) » rend « -3,6 »
-            # parfaitement lisible, et l'exiger a trois chiffres faisait
-            # disparaitre le cout du risque de la SIB.
-            chiffres_min = 1 if entetes.get(indice, (0, None))[1] else 3
-            vus = 0
-            for cel in cellules[1:]:
-                val = _parse_amount(cel)
-                if (val is None or val == 0
-                        or len(re.sub(r"\D", "", cel)) < chiffres_min):
-                    continue                      # cellule vide ou parasite
-                if float(val).is_integer() and 1990 <= abs(val) <= 2100:
-                    continue                      # millesime
-                # `rang` vaut 0 dans le cas courant : la periode en cours est
-                # la premiere colonne chiffree. Il vaut 1 sur un etat bi-devise
-                # ou la colonne en francs suit la colonne en dollars.
-                if vus < rang_ligne:
-                    vus += 1
-                    continue
-                montant = val * mult_ligne
-                if abs(montant) >= 100_000_000:
-                    data[champ] = montant
-                break
+        # Trois chiffres au moins, sauf quand l'en-tete a declare l'unite du
+        # tableau : « Donnees (en milliards FCFA) » rend « -3,6 » parfaitement
+        # lisible, et l'exiger a trois chiffres faisait disparaitre le cout du
+        # risque de la SIB.
+        chiffres_min = 1 if unite_declaree else 3
 
-            # Libelle seul sur sa ligne, chiffres sur la suivante. La SIB
-            # ecrit « Resultat Brut d'exploitation » puis, ligne d'apres,
-            # « 62,6 | 66,7 | 4,1 | 7% » : le resultat brut d'exploitation
-            # d'une banque disparaissait faute de regarder une ligne plus bas.
-            # On ne descend que d'UNE ligne, et seulement si elle ne porte
-            # aucun libelle connu — sans quoi on volerait ses chiffres au
-            # poste suivant.
-            if champ in data or len(cellules) > 1:
-                continue
-            if indice + 1 >= len(lignes):
-                continue
-            suivante = lignes[indice + 1]
-            if not suivante or any(
-                    re.match(r"\s*" + m + r"\b", (suivante[0] or "").lower())
-                    for m, _ in _TABLE_LABELS):
-                continue
-            rang_suite, mult_suite = entetes.get(indice + 1, (rang, None))
-            mult_suite = mult_suite or mult
-            mini = 1 if entetes.get(indice + 1, (0, None))[1] else 3
-            vus = 0
-            for cel in suivante:
-                val = _parse_amount(cel)
-                if (val is None or val == 0
-                        or len(re.sub(r"\D", "", cel)) < mini):
+        for depart, libelle in _candidats(cellules):
+            for motif, champ in _TABLE_LABELS:
+                if champ in data:
                     continue
-                if float(val).is_integer() and 1990 <= abs(val) <= 2100:
+                if not re.match(r"\s*" + motif + r"\b", libelle):
                     continue
-                if vus < rang_suite:
-                    vus += 1
-                    continue
-                montant = val * mult_suite
-                if abs(montant) >= 100_000_000:
+
+                montant = _valeur_apres(cellules, depart + 1, rang_ligne,
+                                        mult_ligne, chiffres_min)
+                if montant is not None:
                     data[champ] = montant
+                    if unite_declaree:
+                        declares.add(champ)
+                    break
+
+                # Libelle seul sur sa ligne, chiffres sur la suivante. La SIB
+                # ecrit « Resultat Brut d'exploitation » puis, ligne d'apres,
+                # « 62,6 | 66,7 | 4,1 | 7% ». La ligne d'apres doit commencer
+                # par un NOMBRE : la CIE pose « Capitaux propres - part
+                # Groupe » puis « Interets ne conferant pas le controle | 209 |
+                # 189 », qui appartient a un AUTRE poste — s'y servir donnait
+                # 0,209 milliard de capitaux propres a une societe qui en
+                # declare 43.
+                if depart or len(cellules) > 1 or indice + 1 >= len(lignes):
+                    break
+                suivante = lignes[indice + 1]
+                if not suivante or _parse_amount(suivante[0]) is None:
+                    break
+                rang_suite, mult_suite = entetes.get(indice + 1, (rang, None))
+                unite_suite = entetes.get(indice + 1, (0, None))[1]
+                montant = _valeur_apres(suivante, 0, rang_suite,
+                                        mult_suite or mult,
+                                        1 if unite_suite else 3)
+                if montant is not None:
+                    data[champ] = montant
+                    if unite_suite:
+                        declares.add(champ)
                 break
     return data
 
@@ -2036,9 +2077,11 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
 
                 # Couche coordonnees : elle tranche l'ambiguite des colonnes
                 # separees par des espaces, que le texte brut ne permet pas.
+                _unites_declarees = set()
                 cell_data = _extract_from_cells(
                     lignes_cellules, mult, rang=_rang_fcfa,
-                    rang_impose=_mult_fcfa is not None)
+                    rang_impose=_mult_fcfa is not None,
+                    declares=_unites_declarees)
 
                 # Layer 2: row-by-row label matching
                 label_data = _extract_from_tables_rowlabel(all_tables, mult)
@@ -2076,6 +2119,18 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
                 for d in [prose_data, diapo_data, text_data, bank_data,
                           label_data, cell_data, ifrs_data, ref_data]:
                     all_extracted.update({k: v for k, v in d.items() if v is not None})
+
+                # Une unite DECLAREE prime sur une unite devinee. Le bilan de
+                # Palm CI porte « En milliers FRANCS CFA » au-dessus de ses
+                # colonnes, et la lecture par coordonnees y trouve un total
+                # d'actif de 199,1 milliards. La couche IFRS, qui applique le
+                # multiplicateur devine pour tout le document, rendait 0,203
+                # milliard sur ce meme poste — et passait devant. Le document
+                # n'est meme pas en IFRS. Quand l'en-tete d'un tableau dit son
+                # unite, rien ne justifie de lui preferer une sonde.
+                for _champ in _unites_declarees:
+                    if cell_data.get(_champ) is not None:
+                        all_extracted[_champ] = cell_data[_champ]
 
                 # Arbitrage des nombres tronques par une frontiere de colonne.
                 # Le rapport integre d'Orange CI annonce « 1 197,1 milliards
