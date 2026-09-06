@@ -18,6 +18,8 @@ Chaque societe est donc son propre temoin. Sept sondes, toutes internes :
                d'une banque, qui n'existe pas — ses depots ne sont pas un
                endettement
   periode      un cumul de periode inferieur a celui qui le precede
+  distribution une societe qui distribue durablement plus qu'elle ne gagne
+  rendement    un rendement que cette place n'a jamais servi
 
 Aucune ne demande de savoir ce que la societe aurait DU publier. Elles ne
 disent pas ou est la verite : elles disent ou la base se contredit.
@@ -158,6 +160,55 @@ def sondes(annuels, periodes):
                     f"{p2} ({m2} mois) vaut {_mds(v2):,.1f} Mds, moins que "
                     f"{p1} ({m1} mois) a {_mds(v1):,.1f}"))
 
+    # --- une distribution n'excede pas durablement le resultat --------------
+    #
+    # Une societe peut payer plus qu'elle ne gagne une annee, en puisant dans
+    # ses reserves : c'est une decision, pas une erreur. Deux exercices de
+    # suite, ou plus du double du resultat, c'est autre chose — le plus
+    # souvent un dividende lu a la mauvaise echelle ou un resultat ampute.
+    # Bernabe distribuait 141 fois son resultat 2024 ; le fautif etait le
+    # resultat, decale d'un exercice.
+    for ticker, exercices in annuels.items():
+        excedents = {}
+        for annee, ligne in exercices.items():
+            dps, actions = ligne.get("dps"), ligne.get("shares")
+            resultat = ligne.get("net_income")
+            if not (dps and actions and resultat and resultat > 0):
+                continue
+            rapport = dps * actions / resultat
+            if rapport > 1:
+                excedents[annee] = rapport
+        for annee, rapport in sorted(excedents.items()):
+            durable = (annee - 1) in excedents or (annee + 1) in excedents
+            if not durable and rapport <= 2:
+                continue
+            motif = "deux exercices de suite" if durable else "plus du double"
+            trouves.append((
+                "distribution", ticker, annee,
+                f"distribue {rapport:.1f} fois son resultat net "
+                f"({_mds(exercices[annee]['dps'] * exercices[annee]['shares']):,.2f} "
+                f"contre {_mds(exercices[annee]['net_income']):,.2f} Mds) — {motif}"))
+
+    # --- un rendement que cette place n'a jamais servi ----------------------
+    #
+    # Au-dela de vingt-cinq pour cent, ce n'est plus un rendement : c'est un
+    # dividende lu mille fois trop grand, ou un cours mille fois trop petit.
+    # Filtisac a affiche 93 % — le dividende valait 2 001 au lieu de 145.
+    # Le cours ne figure pas sur toutes les lignes : on retient le plus recent
+    # connu du titre, ce qui suffit a distinguer un rendement d'une aberration.
+    for ticker, exercices in annuels.items():
+        cours = next((exercices[an].get("price") for an in sorted(exercices, reverse=True)
+                      if exercices[an].get("price")), None)
+        if not cours or cours <= 0:
+            continue
+        for annee in sorted(exercices):
+            dps = exercices[annee].get("dps")
+            if dps and dps / cours > 0.25:
+                trouves.append((
+                    "rendement", ticker, annee,
+                    f"dividende {dps:,.2f} pour un cours de {cours:,.0f} — "
+                    f"{100 * dps / cours:.0f} % de rendement"))
+
     return trouves
 
 
@@ -167,7 +218,8 @@ def main() -> None:
     for ligne in conn.execute(
             "SELECT ticker, fiscal_year, revenue, net_income, equity, "
             "total_assets, deposits, loans, operating_expenses, "
-            "gross_operating_income, total_debt, sector "
+            "gross_operating_income, total_debt, sector, "
+            "dps, shares, price "
             "FROM fundamentals WHERE fiscal_year >= 2020"):
         ligne = dict(ligne)
         annuels[ligne["ticker"]][ligne["fiscal_year"]] = ligne
@@ -187,11 +239,11 @@ def main() -> None:
     familles = Counter(sonde for sonde, _, _, _ in trouves)
     print(f"{len(annuels)} societes · {len(trouves)} contradictions\n")
     for sonde, nombre in familles.most_common():
-        print(f"  {sonde:10s} {nombre:4d}")
+        print(f"  {sonde:12s} {nombre:4d}")
 
     print("\n=== detail ===")
     for sonde, ticker, annee, phrase in sorted(trouves):
-        print(f"  {sonde:10s} {ticker:10s} {annee}  {phrase}")
+        print(f"  {sonde:12s} {ticker:10s} {annee}  {phrase}")
 
 
 if __name__ == "__main__":
