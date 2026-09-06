@@ -436,6 +436,18 @@ def _extract_ifrs_dual(all_tables: list, mult: float) -> dict:
 # Bank report "chiffres cles" extraction
 # ---------------------------------------------------------------------------
 
+# Un poste qualifie n'est pas le poste. « Autres capitaux propres » est une
+# SOUS-LIGNE du bilan, et « FLUX DE TRESORERIE PROVENANT DES CAPITAUX
+# PROPRES » n'est meme pas un solde de bilan. Africa Global Logistics voyait
+# ainsi ses capitaux propres ramenes a 0,71 milliard — la sous-ligne — pour un
+# chiffre d'affaires de 92 milliards, et son ratio cours/actif net grimpait a
+# 244. La recherche du libelle ici n'est pas ancree en debut de chaine, il
+# faut donc ecarter explicitement ces prefixes.
+_LIBELLE_QUALIFIE = re.compile(
+    r"^\s*(?:autres?|dont|flux|variation|mouvements?|part\b|quote[-\s]part"
+    r"|sous[-\s]total|report)\b")
+
+
 def _extract_bank_chiffres_cles(all_tables: list, mult: float) -> dict:
     """
     Extrait depuis les tableaux 'Chiffres Cles' dans les rapports bancaires.
@@ -487,6 +499,8 @@ def _extract_bank_chiffres_cles(all_tables: list, mult: float) -> dict:
                 elif re.search(r"co.t\s*du\s*risque", label):
                     field = "cost_of_risk"
 
+                if field and _LIBELLE_QUALIFIE.match(label):
+                    continue
                 if field and field not in data:
                     # Find value: look in cells to the right, matching line_idx for multi-line
                     # Use the SECOND-TO-LAST or LAST numeric cell (most recent year, before variation)
