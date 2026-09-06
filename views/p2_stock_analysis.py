@@ -533,7 +533,14 @@ def _render_fundamental(fundamentals, ratios):
                 )
 
     # ═══════════════════════════════════════════════════════════════════
-    # Tableau ratios calcules avec "Position vs secteur" visuelle
+    # Tableau des ratios calcules.
+    #
+    # Trois colonnes y comparent, et elles ne comparent pas a la meme
+    # chose : STATUT confronte a un seuil absolu du metier, POSITION et
+    # ECART confrontent aux pairs. Coris Bank affichait « Bon » et une
+    # barre rouge — les deux etaient vrais, cote a cote ils se lisaient
+    # comme une erreur. Les en-tetes nomment donc leur reference, et une
+    # legende le dit sous le tableau.
     # ═══════════════════════════════════════════════════════════════════
     section_heading("Ratios calculés", spacing="loose")
 
@@ -544,32 +551,49 @@ def _render_fundamental(fundamentals, ratios):
         return f"<span class='dot {tone}'></span>{label}"
 
     def _position_bar(ratio_key: str, value, prefer_low: bool) -> str:
-        """Rend une petite barre horizontale avec la position du titre vs
-        min/médiane/max du secteur. Vide si pas de benchmark."""
-        if value is None or not benchmarks:
-            return ""
-        bench = benchmarks.get("sector", {}).get(ratio_key) or benchmarks.get("global", {}).get(ratio_key)
-        if not bench:
-            return ""
+        """Situe le titre entre le minimum et le maximum de ses pairs.
+
+        La barre et la colonne « Ecart » disent la meme chose et doivent donc
+        la dire de la meme facon. Elles ne le faisaient pas : l'ecart tolere
+        une zone neutre de cinq pour cent autour de la mediane et s'y affiche
+        en gris, la barre tranchait au premier centieme. Un titre a un pour
+        cent de la mediane portait donc un « ≈ mediane » gris a cote d'une
+        barre franchement rouge. La regle de couleur est desormais celle de
+        l'ecart, et une seule : `compare_to_sector`.
+
+        Et quand le repere n'existe pas, on le DIT. La barre vide ne se
+        distinguait pas d'une barre a zero.
+        """
+        if value is None:
+            return "<span class='muted'>—</span>"
+        cmp = compare_to_sector(ratio_key, value, benchmarks, prefer_low=prefer_low)
+        bench = (benchmarks.get("sector", {}).get(ratio_key)
+                 or benchmarks.get("global", {}).get(ratio_key)) if benchmarks else None
+        if not cmp or not bench:
+            return ("<span class='muted' style='font-size:11.5px;'>"
+                    "repère indisponible</span>")
         lo, hi, med = bench["min"], bench["max"], bench["median"]
         if hi == lo:
-            return ""
-        # clamp position 0-100% dans [min, max]
-        v_clamped = max(lo, min(hi, value))
-        pos = (v_clamped - lo) / (hi - lo) * 100
+            return ("<span class='muted' style='font-size:11.5px;'>"
+                    "pairs tous identiques</span>")
+        diff = cmp["diff"]
+        favorable = (diff < -0.05 and prefer_low) or (diff > 0.05 and not prefer_low)
+        defavorable = (diff > 0.05 and prefer_low) or (diff < -0.05 and not prefer_low)
+        teinte = ("var(--up)" if favorable
+                  else "var(--down)" if defavorable else "var(--ink-3)")
+        pos = (max(lo, min(hi, value)) - lo) / (hi - lo) * 100
         med_pos = (med - lo) / (hi - lo) * 100
-        # Couleur favorable : vert si dans la bonne moitié
-        is_good = (value < med and prefer_low) or (value > med and not prefer_low)
-        fill_color = "var(--up)" if is_good else "var(--down)"
+        infobulle = (f"{cmp['scope']} · médiane {med:.4g} · "
+                     f"étendue {lo:.4g} à {hi:.4g}")
         return (
-            f"<div style='position:relative;width:100%;height:8px;"
-            f"background:var(--bg-sunken);border-radius:999px;overflow:hidden;'>"
-            # track fill up to value
-            f"<div style='position:absolute;left:0;top:0;width:{pos:.0f}%;height:100%;"
-            f"background:{fill_color};border-radius:999px;opacity:0.85;'></div>"
-            # median marker
-            f"<div style='position:absolute;left:{med_pos:.0f}%;top:-2px;width:2px;"
-            f"height:12px;background:var(--ink-3);'></div>"
+            f"<div title=\"{infobulle}\" style='position:relative;width:100%;"
+            f"height:8px;background:var(--bg-sunken);border-radius:999px;"
+            f"overflow:hidden;'>"
+            f"<div style='position:absolute;left:0;top:0;width:{pos:.0f}%;"
+            f"height:100%;background:{teinte};border-radius:999px;"
+            f"opacity:0.85;'></div>"
+            f"<div style='position:absolute;left:{med_pos:.0f}%;top:-2px;"
+            f"width:2px;height:12px;background:var(--ink-3);'></div>"
             f"</div>"
         )
 
@@ -624,8 +648,8 @@ def _render_fundamental(fundamentals, ratios):
         f"<th style='{header_style}'>Indicateur</th>"
         f"<th style='{header_style};text-align:right;'>Valeur</th>"
         f"<th style='{header_style}'>Seuil</th>"
-        f"<th style='{header_style}'>Position vs secteur</th>"
-        f"<th style='{header_style}'>Statut</th>"
+        f"<th style='{header_style}'>Position · vs pairs</th>"
+        f"<th style='{header_style}'>Statut · vs seuil</th>"
         f"<th style='{header_style}'>Écart</th>"
         f"</tr>"
     )
@@ -651,6 +675,16 @@ def _render_fundamental(fundamentals, ratios):
         f"overflow:hidden;background:var(--bg-elev);'>"
         f"<table style='width:100%;border-collapse:collapse;'>{rows_html}</table></div>",
         unsafe_allow_html=True,
+    )
+    # Sans cette phrase, les deux colonnes se lisent comme une contradiction :
+    # un ratio peut tenir le seuil du metier et rester sous la mediane de ses
+    # pairs. C'etait le cas de Coris Bank — « Bon » et barre rouge.
+    st.caption(
+        "**Statut** juge la valeur face au **seuil**. **Position** et "
+        "**Écart** la situent face aux **pairs** — le trait vertical est leur "
+        "médiane. Tenir le seuil tout en restant sous la médiane du secteur "
+        "n'est pas une contradiction : les deux colonnes ne répondent pas à "
+        "la même question."
     )
 
     # ═══════════════════════════════════════════════════════════════════
