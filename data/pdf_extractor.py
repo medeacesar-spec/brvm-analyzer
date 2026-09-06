@@ -1727,12 +1727,123 @@ def _colonne_fcfa(texte: str):
     return None, None
 
 
-def _extract_from_cells(lignes: list, mult: float, rang: int = 0) -> dict:
-    """Lit les libelles connus dans des lignes deja decoupees en cellules."""
-    data = {}
-    for cellules in lignes:
-        if len(cellules) < 2:
+_MOTIF_ANNEE = re.compile(r"\b(?:\d{1,2}[/-]\d{1,2}[/-])?(20\d{2})\b")
+_UNITES_ENTETE = {"milliard": 1e9, "milliards": 1e9, "million": 1e6,
+                  "millions": 1e6, "millier": 1e3, "milliers": 1e3}
+
+
+def _contexte_des_entetes(lignes: list) -> dict:
+    """Ce que l'en-tete de chaque tableau dit de ses colonnes.
+
+    Deux suppositions courantes se revelent fausses des qu'un emetteur
+    presente ses comptes autrement.
+
+    La premiere est que l'exercice en cours occupe la premiere colonne. Le
+    rapport annuel de la SIB titre ses colonnes « 31/12/2024 | 31/12/2025 » :
+    l'annee ancienne est a GAUCHE. Lire la premiere colonne y rendait le
+    produit net bancaire de 2024 sous l'etiquette 2025, et le total du bilan
+    de 2024 — 1 685 milliards au lieu de 1 882.
+
+    La seconde est qu'un document n'a qu'une unite. Le meme rapport en aligne
+    deux : un tableau « Donnees (en milliards FCFA) » et un tableau a codes
+    « C10 PRODUIT NET BANCAIRE 102 763 108 663 », en millions. Un
+    multiplicateur unique ne peut pas servir les deux, et le plafond de
+    vraisemblance rabattait 10^9 a 10^6 — divisant par mille le tableau en
+    milliards.
+
+    On lit donc l'en-tete : quelle colonne porte l'exercice le plus recent, et
+    dans quelle unite ce tableau-ci s'exprime. Retourne, par indice de ligne,
+    (rang de la colonne parmi les colonnes de valeur, unite ou None).
+    """
+    def _unite(cellules):
+        for cel in cellules:
+            m = re.search(r"\ben\s+(milliards?|millions?|milliers?)\b",
+                          (cel or "").lower())
+            if m:
+                return _UNITES_ENTETE[m.group(1)]
+        return None
+
+    # L'unite peut preceder OU suivre la ligne de millesimes : la SIB pose
+    # « 31/12/2024 | 31/12/2025 » puis, la ligne d'apres seulement,
+    # « Donnees (en milliards FCFA) ». On releve donc toutes les mentions
+    # d'abord, et on prend la plus proche de l'en-tete, dans un sens comme
+    # dans l'autre.
+    unites = {i: _unite(c) for i, c in enumerate(lignes) if c and _unite(c)}
+
+    def _unite_voisine(i):
+        for ecart in (0, 1, -1, 2, -2):
+            if i + ecart in unites:
+                return unites[i + ecart]
+        return None
+
+    contexte = {}
+    courant = None
+    for i, cellules in enumerate(lignes):
+        if not cellules:
             continue
+
+        # Le millesime peut occuper la premiere cellule : la SIB pose sa ligne
+        # de dates toute seule, « 31/12/2024 | 31/12/2025 », et met l'unite sur
+        # la ligne suivante. On compte donc le rang parmi les cellules PORTANT
+        # une annee, sans presumer qu'un libelle occupe la premiere.
+        # `findall` et non `search` : le bilan de la SIB loge ses deux dates
+        # dans UNE cellule, « 31/12/2024 31/12/2025 », alors que les valeurs
+        # correspondantes occupent bien deux cellules dans les lignes du
+        # tableau. Ne lire qu'un millesime par cellule faisait manquer cet
+        # en-tete, et le total du bilan restait celui de 2024.
+        annees = [int(a) for cel in cellules if len(cel or "") <= 60
+                  for a in _MOTIF_ANNEE.findall(cel or "")]
+        # DEUX ou TROIS millesimes, pas davantage. Un etat financier compare
+        # l'exercice a celui qui precede, parfois a l'avant-dernier. Une serie
+        # de sept annees n'est pas un etat financier : c'est le tableau
+        # prospectif d'une note d'analyse, « 2020 … 2024 2025 2026 », ou les
+        # dernieres colonnes sont des PREVISIONS. Y suivre le millesime le plus
+        # recent donnait a NSIA Banque un produit net bancaire de 117,6
+        # milliards — la projection 2026 — au lieu des 97,8 realises en 2024.
+        # Lire un pronostic comme un realise est pire que lire la mauvaise
+        # colonne : on ne peut plus s'en apercevoir.
+        distincts = sorted(set(annees))
+        if 2 <= len(distincts) <= 3 and len(annees) <= 4:
+            courant = (annees.index(max(annees)), _unite_voisine(i))
+            continue
+        if len(distincts) > 3:
+            courant = None
+            continue
+
+        # La prose qui suit un tableau n'en fait pas partie : un commentaire
+        # ne se lit pas en colonnes, et laisser le contexte courir jusqu'au
+        # tableau suivant reviendrait a lui appliquer l'en-tete du precedent.
+        if (len(cellules) == 1 and len(cellules[0] or "") > 80):
+            courant = None
+            continue
+
+        if courant:
+            contexte[i] = courant
+    return contexte
+
+
+def _extract_from_cells(lignes: list, mult: float, rang: int = 0,
+                        rang_impose: bool = False) -> dict:
+    """Lit les libelles connus dans des lignes deja decoupees en cellules.
+
+    `rang_impose` protege le cas bi-devise : quand `_colonne_fcfa` a deja
+    designe la colonne en francs, l'en-tete du tableau n'a pas a la
+    contredire. Ecobank titre ses colonnes « 30 Juin 2026 | 30 Juin 2025 »
+    une ligne au-dessus de « milliers $EU | millions FCFA » : suivre les
+    millesimes y ramenerait la colonne en dollars.
+    """
+    entetes = {} if rang_impose else _contexte_des_entetes(lignes)
+    data = {}
+    for indice, cellules in enumerate(lignes):
+        # Une cellule unique n'est pas forcement une ligne vide : ce peut etre
+        # un libelle dont les chiffres sont tombes sur la ligne suivante. On
+        # la garde si elle est COURTE — un libelle de poste comptable, pas une
+        # phrase de commentaire qui irait ensuite s'emparer des chiffres d'un
+        # tableau voisin.
+        if not cellules or (len(cellules) < 2 and len(cellules[0] or "") > 60):
+            continue
+        rang_ligne, mult_ligne = entetes.get(indice, (rang, None))
+        mult_ligne = mult_ligne or mult
         libelle = cellules[0].lower().strip()
         for motif, champ in _TABLE_LABELS:
             if champ in data:
@@ -1744,20 +1855,61 @@ def _extract_from_cells(lignes: list, mult: float, rang: int = 0) -> dict:
             # prendre la colonne suivante, qui est un autre exercice ou une
             # variation. Sur un scan SITAB, cette errance ramenait 513 728 —
             # la colonne « variation en valeur » — comme chiffre d'affaires.
+            # Trois chiffres au moins, sauf quand l'en-tete a declare l'unite
+            # du tableau : « Donnees (en milliards FCFA) » rend « -3,6 »
+            # parfaitement lisible, et l'exiger a trois chiffres faisait
+            # disparaitre le cout du risque de la SIB.
+            chiffres_min = 1 if entetes.get(indice, (0, None))[1] else 3
             vus = 0
             for cel in cellules[1:]:
                 val = _parse_amount(cel)
-                if val is None or val == 0 or len(re.sub(r"\D", "", cel)) < 3:
+                if (val is None or val == 0
+                        or len(re.sub(r"\D", "", cel)) < chiffres_min):
                     continue                      # cellule vide ou parasite
                 if float(val).is_integer() and 1990 <= abs(val) <= 2100:
                     continue                      # millesime
                 # `rang` vaut 0 dans le cas courant : la periode en cours est
                 # la premiere colonne chiffree. Il vaut 1 sur un etat bi-devise
                 # ou la colonne en francs suit la colonne en dollars.
-                if vus < rang:
+                if vus < rang_ligne:
                     vus += 1
                     continue
-                montant = val * mult
+                montant = val * mult_ligne
+                if abs(montant) >= 100_000_000:
+                    data[champ] = montant
+                break
+
+            # Libelle seul sur sa ligne, chiffres sur la suivante. La SIB
+            # ecrit « Resultat Brut d'exploitation » puis, ligne d'apres,
+            # « 62,6 | 66,7 | 4,1 | 7% » : le resultat brut d'exploitation
+            # d'une banque disparaissait faute de regarder une ligne plus bas.
+            # On ne descend que d'UNE ligne, et seulement si elle ne porte
+            # aucun libelle connu — sans quoi on volerait ses chiffres au
+            # poste suivant.
+            if champ in data or len(cellules) > 1:
+                continue
+            if indice + 1 >= len(lignes):
+                continue
+            suivante = lignes[indice + 1]
+            if not suivante or any(
+                    re.match(r"\s*" + m + r"\b", (suivante[0] or "").lower())
+                    for m, _ in _TABLE_LABELS):
+                continue
+            rang_suite, mult_suite = entetes.get(indice + 1, (rang, None))
+            mult_suite = mult_suite or mult
+            mini = 1 if entetes.get(indice + 1, (0, None))[1] else 3
+            vus = 0
+            for cel in suivante:
+                val = _parse_amount(cel)
+                if (val is None or val == 0
+                        or len(re.sub(r"\D", "", cel)) < mini):
+                    continue
+                if float(val).is_integer() and 1990 <= abs(val) <= 2100:
+                    continue
+                if vus < rang_suite:
+                    vus += 1
+                    continue
+                montant = val * mult_suite
                 if abs(montant) >= 100_000_000:
                     data[champ] = montant
                 break
@@ -1870,8 +2022,9 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
 
                 # Couche coordonnees : elle tranche l'ambiguite des colonnes
                 # separees par des espaces, que le texte brut ne permet pas.
-                cell_data = _extract_from_cells(lignes_cellules, mult,
-                                                rang=_rang_fcfa)
+                cell_data = _extract_from_cells(
+                    lignes_cellules, mult, rang=_rang_fcfa,
+                    rang_impose=_mult_fcfa is not None)
 
                 # Layer 2: row-by-row label matching
                 label_data = _extract_from_tables_rowlabel(all_tables, mult)
