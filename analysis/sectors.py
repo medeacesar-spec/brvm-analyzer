@@ -524,12 +524,21 @@ def _exercices_du_secteur(secteur: str) -> dict:
     if not cle:
         return {}
 
+    from config import tickers_retires
+
+    # Une societe retiree de la cote ne fait plus partie du secteur : ses
+    # derniers comptes vieillissent pendant que les autres publient, et sa
+    # valeur tirerait la mediane vers un passe qui n'a plus cours.
+    hors_cote = tickers_retires()
+
     conn = get_connection()
     marche = {}
     for ligne in conn.execute(
         "SELECT ticker, company_name, sector, price, shares, dps FROM market_data"
     ).fetchall():
         d = dict(ligne)
+        if d["ticker"] in hors_cote:
+            continue
         if _cle_secteur(d.get("sector")) == cle:
             marche[d["ticker"]] = d
     if not marche:

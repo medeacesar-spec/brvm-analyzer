@@ -25,6 +25,12 @@ def _load_quotes_from_db() -> pd.DataFrame:
     df = read_sql_df("""SELECT ticker, company_name as name, sector, price as last,
            variation, market_cap, beta, rsi, dps, updated_at
            FROM market_data WHERE price > 0 ORDER BY ticker""")
+    # Un titre retire de la cote n'a plus de cours a comparer : il fausserait
+    # les hausses et les baisses du jour avec sa derniere cotation connue.
+    from config import tickers_retires
+    _hors_cote = tickers_retires()
+    if _hors_cote and not df.empty:
+        df = df[~df["ticker"].isin(_hors_cote)]
 
     # Source unique de verite : price_cache. La date affichee dans la caption
     # correspond EXACTEMENT a la date la plus recente presente dans le cache,

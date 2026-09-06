@@ -513,6 +513,13 @@ def get_analyzable_tickers() -> list:
     """).fetchall()
     conn.close()
 
+    # Un titre retire de la cote ne s'analyse pas : il n'a plus de prix, plus
+    # de publication, et son dernier exercice vieillit. Il disparait donc du
+    # selecteur, sans que rien ne soit efface en base.
+    from config import tickers_retires as _retires
+    _hors_cote = _retires()
+    rows = [r for r in rows if dict(r)["ticker"] not in _hors_cote]
+
     # Fallback config : {ticker: {name, sector}} depuis brvm_tickers.json
     cfg = {t["ticker"]: t for t in _load_cfg()}
 

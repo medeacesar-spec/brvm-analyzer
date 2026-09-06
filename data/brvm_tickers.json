@@ -18,7 +18,7 @@
   {"ticker": "ETIT.tg", "name": "ETI TG", "sector": "Banque", "country": "TG"},
   {"ticker": "FTSC.ci", "name": "Filtisac CI", "sector": "Industrie", "country": "CI"},
   {"ticker": "LNBB.bj", "name": "Loterie Nationale du Benin", "sector": "Autres", "country": "BJ"},
-  {"ticker": "SVOC.ci", "name": "Movis CI", "sector": "Autres", "country": "CI"},
+  {"ticker": "SVOC.ci", "name": "Movis CI", "sector": "Autres", "country": "CI", "retire": true},
   {"ticker": "NEIC.ci", "name": "NEI CEDA CI", "sector": "Industrie", "country": "CI"},
   {"ticker": "NTLC.ci", "name": "Nestle CI", "sector": "Industrie", "country": "CI"},
   {"ticker": "NSBC.ci", "name": "NSIA Banque", "sector": "Banque", "country": "CI"},
