@@ -622,6 +622,10 @@ _TABLE_LABELS = [
     #
     # L'ordre compte : ces motifs viennent APRES les precedents, plus
     # specifiques, et la recherche s'arrete au premier champ trouve.
+    # SYSCOHADA distingue le chiffre d'affaires (compte XA) des produits
+    # d'exploitation, qui lui ajoutent les subventions et la production
+    # stockee. Ces deux libelles MAJORENT donc le chiffre d'affaires : ils ne
+    # servent qu'a defaut du poste exact — cf. `_MOTIFS_REPLI`.
     (r"produits?\s+d.exploitation", "revenue"),
     (r"total\s+des\s+produits", "revenue"),
     (r"revenus?\s+(?:consolid|net|d.exploitation)", "revenue"),
@@ -888,6 +892,15 @@ def _detect_multiplier(text: str):
 
     return 1, True
 
+
+# Libelles qui APPROCHENT un poste sans l'etre. Retenir « Produits
+# d'exploitation » alors que le meme document ecrit « Chiffre d'affaires »
+# quelques lignes plus loin fausse la marge autant que la croissance : la
+# difference, ce sont les subventions et la production stockee.
+_MOTIFS_REPLI = frozenset({
+    r"produits?\s+d.exploitation",
+    r"total\s+des\s+produits",
+})
 
 _MONEY_FIELDS = ("revenue", "revenue_bank", "net_income", "equity", "total_assets")
 
@@ -2060,75 +2073,82 @@ def _extract_from_cells(lignes: list, mult: float, rang: int = 0,
                 couples.append((indice_cel, sans_total))
         return couples
 
-    for indice, cellules in enumerate(lignes):
-        # Une cellule unique n'est pas forcement une ligne vide : ce peut etre
-        # un libelle dont les chiffres sont tombes sur la ligne suivante. On la
-        # garde si elle est COURTE — un libelle de poste comptable, pas une
-        # phrase de commentaire qui irait ensuite s'emparer des chiffres d'un
-        # tableau voisin.
-        if not cellules or (len(cellules) < 2 and len(cellules[0] or "") > 60):
-            continue
-        rang_ligne, mult_ligne = entetes.get(indice, (rang, None))
-        unite_declaree = entetes.get(indice, (0, None))[1]
-        mult_ligne = mult_ligne or mult
+    # Deux passes : les libelles exacts d'abord, les approximations
+    # ensuite. Sans cela, l'ordre des lignes du document decidait — un
+    # « Total des produits d'exploitation » place avant le « Chiffre
+    # d'affaires » l'emportait sur lui.
+    for autoriser_repli in (False, True):
+        for indice, cellules in enumerate(lignes):
+            # Une cellule unique n'est pas forcement une ligne vide : ce peut etre
+            # un libelle dont les chiffres sont tombes sur la ligne suivante. On la
+            # garde si elle est COURTE — un libelle de poste comptable, pas une
+            # phrase de commentaire qui irait ensuite s'emparer des chiffres d'un
+            # tableau voisin.
+            if not cellules or (len(cellules) < 2 and len(cellules[0] or "") > 60):
+                continue
+            rang_ligne, mult_ligne = entetes.get(indice, (rang, None))
+            unite_declaree = entetes.get(indice, (0, None))[1]
+            mult_ligne = mult_ligne or mult
 
-        # Une ligne a SIX colonnes de montants n'est pas un etat financier :
-        # c'est la serie pluriannuelle d'une note d'analyse, ou les dernieres
-        # colonnes sont des projections et la PREMIERE l'annee la plus
-        # ancienne. « Capitaux propres 108 810 132 524 164 905 189 719 215 330
-        # 275 713 359 475 476 382 » chez NSIA Banque : prendre la premiere
-        # colonne rendait 108,8 milliards quand la prose du meme document
-        # annonce 215,3 pour l'exercice en cours. Sans en-tete pour designer
-        # la bonne colonne, aucune convention de position ne tient — on
-        # s'abstient. La regle ne s'applique pas quand `_colonne_fcfa` a deja
-        # tranche : un etat bi-devise aligne legitimement six colonnes.
-        if (not rang_impose and indice not in entetes
-                and _serie_pluriannuelle(cellules[1:])):
-            continue
-        # Trois chiffres au moins, sauf quand l'en-tete a declare l'unite du
-        # tableau : « Donnees (en milliards FCFA) » rend « -3,6 » parfaitement
-        # lisible, et l'exiger a trois chiffres faisait disparaitre le cout du
-        # risque de la SIB.
-        chiffres_min = 1 if unite_declaree else 3
+            # Une ligne a SIX colonnes de montants n'est pas un etat financier :
+            # c'est la serie pluriannuelle d'une note d'analyse, ou les dernieres
+            # colonnes sont des projections et la PREMIERE l'annee la plus
+            # ancienne. « Capitaux propres 108 810 132 524 164 905 189 719 215 330
+            # 275 713 359 475 476 382 » chez NSIA Banque : prendre la premiere
+            # colonne rendait 108,8 milliards quand la prose du meme document
+            # annonce 215,3 pour l'exercice en cours. Sans en-tete pour designer
+            # la bonne colonne, aucune convention de position ne tient — on
+            # s'abstient. La regle ne s'applique pas quand `_colonne_fcfa` a deja
+            # tranche : un etat bi-devise aligne legitimement six colonnes.
+            if (not rang_impose and indice not in entetes
+                    and _serie_pluriannuelle(cellules[1:])):
+                continue
+            # Trois chiffres au moins, sauf quand l'en-tete a declare l'unite du
+            # tableau : « Donnees (en milliards FCFA) » rend « -3,6 » parfaitement
+            # lisible, et l'exiger a trois chiffres faisait disparaitre le cout du
+            # risque de la SIB.
+            chiffres_min = 1 if unite_declaree else 3
 
-        for depart, libelle in _candidats(cellules):
-            for motif, champ in _TABLE_LABELS:
-                if champ in data:
-                    continue
-                if not re.match(r"\s*" + motif + r"\b", libelle):
-                    continue
+            for depart, libelle in _candidats(cellules):
+                for motif, champ in _TABLE_LABELS:
+                    if champ in data:
+                        continue
+                    if (motif in _MOTIFS_REPLI) != autoriser_repli:
+                        continue
+                    if not re.match(r"\s*" + motif + r"\b", libelle):
+                        continue
 
-                montant = _valeur_apres(cellules, depart + 1, rang_ligne,
-                                        mult_ligne, chiffres_min)
-                if montant is not None:
-                    data[champ] = montant
-                    if unite_declaree:
-                        declares.add(champ)
+                    montant = _valeur_apres(cellules, depart + 1, rang_ligne,
+                                            mult_ligne, chiffres_min)
+                    if montant is not None:
+                        data[champ] = montant
+                        if unite_declaree:
+                            declares.add(champ)
+                        break
+
+                    # Libelle seul sur sa ligne, chiffres sur la suivante. La SIB
+                    # ecrit « Resultat Brut d'exploitation » puis, ligne d'apres,
+                    # « 62,6 | 66,7 | 4,1 | 7% ». La ligne d'apres doit commencer
+                    # par un NOMBRE : la CIE pose « Capitaux propres - part
+                    # Groupe » puis « Interets ne conferant pas le controle | 209 |
+                    # 189 », qui appartient a un AUTRE poste — s'y servir donnait
+                    # 0,209 milliard de capitaux propres a une societe qui en
+                    # declare 43.
+                    if depart or len(cellules) > 1 or indice + 1 >= len(lignes):
+                        break
+                    suivante = lignes[indice + 1]
+                    if not suivante or _parse_amount(suivante[0]) is None:
+                        break
+                    rang_suite, mult_suite = entetes.get(indice + 1, (rang, None))
+                    unite_suite = entetes.get(indice + 1, (0, None))[1]
+                    montant = _valeur_apres(suivante, 0, rang_suite,
+                                            mult_suite or mult,
+                                            1 if unite_suite else 3)
+                    if montant is not None:
+                        data[champ] = montant
+                        if unite_suite:
+                            declares.add(champ)
                     break
-
-                # Libelle seul sur sa ligne, chiffres sur la suivante. La SIB
-                # ecrit « Resultat Brut d'exploitation » puis, ligne d'apres,
-                # « 62,6 | 66,7 | 4,1 | 7% ». La ligne d'apres doit commencer
-                # par un NOMBRE : la CIE pose « Capitaux propres - part
-                # Groupe » puis « Interets ne conferant pas le controle | 209 |
-                # 189 », qui appartient a un AUTRE poste — s'y servir donnait
-                # 0,209 milliard de capitaux propres a une societe qui en
-                # declare 43.
-                if depart or len(cellules) > 1 or indice + 1 >= len(lignes):
-                    break
-                suivante = lignes[indice + 1]
-                if not suivante or _parse_amount(suivante[0]) is None:
-                    break
-                rang_suite, mult_suite = entetes.get(indice + 1, (rang, None))
-                unite_suite = entetes.get(indice + 1, (0, None))[1]
-                montant = _valeur_apres(suivante, 0, rang_suite,
-                                        mult_suite or mult,
-                                        1 if unite_suite else 3)
-                if montant is not None:
-                    data[champ] = montant
-                    if unite_suite:
-                        declares.add(champ)
-                break
     return data
 
 
