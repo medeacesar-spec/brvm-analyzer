@@ -122,6 +122,51 @@ def _parse_amount(text: str) -> Optional[float]:
         return None
 
 
+# Au-dela de quinze chiffres, aucun montant comptable n'existe : le plus gros
+# bilan de la cote tourne autour de 28 000 milliards, soit quatorze chiffres.
+_CHIFFRES_MAX_MONTANT = 15
+
+
+def _scinder_montants_colles(cellule: str):
+    """Deux colonnes fusionnees en une seule cellule : rend la PREMIERE.
+
+    Le bilan de BNBC rend « TOTAL GENERAL | 4 9 140 780 873 5 0 176 045 881 » :
+    les chiffres y sont fragmentes, l'ecart entre les deux colonnes ressemble a
+    celui qui separe deux groupes de milliers, et la lecture par coordonnees ne
+    les separe pas. Le nombre obtenu compte vingt-deux chiffres et se fait
+    rejeter — le total du bilan tombait a 0,45 milliard au lieu de 49,14.
+
+    Les deux exercices d'un bilan s'ecrivent avec le MEME nombre de chiffres
+    dans l'immense majorite des cas. On coupe donc en deux parts egales, et on
+    ne rend le resultat que si les deux moities sont l'une et l'autre des
+    montants plausibles — sans quoi la coupure serait arbitraire.
+    """
+    texte = cellule or ""
+    # Le signe se lit AVANT le premier chiffre. Le jeter transformait la perte
+    # de la SETAO — « Resultat net -556 761 512 -314 644 909 » — en un benefice
+    # de meme montant : l'erreur la plus grave que ce decoupage puisse
+    # produire, puisqu'elle est plausible et inverse le sens.
+    tete = re.match(r"[^0-9]*", texte).group(0)
+    negatif = "-" in tete or "(" in tete or "\u2212" in tete
+    chiffres = re.sub(r"\D", "", texte)
+    if not (2 * _CHIFFRES_MAX_MONTANT >= len(chiffres) > _CHIFFRES_MAX_MONTANT):
+        return None
+    if len(chiffres) % 2:
+        return None
+    moitie = len(chiffres) // 2
+    gauche, droite = chiffres[:moitie], chiffres[moitie:]
+    # Un zero en tete trahit une coupure au mauvais endroit.
+    if gauche.startswith("0") or droite.startswith("0"):
+        return None
+    valeur = float(gauche)
+    # Les deux exercices se ressemblent : un ecart de plus du double signale
+    # que la coupure n'a pas rendu deux montants comparables.
+    voisin = float(droite)
+    if not (0.5 <= valeur / voisin <= 2.0):
+        return None
+    return -valeur if negatif else valeur
+
+
 def _first_line(text: str) -> str:
     if not text:
         return ""
@@ -620,6 +665,14 @@ _TABLE_LABELS = [
     # courant, circulant, immobilise — que le total, lui, n'a pas.
     (r"total\s+(?:de\s+l.)?actif(?!\s*(?:non\s+)?"
      r"(?:courant|circulant|immobilis))", "total_assets"),
+    # Un bilan SYSCOHADA totalise sous « TOTAL GENERAL », et le panneau droit
+    # sous « TOTAL PASSIF » — deux libelles qui valent le total du bilan et ne
+    # repondaient a aucun motif. BNBC ressortait a 6,03 milliards d'actif pour
+    # 49,14 publies : la lecture retenait « TOTAL ACTIF IMMOBILISE », faute de
+    # reconnaitre le vrai total quelques lignes plus bas.
+    (r"total\s+g[ée]n[ée]ral", "total_assets"),
+    (r"total\s+(?:du\s+)?passif(?!\s*(?:non\s+)?(?:courant|circulant))",
+     "total_assets"),
 
     # ── Variantes rencontrees d'un emetteur a l'autre ──
     # Le vocabulaire ci-dessus decrivait les libelles observes sur quelques
@@ -1930,9 +1983,13 @@ _COMPOSANTES_CAPITAUX_PROPRES = (
 # se repartit entre emprunts non courants, emprunts courants, locations
 # financieres et titres emis. On la somme donc, comme les capitaux propres.
 _COMPOSANTES_DETTE = (
-    r"emprunts?\s+et\s+dettes?\s+financi[eè]res?",
+    # « et » ou « & » : la Smart Bank ecrit « Emprunts & dettes financieres »,
+    # et « Emprunts & autres dettes financieres » deux lignes plus bas.
+    r"emprunts?\s*(?:et|&)\s*(?:autres\s+)?dettes?\s+financi[eè]res?",
     r"emprunts?\s+li[eé]s?\s+aux\s+droits\s+d.utilisation",
+    # « long terme » ou son abreviation : Tractafric ecrit « Emprunts a LT ».
     r"emprunts?\s+(?:[àa]\s+)?(?:long|court)\s+terme",
+    r"emprunts?\s+[àa]\s+(?:lt|ct)\b",
     r"emprunts?\s+part\s+(?:long|court)\s+terme",
     r"emprunts?\s+obligataires?",
     r"dettes?\s+financi[eè]res?",
@@ -1941,6 +1998,20 @@ _COMPOSANTES_DETTE = (
     r"passifs?\s+financiers?",
     r"passifs?\s+locatifs?",
     r"emprunts?\s*$",
+    # En SYSCOHADA, le credit bancaire A COURT TERME ne figure pas dans les
+    # « dettes financieres » : il est en bas de bilan, sous TRESORERIE PASSIF.
+    # Chez BNBC il pese 18 536 millions quand la ligne « Emprunts et dettes
+    # financieres diverses » n'en porte que 209 — soit 99 % de la dette reelle
+    # ignoree, et un ratio d'endettement de 0,01 au lieu de 1,06.
+    r"banques?[,\s][^0-9]{0,44}cr[eé]dits?\s+de\s+tr[eé]sorerie",
+    r"banques?[,\s][^0-9]{0,20}cr[eé]dits?\s+d.escompte",
+    r"concours\s+bancaires?",
+    r"d[eé]couverts?\s+bancaires?",
+    # En SYSCOHADA le credit bancaire court terme se totalise sous
+    # « TRESORERIE PASSIF » — 18 536 millions chez BNBC, contre 209 a la ligne
+    # « Emprunts et dettes financieres diverses ». Ignorer ce poste, c'est
+    # ignorer 99 % de l'endettement reel.
+    r"(?:total\s+)?tr[eé]sorerie[\s-]*passif",
 )
 
 # Ce qui porte le mot « dette » ou « passif » sans etre de la dette financiere.
@@ -2013,6 +2084,8 @@ def _dette_financiere_par_composantes(lignes: list, mult: float,
                 valeurs = []
                 for cel in suite:
                     val = _parse_amount(cel)
+                    if val is None or abs(val) > 10 ** _CHIFFRES_MAX_MONTANT:
+                        val = _scinder_montants_colles(cel) or val
                     if val is None or val == 0:
                         continue
                     if float(val).is_integer() and 1990 <= abs(val) <= 2100:
@@ -2148,6 +2221,13 @@ def _extract_from_cells(lignes: list, mult: float, rang: int = 0,
         vus = 0
         for cel in cellules[depart:]:
             val = _parse_amount(cel)
+            # La cellule fusionnee traine souvent le libelle du panneau
+            # voisin — « 4 9 140 780 873 5 0 176 045 881 - Decaissements
+            # lies aux acquisitions » — et la lecture echoue AVANT d'avoir
+            # pu constater que le nombre est trop long. On tente donc le
+            # decoupage aussi quand elle ne rend rien.
+            if val is None or abs(val) > 10 ** _CHIFFRES_MAX_MONTANT:
+                val = _scinder_montants_colles(cel) or val
             if (val is None or val == 0
                     or len(re.sub(r"\D", "", cel or "")) < chiffres_min):
                 continue                          # cellule vide ou parasite
