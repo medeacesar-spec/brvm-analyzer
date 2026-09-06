@@ -65,6 +65,26 @@ ASSIMILÉES ») : c'est lui qui fait foi. Reconstituer par les composantes
 n'est légitime que si elles forment un **bloc contigu** et que leur somme
 retombe sur le total déclaré.
 
+## 4 bis. Un bilan consolidé porte TROIS lignes de capitaux propres
+
+En IFRS consolidé, le passif en aligne trois d'affilée :
+
+- **Capitaux propres attribuables aux propriétaires de la société mère** — la
+  part du groupe ;
+- **Capitaux propres attribuables aux participations ne donnant pas le
+  contrôle** — les minoritaires ;
+- **Total capitaux propres**, qui est la somme des deux.
+
+Se tromper de ligne ne se voit pas : les trois sont plausibles. Chez Sonatel,
+la base portait 224 291 millions pour l'exercice 2024 — les minoritaires — et
+1 160 715 pour 2025 — la part du groupe. Deux lignes différentes, deux
+exercices, et des capitaux propres qui semblaient quintupler en un an. Le
+total, lui, vaut 1 274 638 puis 1 399 263.
+
+**C'est le TOTAL qui s'écrit**, parce que c'est lui qui referme le bilan :
+total des capitaux propres + passifs non courants + passifs courants = total
+du passif. La part du groupe ne referme rien.
+
 ## 5. Les recoupements qui tranchent
 
 À utiliser systématiquement avant d'écrire une valeur :
