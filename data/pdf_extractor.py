@@ -2464,6 +2464,18 @@ def extract_from_pdf(pdf_path: str, use_ocr: bool = True) -> dict:
                 if data.get("revenue") is None and ocr_data.get("revenue_bank"):
                     data["revenue"] = ocr_data["revenue_bank"]
 
+                # La reconstitution des capitaux propres par leurs composantes
+                # vaut aussi pour un document SCANNE — et c'est meme la qu'elle
+                # sert le plus. Le bilan de BOA Burkina laisse sa ligne
+                # « CAPITAUX PROPRES ET RESSOURCES ASSIMILEES » VIDE et detaille
+                # capital souscrit, reserves, report a nouveau et resultat juste
+                # en dessous ; celui de Coris Bank porte son total mais dans un
+                # tableau que la reconstitution en cellules rend mal. Sept
+                # banques de la cote publient ainsi, en image.
+                if data.get("equity") is None and ocr_cellules:
+                    data["equity"] = _capitaux_propres_par_composantes(
+                        ocr_cellules, ocr_mult)
+
                 # Dernier recours : les montants cites dans le commentaire.
                 prose = _extract_from_prose(ocr_text)
                 for champ, montant in prose.items():
