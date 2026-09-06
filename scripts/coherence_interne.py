@@ -14,6 +14,9 @@ Chaque societe est donc son propre temoin. Sept sondes, toutes internes :
   signe        un poste qui ne peut pas etre negatif et qui l'est
   identite     produit net bancaire moins charges egale resultat brut
   bilan        les encours d'une banque contre son total de bilan
+  dette        la dette financiere contre le passif exigible, et la dette
+               d'une banque, qui n'existe pas — ses depots ne sont pas un
+               endettement
   periode      un cumul de periode inferieur a celui qui le precede
 
 Aucune ne demande de savoir ce que la societe aurait DU publier. Elles ne
@@ -36,7 +39,8 @@ COUVERTURE = {"T1": 3, "S1": 6, "T2": 6, "T3": 9, "T4": 12, "S2": 12}
 JAMAIS_NEGATIFS = ("revenue", "total_assets", "deposits", "loans")
 
 # Postes suivis d'un exercice a l'autre.
-SUIVIS = ("revenue", "net_income", "equity", "total_assets", "deposits", "loans")
+SUIVIS = ("revenue", "net_income", "equity", "total_assets", "deposits",
+          "loans", "total_debt")
 
 
 def _mds(valeur):
@@ -87,6 +91,33 @@ def sondes(annuels, periodes):
                         f"PNB {_mds(pnb):,.1f} moins charges {_mds(abs(charges)):,.1f} "
                         f"fait {_mds(attendu):,.1f}, et non {_mds(rbe):,.1f}"))
 
+            # --- la dette financiere contre l'identite du bilan ----------
+            # Actif = capitaux propres + passif exigible. La dette financiere
+            # n'est qu'une PART de ce passif : le reste, ce sont les
+            # fournisseurs, le fiscal et le social. Une dette qui depasse ce
+            # plafond a donc absorbe des dettes d'exploitation, ou un total.
+            #
+            # Ce controle existait dans le lecteur de PDF, ou il compare les
+            # trois valeurs d'un MEME document. Il manquait ici : la relecture
+            # ciblee n'ecrit qu'un champ, sans revoir les autres, et six
+            # valeurs sont passees — dont les 3 704 milliards d'Oragroup, qui
+            # sont ses depots. Un garde-fou qui ne vit que dans le lecteur ne
+            # protege pas la base.
+            dette = ligne.get("total_debt")
+            capitaux = ligne.get("equity")
+            if dette and (ligne.get("sector") or "").lower().startswith("banq"):
+                trouves.append((
+                    "dette", ticker, annee,
+                    f"une banque n'a pas de dette au sens du ratio : "
+                    f"{_mds(dette):,.0f} Mds sont ses ressources clientele"))
+            elif dette and ligne.get("total_assets") and capitaux is not None:
+                exigible = ligne["total_assets"] - capitaux
+                if dette > exigible * 1.02:
+                    trouves.append((
+                        "dette", ticker, annee,
+                        f"dette {_mds(dette):,.1f} superieure au passif "
+                        f"exigible {_mds(exigible):,.1f} Mds"))
+
             # --- coherence de bilan --------------------------------------
             actif = ligne.get("total_assets")
             for poste in ("deposits", "loans"):
@@ -136,7 +167,8 @@ def main() -> None:
     for ligne in conn.execute(
             "SELECT ticker, fiscal_year, revenue, net_income, equity, "
             "total_assets, deposits, loans, operating_expenses, "
-            "gross_operating_income FROM fundamentals WHERE fiscal_year >= 2020"):
+            "gross_operating_income, total_debt, sector "
+            "FROM fundamentals WHERE fiscal_year >= 2020"):
         ligne = dict(ligne)
         annuels[ligne["ticker"]][ligne["fiscal_year"]] = ligne
 
