@@ -372,23 +372,40 @@ def render():
             ),
             unsafe_allow_html=True,
         )
+    # Un ratio absent a une cause, et la taire le fait passer pour une panne.
+    # Oragroup n'affiche pas de P/E parce qu'il a PERDU 8,04 milliards en 2025 :
+    # diviser un cours par un benefice negatif ne produit pas un multiple, mais
+    # un nombre negatif qui ne se compare a rien. « n.s. » et son motif disent
+    # cela ; un tiret muet laisse croire a une donnee manquante.
+    _rn = fundamentals.get("net_income")
+    _perte = _rn is not None and _rn < 0
+
     with c3:
+        if per and per > 0:
+            _per_valeur = f"{per:.1f}"
+            _per_motif = _sector_sub("per", per, prefer_low=True, fmt="decimal")
+        elif _perte or (per is not None and per < 0):
+            _per_valeur, _per_motif = "n.s.", "perte sur l'exercice"
+        elif not _rn:
+            _per_valeur, _per_motif = "—", "résultat net absent"
+        else:
+            _per_valeur, _per_motif = "—", ""
         st.markdown(
-            _stat_card(
-                "P/E",
-                f"{per:.1f}" if per and per > 0 else "—",
-                _sector_sub("per", per, prefer_low=True, fmt="decimal") if per else "",
-            ),
+            _stat_card("P/E", _per_valeur, _per_motif),
             unsafe_allow_html=True,
         )
     with c4:
-        yield_str = f"{yield_val*100:.2f}%" if yield_val else "—"
+        if yield_val:
+            _div_valeur = f"{yield_val*100:.2f}%"
+            _div_motif = _sector_sub("dividend_yield", yield_val,
+                                     prefer_low=False, fmt="pct")
+        else:
+            # « Aucun dividende renseigne » et non « aucun dividende verse » :
+            # l'absence de donnee et l'absence de distribution ne se
+            # confondent pas, et rien ici ne permet de trancher.
+            _div_valeur, _div_motif = "—", "aucun dividende renseigné"
         st.markdown(
-            _stat_card(
-                "Dividend Yield",
-                yield_str,
-                _sector_sub("dividend_yield", yield_val, prefer_low=False, fmt="pct") if yield_val else "",
-            ),
+            _stat_card("Dividend Yield", _div_valeur, _div_motif),
             unsafe_allow_html=True,
         )
 
