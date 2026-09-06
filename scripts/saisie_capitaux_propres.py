@@ -23,7 +23,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from data.db import get_connection
 
-# (ticker, exercice) -> (montant en FCFA, provenance)
+# (ticker, exercice) -> (montant en FCFA, provenance[, remplacer])
+#
+# `remplacer` autorise a ecraser une valeur deja en base. Il ne se pose que
+# pour un montant adosse a un document ET verifie par ses composantes, face a
+# une extraction que rien ne recoupe : BOA Mali portait 40,2 milliards de
+# capitaux propres en 2024 quand son bilan en decompose 46,195 au franc pres.
+# Sans ce marqueur, le script protege l'existant — c'est la regle, et
+# l'exception se declare.
 RELEVES = {
     # Coris Bank International BF — BILAN_PUB au 31/12/2025, ligne
     # « 9. Capitaux propres et ressources assimilees », en MILLIONS de FCFA.
@@ -37,6 +44,34 @@ RELEVES = {
     # GAUCHE dans ce document.
     ("BOAB.bj", 2025): (117_506_988_771, "RBP_0090, colonne 31/12/2025"),
     ("BOAB.bj", 2024): (117_396_355_692, "RBP_0090, colonne 31/12/2024"),
+
+    # BOA Senegal — bilan publie, en MILLIONS de FCFA, ligne 9. Composantes
+    # concordantes sur les deux exercices :
+    #   2025  36 000 + 15 129 + 23 492 + 21 905 = 96 526
+    #   2024  36 000 + 15 129 + 17 508 + 19 984 = 88 621
+    # Soit 11,5 % et 11,3 % du total du passif — la plage du groupe.
+    ("BOAS.sn", 2025): (96_526_000_000,
+                        "ligne 9 : capital 36 000 + reserves 15 129 "
+                        "+ report 23 492 + resultat 21 905, en millions"),
+    ("BOAS.sn", 2024): (88_621_000_000,
+                        "ligne 9 : capital 36 000 + reserves 15 129 "
+                        "+ report 17 508 + resultat 19 984, en millions"),
+
+    # BOA Mali — bilan publie, en FRANCS PLEINS, sans multiplicateur.
+    #   2025  27 450 000 000 + 9 703 816 001 + 1 585 416 272 + 11 081 189 907
+    #         = 49 820 422 180
+    #   2024  27 450 000 000 + 8 335 295 215 + 1 286 388 748 +  9 123 471 904
+    #         = 46 195 155 867
+    # L'exercice 2024 portait 40,2 milliards en base, sans recoupement
+    # possible. Les resultats nets, eux, concordaient deja au franc pres —
+    # c'est bien la seule valeur des capitaux propres qui etait fausse.
+    ("BOAM.ml", 2025): (49_820_422_180,
+                        "capital 27 450 000 000 + reserves 9 703 816 001 "
+                        "+ report 1 585 416 272 + resultat 11 081 189 907"),
+    ("BOAM.ml", 2024): (46_195_155_867,
+                        "capital 27 450 000 000 + reserves 8 335 295 215 "
+                        "+ report 1 286 388 748 + resultat 9 123 471 904",
+                        True),
 
     # BOA Cote d'Ivoire — bilan publie, en MILLIONS de FCFA. Le total est
     # recoupe par ses composantes, au chiffre pres dans les deux exercices :
@@ -71,7 +106,9 @@ def main(appliquer: bool = False) -> None:
           f"{'actif':>12s} {'ratio':>7s}  provenance")
 
     a_ecrire = []
-    for (ticker, annee), (montant, source) in sorted(RELEVES.items()):
+    for (ticker, annee), releve in sorted(RELEVES.items()):
+        montant, source = releve[0], releve[1]
+        remplacer = len(releve) > 2 and releve[2]
         ligne = conn.execute(
             "SELECT equity, total_assets FROM fundamentals "
             "WHERE ticker = ? AND fiscal_year = ?", (ticker, annee)).fetchone()
@@ -80,7 +117,10 @@ def main(appliquer: bool = False) -> None:
         ratio = montant / actif if actif else None
 
         verdict = ""
-        if ligne.get("equity"):
+        if ligne.get("equity") and remplacer:
+            verdict = f"REMPLACE {ligne['equity'] / 1e9:,.1f} — le bilan fait foi"
+            a_ecrire.append((ticker, annee, montant))
+        elif ligne.get("equity"):
             verdict = f"DEJA {ligne['equity'] / 1e9:,.1f} — non ecrase"
         elif ratio is not None and not (PLAGE[0] <= ratio <= PLAGE[1]):
             verdict = f"REJET : ratio hors plage bancaire"
