@@ -328,3 +328,99 @@ def candidats_amelioration(positions: tuple, cash: float = 0.0,
         "observations": n,
         "seuil_illiquidite": seuil,
     }
+
+def _qualite(ticker: str, scores: dict) -> tuple:
+    """Ce que le modele pense de la societe, pour ne pas acheter n'importe quoi.
+
+    Le classement marginal ne regarde que le couple rendement-risque PASSE. Un
+    titre peut y bien figurer et etre une societe en perdition : Oragroup a un
+    rendement negatif, Onatel distribue plus qu'elle ne gagne. Croiser les deux
+    evite de recommander un titre que le modele juge par ailleurs mauvais.
+
+    Rend (score sur 100, verdict).
+    """
+    ligne = scores.get(ticker) or {}
+    return (ligne.get("hybrid_score") or 0), (ligne.get("verdict") or "")
+
+
+@_maybe_cache_data(ttl=300)
+def allocation_suggeree(positions: tuple, cash: float, scores: tuple,
+                        seuil_illiquidite: Optional[float] = None,
+                        nombre_max: int = 3) -> Optional[dict]:
+    """Comment repartir le cash sur trois titres au plus, et ce que cela change.
+
+    La regle de selection croise DEUX conditions, et les deux comptent :
+
+      le titre doit AMELIORER le couple rendement-risque du portefeuille —
+      c'est le classement marginal ;
+      et le modele doit le juger correct — un titre peut avoir bien paye le
+      risque passe et etre une societe qui se degrade.
+
+    La repartition suit le rang marginal, bornee par ce que la liquidite
+    autorise : on ne place pas plus que ce qui se revendrait en cinq seances.
+
+    Le resultat n'est pas une consigne mais une SIMULATION : il affiche le
+    portefeuille avant et apres, pour que l'effet se juge sur des chiffres.
+    """
+    scores = dict(scores)
+    base = candidats_amelioration(positions, cash, seuil_illiquidite)
+    if not base or cash <= 0:
+        return None
+
+    # Un titre que le modele deconseille ne se retient pas, si bon soit son
+    # rapport marginal.
+    retenus = []
+    for c in base["candidats"]:
+        if not c["ameliore"]:
+            continue
+        score, verdict = _qualite(c["ticker"], scores)
+        if "VENTE" in verdict.upper() or "ÉVITER" in verdict.upper():
+            continue
+        if score and score < 50:
+            continue
+        retenus.append({**c, "score": score, "verdict": verdict})
+        if len(retenus) >= nombre_max:
+            break
+    if not retenus:
+        return {"lignes": [], "raison": "aucun candidat ne réunit les deux "
+                                        "conditions"}
+
+    # Repartition proportionnelle au rapport marginal, bornee par la liquidite.
+    # Un titre decorrele compte comme le meilleur rang observe : son rapport
+    # est infini et ne peut pas servir de poids.
+    fini = [c["ratio"] for c in retenus if c["ratio"] != float("inf")]
+    plafond = max(fini) if fini else 1.0
+    poids_bruts = {c["ticker"]: (plafond if c["ratio"] == float("inf")
+                                 else c["ratio"]) for c in retenus}
+    somme = sum(poids_bruts.values()) or 1.0
+    reste, lignes = cash, []
+    for c in retenus:
+        part = poids_bruts[c["ticker"]] / somme
+        montant = cash * part
+        limite = c.get("taille_max")
+        borne = limite is not None and montant > limite
+        if borne:
+            montant = limite
+        lignes.append({**c, "montant": montant, "borne_par_liquidite": borne})
+    place = sum(l["montant"] for l in lignes)
+
+    # L'effet : le portefeuille avant, puis avec ces achats.
+    valeurs = {}
+    for ticker, valeur in positions:
+        if valeur and valeur > 0:
+            valeurs[ticker] = valeurs.get(ticker, 0) + valeur
+    apres = dict(valeurs)
+    for l in lignes:
+        apres[l["ticker"]] = apres.get(l["ticker"], 0) + l["montant"]
+
+    avant_m = mesures_portefeuille(tuple(sorted(valeurs.items())))
+    apres_m = mesures_portefeuille(tuple(sorted(apres.items())))
+    return {
+        "lignes": lignes,
+        "cash": cash,
+        "place": place,
+        "reste": cash - place,
+        "avant": avant_m,
+        "apres": apres_m,
+        "ratio_portefeuille": base["ratio_portefeuille"],
+    }

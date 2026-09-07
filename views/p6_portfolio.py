@@ -1099,6 +1099,62 @@ def _render_portfolio_analysis(portfolio, cash, total_value, total_portfolio, ti
 
 
 
+def _table_suggestions(liste, intitule, action, tone, montrer_poids=True):
+    """Les suggestions en tableau, comme la page Risque et optimisation.
+
+    Les listes s'affichaient en blocs empiles, chacun avec son bouton
+    d'analyse. La page de risque, elle, tabule — et se lit d'un coup d'oeil.
+    Aligner les deux evite au lecteur de changer de grammaire visuelle en
+    changeant d'onglet. Le bouton par ligne disparait ; un selecteur sous le
+    tableau ouvre n'importe lequel des titres cites.
+    """
+    from utils.ui_helpers import section_heading
+    from utils.nav import ticker_quick_picker
+    section_heading(intitule, spacing="default")
+    if not liste:
+        st.markdown("<div style='color:var(--ink-3);font-size:13px;"
+                    "padding:6px 0;'>Aucune suggestion.</div>",
+                    unsafe_allow_html=True)
+        return
+    entete = ("font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;"
+              "color:var(--ink-3);font-weight:500;padding:9px 10px;"
+              "border-bottom:1px solid var(--border);background:var(--bg-sunken);")
+    cell = "padding:8px 10px;font-size:13px;border-bottom:1px solid var(--border);"
+    nb = cell + "text-align:right;font-variant-numeric:tabular-nums;"
+    couleur = {"up": "var(--up)", "down": "var(--down)"}.get(tone, "var(--ink)")
+    html = (f"<tr><th style='{entete};text-align:left;'>Titre</th>"
+            + (f"<th style='{entete};text-align:right;'>Poids</th>"
+               f"<th style='{entete};text-align:right;'>P&L</th>"
+               if montrer_poids else "")
+            + f"<th style='{entete};text-align:right;'>Confiance</th>"
+              f"<th style='{entete};text-align:left;'>Signal</th></tr>")
+    for s in liste:
+        colonnes = ""
+        if montrer_poids:
+            pnl = s.get("pnl_pct") or 0
+            teinte_pnl = "var(--up)" if pnl >= 0 else "var(--down)"
+            colonnes = (f"<td style='{nb}'>{s.get('weight', 0):.1f} %</td>"
+                        f"<td style='{nb};color:{teinte_pnl};'>{pnl:+.1f} %</td>")
+        html += (
+            f"<tr><td style='{cell}'>"
+            f"<span class='ticker'>{s['ticker']}</span> "
+            f"<span style='color:var(--ink-2);'>{s.get('name', '')}</span></td>"
+            + colonnes
+            + f"<td style='{nb};font-weight:600;color:{couleur};'>"
+              f"{s.get('confidence', 0):.0f} %</td>"
+              f"<td style='{cell};color:var(--ink-3);font-size:12px;'>"
+              f"{s.get('signals_top') or '—'}</td></tr>")
+    st.markdown(
+        f"<div style='border:1px solid var(--border);border-radius:10px;"
+        f"overflow:hidden;background:var(--bg-elev);'>"
+        f"<table style='width:100%;border-collapse:collapse;'>{html}</table>"
+        f"</div>", unsafe_allow_html=True)
+    ticker_quick_picker([(s["ticker"], f"{s['ticker']} — {s.get('name','')}")
+                         for s in liste],
+                        key=f"reco_{action}", label="Ouvrir l'analyse d'un titre")
+
+
+
 def _render_position_recommendations(portfolio, total_value, cash,
                                      volet="tout"):
     """Les suggestions, par volet.
@@ -1256,98 +1312,16 @@ def _render_position_recommendations(portfolio, total_value, cash,
 
     if volet != "nouveaux":
         with col_sell:
-            section_heading("À vendre / alléger", spacing="default")
-            if sells:
-                from utils.ui_helpers import tag as _tag, ticker as _tkr, delta as _delta
-                for s in sells[:5]:
-                    _action = "VENDRE" if s["verdict"] == "VENTE FORTE CONFIRMÉE" else "ALLÉGER"
-                    col_info, col_btn = st.columns([5, 1])
-                    with col_info:
-                        st.markdown(
-                            f"{_tag(_action, 'down')} {s['name']} {_tkr(s['ticker'])}<br>"
-                            f"<small class='muted'>Poids {s['weight']:.1f}% · "
-                            f"P&L {_delta(s['pnl_pct'], with_arrow=False)} · "
-                            f"Confiance {s['confidence']}%</small>",
-                            unsafe_allow_html=True,
-                        )
-                        if s["signals_top"]:
-                            st.caption(f"↳ {s['signals_top']}")
-                    with col_btn:
-                        ticker_analyze_button(
-                            s["ticker"], label=None,
-                            key=f"reco_sell_{s['ticker']}",
-                        )
-                    st.markdown("")
-            else:
-                st.markdown(
-                    "<div style='color:var(--ink-3);font-size:13px;padding:6px 0;'>"
-                    "Aucune vente recommandée.</div>",
-                    unsafe_allow_html=True,
-                )
-
+            _table_suggestions(sells[:5], "À vendre / alléger",
+                               "sell", "down")
     if volet != "nouveaux":
         with col_reinforce:
-            section_heading("À renforcer (détenus)", spacing="default")
-            if reinforce:
-                from utils.ui_helpers import tag as _tag, ticker as _tkr, delta as _delta
-                for s in reinforce[:5]:
-                    label = "ACHAT FORT" if s["verdict"] == "ACHAT FORT CONFIRMÉ" else "ACHAT"
-                    col_info, col_btn = st.columns([5, 1])
-                    with col_info:
-                        st.markdown(
-                            f"{_tag(label, 'up')} {s['name']} {_tkr(s['ticker'])}<br>"
-                            f"<small class='muted'>Poids actuel {s['weight']:.1f}% · "
-                            f"P&L {_delta(s['pnl_pct'], with_arrow=False)} · "
-                            f"Confiance {s['confidence']}%</small>",
-                            unsafe_allow_html=True,
-                        )
-                        if s["signals_top"]:
-                            st.caption(f"↳ {s['signals_top']}")
-                    with col_btn:
-                        ticker_analyze_button(
-                            s["ticker"], label=None,
-                            key=f"reco_reinforce_{s['ticker']}",
-                        )
-                    st.markdown("")
-            else:
-                st.markdown(
-                    "<div style='color:var(--ink-3);font-size:13px;padding:6px 0;'>"
-                    "Pas de position à renforcer.</div>",
-                    unsafe_allow_html=True,
-                )
-
+            _table_suggestions(reinforce[:5], "À renforcer (détenus)",
+                               "reinforce", "up")
     if volet != "detenus":
         with col_new:
-            section_heading("Nouvelles opportunités", spacing="default")
-            if new_buys:
-                from utils.ui_helpers import tag as _tag, ticker as _tkr
-                for s in new_buys[:5]:
-                    label = "ACHAT FORT" if s["verdict"] == "ACHAT FORT CONFIRMÉ" else "ACHAT"
-                    yield_pct = (s['dps']/s['price']*100) if s['price'] else 0
-                    col_info, col_btn = st.columns([5, 1])
-                    with col_info:
-                        st.markdown(
-                            f"{_tag(label, 'up')} {s['name']} {_tkr(s['ticker'])}<br>"
-                            f"<small class='muted'>Prix "
-                            f"<span style='font-variant-numeric:tabular-nums'>{s['price']:,.0f}</span> · "
-                            f"Yield {yield_pct:.1f}% · Confiance {s['confidence']}%</small>",
-                            unsafe_allow_html=True,
-                        )
-                        if s["signals_top"]:
-                            st.caption(f"↳ {s['signals_top']}")
-                    with col_btn:
-                        ticker_analyze_button(
-                            s["ticker"], label=None,
-                            key=f"reco_new_{s['ticker']}",
-                        )
-                    st.markdown("")
-            else:
-                st.markdown(
-                    "<div style='color:var(--ink-3);font-size:13px;padding:6px 0;'>"
-                    "Pas d'opportunité majeure détectée.</div>",
-                    unsafe_allow_html=True,
-                )
-
+            _table_suggestions(new_buys[:5], "Nouvelles opportunités",
+                               "new", "up", montrer_poids=False)
     # ---- Recommandations cash et diversification ----
     if volet == "detenus":
         return
@@ -1732,7 +1706,7 @@ def _render_optimisation(portfolio, cash):
             return
         html = (f"<tr><th style='{entete};text-align:left;'>{titre_bloc}</th>"
                 f"<th style='{entete};text-align:right;'>Apport</th>"
-                f"<th style='{entete};text-align:right;'>Rendement</th>"
+                f"<th style='{entete};text-align:right;'>Rendement annuel</th>"
                 f"<th style='{entete};text-align:right;'>Corrélation</th>"
                 f"<th style='{entete};text-align:right;'>Position max</th></tr>")
         for c in liste:
@@ -1745,7 +1719,8 @@ def _render_optimisation(portfolio, cash):
             # elle vaut mieux qu'un rendement eleve.
             html += (
                 f"<tr><td style='{cell}'>"
-                f"<span class='ticker'>{c['ticker']}</span>"
+                f"<span class='ticker'>{c['ticker']}</span> "
+                f"<span style='color:var(--ink-2);'>{_noms.get(c['ticker'], '')}</span>"
                 + (" <span class='muted' style='font-size:11px;'>détenu "
                    f"{c['poids']:.0%}</span>" if c["detenu"] else "")
                 + f"</td>"
@@ -1761,15 +1736,76 @@ def _render_optimisation(portfolio, cash):
             f"<table style='width:100%;border-collapse:collapse;'>{html}</table>"
             f"</div>", unsafe_allow_html=True)
 
+    # Le nom se lit mieux qu'un code : personne ne retient que BOAS est Bank of
+    # Africa Senegal.
+    _noms = {}
+    try:
+        from data.db import read_sql_df
+        _t = read_sql_df("SELECT ticker, company_name FROM market_data")
+        _noms = {r0["ticker"]: r0["company_name"] for _, r0 in _t.iterrows()}
+    except Exception:                                           # noqa: BLE001
+        pass
+
     ameliorent = [c for c in r["candidats"] if c["ameliore"]]
     degradent = [c for c in r["candidats"] if not c["ameliore"]]
-    _table(ameliorent[:10], "Améliorent le portefeuille")
+    _table(ameliorent[:5], "Améliorent le portefeuille")
     st.caption(
         "**Position max** : ce qui se revendrait en cinq séances au rythme "
         "d'échange habituel du titre. Au-delà, la ligne se détient bien mais "
         "ne se vend pas."
         + (f" Avec **{cash:,.0f} FCFA** de liquidités disponibles."
            if cash else ""))
+
+    # ── Ce qu'on ferait du cash ──────────────────────────────────────────
+    # Le classement marginal ne regarde que le couple rendement-risque PASSE.
+    # Un titre peut y bien figurer et etre une societe qui se degrade : la
+    # repartition croise donc les deux, et n'en retient que trois au plus.
+    if cash and cash > 0:
+        try:
+            from analysis.portefeuille_risque import allocation_suggeree
+            scores = tuple(sorted(_load_scoring_dict().items(),
+                                  key=lambda kv: kv[0]))
+            plan = allocation_suggeree(positions, float(cash), scores,
+                                       seuil_m * 1e6)
+        except Exception:                                       # noqa: BLE001
+            plan = None
+        if plan and plan.get("lignes"):
+            section_heading("Répartition suggérée du cash", spacing="loose")
+            avant, apres = plan["avant"], plan["apres"]
+            html = (f"<tr><th style='{entete};text-align:left;'>Titre</th>"
+                    f"<th style='{entete};text-align:right;'>Montant</th>"
+                    f"<th style='{entete};text-align:left;'>Avis du modèle</th>"
+                    f"</tr>")
+            for l in plan["lignes"]:
+                borne = ("<span class='muted' style='font-size:11px;'> · "
+                         "plafonné par la liquidité</span>"
+                         if l["borne_par_liquidite"] else "")
+                html += (
+                    f"<tr><td style='{cell}'>"
+                    f"<span class='ticker'>{l['ticker']}</span> "
+                    f"<span style='color:var(--ink-2);'>"
+                    f"{_noms.get(l['ticker'], '')}</span></td>"
+                    f"<td style='{nb};font-weight:600;'>"
+                    f"{l['montant']:,.0f}{borne}</td>"
+                    f"<td style='{cell};color:var(--ink-3);'>"
+                    f"{l['verdict']} · score {l['score']:.0f}/100</td></tr>")
+            st.markdown(
+                f"<div style='border:1px solid var(--border);"
+                f"border-radius:10px;overflow:hidden;background:var(--bg-elev);'>"
+                f"<table style='width:100%;border-collapse:collapse;'>{html}"
+                f"</table></div>", unsafe_allow_html=True)
+            if avant and apres and avant.get("volatilite") and apres.get("volatilite"):
+                sens = ("baisse" if apres["volatilite"] < avant["volatilite"]
+                        else "monte")
+                st.caption(
+                    f"En plaçant **{plan['place']:,.0f} FCFA** ainsi, la "
+                    f"volatilité du portefeuille **{sens} de "
+                    f"{avant['volatilite']:.1%} à {apres['volatilite']:.1%}**, "
+                    f"et la part du risque annulée par la diversification "
+                    f"passe de {avant['gain_diversification']:.0%} à "
+                    f"{apres['gain_diversification']:.0%}. "
+                    f"**C'est une simulation, pas une consigne** : elle montre "
+                    f"l'effet mécanique de ces achats sur le passé mesuré.")
 
     if degradent:
         with st.expander(f"Les {len(degradent)} autres, qui dégraderaient "
