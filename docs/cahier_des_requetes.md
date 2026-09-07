@@ -13,12 +13,15 @@ Mis à jour le 2026-09-06.
 | 2 | ~~Les deux sondes manquantes~~ | 2026-09-05 | **livré 2026-09-06** — `distribution` et `rendement` dans `coherence_interne.py` |
 | 3 | ~~Correctifs des repères sectoriels~~ | 2026-09-05 | **livré 2026-09-06** — 5 ratios construits, seuil porté à 3 observations, portée nommée |
 | 4 | ~~Routine quinzomadaire~~ | demandée de longue date | **livré 2026-09-06** — `routine_quinzaine.py` + atelier, billet GitHub en cas d'échec |
-| 15 | **Trente-cinq dividendes en contradiction avec l'avis BRVM** — ce ne sont pas des retenues à la source. Les Bank of Africa et la SIB tombent sur des rapports de 0,50 · 0,6667 · 0,625 (acompte enregistré seul ?), SOLIBRA 2020 et 2021 sont au dixième de l'avis, Filtisac 2024 porte 145 contre 1 320. | 2026-09-06 | à instruire |
+| 15 | **Neuf dividendes en contradiction avec l'avis BRVM**, après élimination des opérations sur titre. SOLIBRA 2020 et 2021 sont au dixième de l'avis ; Filtisac 2024 porte 145 contre 1 320. Restent aussi CFAO 2022, Onatel 2024, Vivo 2021, SITAB 2022, TotalEnergies Sénégal 2022, Filtisac 2023. | 2026-09-06 | à instruire |
+| 23 | **Aucune valeur ne dit si elle est retraitée ou telle que payée.** Les deux conventions cohabitent dans `dps` sans être distinguées. | 2026-09-06 | à trancher |
 | 16 | **ETI hors collecte** — la BRVM publie ses dividendes tantôt en dollars, tantôt en cents, tantôt étiquetés « FCFA » alors qu'ils sont en dollars. Deux lignes contradictoires pour le seul exercice 2025. | 2026-09-06 | à trancher |
 | 20 | **Dividendes recopiés d'une année sur l'autre.** Bernabé n'a d'avis que pour l'exercice 2022 (150 FCFA), et la base porte 150 sur 2020, 2021, 2022, 2023 et 2024 ; ses comptes 2025 déclarent « Total dividendes bruts à distribuer : 0 ». La sonde `distribution` le voit (×27,6 en 2023, ×135,9 en 2024). Combien d'autres titres portent ainsi un dividende reconduit sans source ? | 2026-09-06 | à instruire |
 | 19 | **BOABF.bf — coût du risque figé.** +4,303 Md en 2024 et −4,303 Md en 2025 : même valeur, signe opposé. Le stock de provisions du bilan (5 650 328 968 fin 2025) n'est pas le coût du risque, qui est un flux du compte de résultat. | 2026-09-06 | à relire |
 | 17 | **BOAB.bj — la page parle de deux exercices.** La grille bancaire recule à 2023 (7 indicateurs sur 10) pendant que le tableau des pairs lit 2025 (4 sur 10). C'est une lacune de données, pas un défaut d'affichage : il manque dépôts, crédits, coût du risque, RBE et résultat avant impôt sur l'exercice 2025. | 2026-09-06 | à combler |
 | 18 | **La sonde « vocabulaire » du diagnostic classe à tort.** Elle range en « vocabulaire » tout champ manquant dans un document qui contient du texte, sans vérifier que le poste y figure : 6 des 8 constats sont en réalité des bilans absents ou en image. | 2026-09-06 | à corriger |
+| 24 | **Introduction d'une banque le 14 septembre 2026.** Nom à confirmer. À ajouter à `data/brvm_tickers.json` avec son secteur, puis lancer les deux collectes d'historique. La page Risque affichera « pas assez d'historique » pendant deux ans, comme pour BICI Bénin et la Loterie du Bénin. | 2026-09-07 | à faire le 14/09 |
+| 25 | **La routine de quinzaine ne peut pas découvrir un nouveau titre.** `scan_brvm_reports.py` parcourt une table `TICKER_TO_BRVM_SLUG` écrite à la main : une société absente de cette table n'est jamais visitée. Une introduction reste donc invisible tant que personne ne l'ajoute — ce que la routine était pourtant censée éviter. | 2026-09-07 | à corriger |
 | 5 | **Bilans en image** — NEI-CEDA, TotalEnergies Sénégal et d'autres publient un bilan qui n'existe qu'en image ; la lecture optique ne les traite pas encore. | 2026-09-06 | à instruire |
 
 ## Défauts de données connus
@@ -51,5 +54,11 @@ Mis à jour le 2026-09-06.
 | Campagne capitaux propres — 47 titres sur 48 | 2026-09-05 |
 | Campagne dette — tous les titres non bancaires sauf SAFCA (nulle) et SEMC (non publiée) | 2026-09-06 |
 | Routine de quinzaine — recense, traite, collecte les avis, contrôle, et ouvre un billet en cas d'échec | 2026-09-06 |
+| Historique de cours — `price_monthly` (5 ans) et `price_quarterly` (10 ans), 49 séries chacune, indices compris | 2026-09-07 |
+| Colonne `dps_paiement` — date de versement du dividende, 303 couples remplis depuis les avis BRVM | 2026-09-07 |
+| 41 dividendes reconduits sans avis marqués comme non sourcés — **conservés sur décision** | 2026-09-07 |
+| Onglet Risque et carte « ce que le score ne dit pas » dans Recommandation | 2026-09-07 |
 | Sonatel — capitaux propres consolidés corrigés (1 274,6 et 1 399,3 Md), actif et dette renseignés | 2026-09-06 |
+| 41 dividendes reconduits sans avis marqués comme non sourcés (conservés sur décision) | 2026-09-06 |
+| 26 des 35 contradictions de dividende expliquées par une opération sur titre | 2026-09-06 |
 | Collecte des avis de dividendes — 168 valeurs écrites, exercice 2025 de 23 à 35 titres sur 44 | 2026-09-06 |
