@@ -1,6 +1,6 @@
 """
 Page 2 : Analyse individuelle d'un titre
-Onglets: Fondamental | Technique | Recommandation
+Onglets: Cours | Fondamentale | Technique | Risque | Recommandation | Profil
 """
 
 import streamlit as st
@@ -417,8 +417,9 @@ def render():
         )
 
     # Tabs — labels épurés sans emoji
-    tab0, tab1, tab2, tab3, tab4 = st.tabs(
-        ["Cours", "Fondamentale", "Technique", "Recommandation", "Profil"]
+    tab0, tab1, tab2, tab_risque, tab3, tab4 = st.tabs(
+        ["Cours", "Fondamentale", "Technique", "Risque", "Recommandation",
+         "Profil"]
     )
 
     with tab0:
@@ -429,6 +430,9 @@ def render():
 
     with tab2:
         _render_technical(selected_ticker, price_df, result)
+
+    with tab_risque:
+        _render_risque(selected_ticker, fundamentals)
 
     with tab3:
         _render_recommendation(result, fundamentals)
@@ -1942,6 +1946,135 @@ def _render_bloc_sectoriel(fundamentals, ratios_src):
 
 
 
+def _render_risque(ticker, fundamentals):
+    """Onglet Risque : ce que detenir le titre coute en tranquillite.
+
+    Le score du modele n'en tient pas compte, et c'est voulu — il juge une
+    societe et une tendance. Deux titres au meme score peuvent s'obtenir au
+    prix d'un calme plat ou d'une descente de deux ans. Cette page mesure
+    cela, et rien d'autre.
+    """
+    from utils.ui_helpers import section_heading
+    from analysis.risque import profil_de_risque, TAUX_SANS_RISQUE
+
+    try:
+        profil = profil_de_risque(ticker, fundamentals.get("sector"))
+    except Exception as err:                                    # noqa: BLE001
+        st.caption(f"Mesures de risque indisponibles : {err}")
+        return
+    if not profil:
+        st.info("Pas assez d'historique mensuel pour mesurer le risque de ce "
+                "titre — il en faut deux ans, et une introduction récente n'en "
+                "a pas encore.")
+        return
+
+    m, med, marche = profil["titre"], profil["medianes"], profil["marche"]
+    ou = "secteur" if profil["portee"] == "secteur" else "marché"
+
+    def _pct(v, decimales=1):
+        return "—" if v is None else f"{v * 100:.{decimales}f} %"
+
+    def _cmp(valeur, repere, moins_c_est_mieux=True):
+        """La comparaison en toutes lettres, jamais un simple code couleur."""
+        if valeur is None or repere is None:
+            return "<span class='muted'>repère indisponible</span>"
+        ecart = valeur - repere
+        mieux = (ecart < 0) if moins_c_est_mieux else (ecart > 0)
+        teinte = "var(--up)" if mieux else "var(--down)"
+        if abs(ecart) < abs(repere) * 0.05:
+            teinte = "var(--ink-3)"
+        signe = "+" if ecart >= 0 else ""
+        return (f"<span style='color:{teinte};'>{signe}{ecart * 100:.1f} pts "
+                f"vs {ou}</span>")
+
+    section_heading("Risque", spacing="loose")
+    st.caption(
+        f"Mesuré sur **{m['observations']} mois** de cours, **dividendes "
+        f"compris**. Comparé à la médiane de **{profil['nb_pairs']} titres** "
+        f"du {ou}. Le score du modèle **ne tient pas compte du risque** : ces "
+        f"mesures s'ajoutent au verdict, elles ne le corrigent pas."
+    )
+
+    if m["peu_liquide"]:
+        st.warning(
+            f"**Ce titre ne cote pas {m['part_mois_immobiles'] * 100:.0f} % du "
+            f"temps.** Un cours qui ne bouge pas produit un rendement nul, et "
+            f"les rendements nuls font paraître le titre plus calme qu'il "
+            f"n'est. Toutes les mesures ci-dessous sont donc **optimistes** "
+            f"pour ce titre : sa volatilité réelle est plus élevée."
+        )
+
+    cadre = ("background:var(--bg-elev);border:1px solid var(--border);"
+             "border-radius:10px;padding:14px 16px;height:100%;")
+    titre_c = ("font-size:10.5px;text-transform:uppercase;letter-spacing:0.08em;"
+               "color:var(--ink-3);font-weight:500;")
+    valeur_c = ("font-size:24px;font-weight:600;letter-spacing:-0.02em;"
+                "margin:4px 0 2px;font-variant-numeric:tabular-nums;")
+    note_c = "font-size:11.5px;color:var(--ink-3);line-height:1.45;margin-top:6px;"
+
+    def _carte(intitule, valeur, comparaison, explication):
+        return (f"<div style='{cadre}'>"
+                f"<div style='{titre_c}'>{intitule}</div>"
+                f"<div style='{valeur_c}'>{valeur}</div>"
+                f"<div style='font-size:12px;'>{comparaison}</div>"
+                f"<div style='{note_c}'>{explication}</div></div>")
+
+    g, d = st.columns(2)
+    with g:
+        st.markdown(_carte(
+            "Volatilité annualisée", _pct(m["volatilite"]),
+            _cmp(m["volatilite"], med["volatilite"]),
+            "L'ampleur des mouvements, à la hausse comme à la baisse. Elle dit "
+            "combien le cours s'agite, pas s'il monte."), unsafe_allow_html=True)
+    with d:
+        asym = m["asymetrie"]
+        lecture = ("l'agitation est surtout <b>haussière</b>" if asym and asym < 0.45
+                   else "les baisses dominent l'agitation" if asym and asym > 0.60
+                   else "hausses et baisses s'équilibrent")
+        st.markdown(_carte(
+            "Semi-volatilité · baisses seules", _pct(m["semi_volatilite"]),
+            _cmp(m["semi_volatilite"], med["semi_volatilite"]),
+            f"La même mesure, sur les seules périodes sous le taux sans risque. "
+            f"Elle vaut <b>{asym:.0%}</b> de la volatilité totale : {lecture}. "
+            f"Un investisseur ne craint pas la hausse."), unsafe_allow_html=True)
+
+    g, d = st.columns(2)
+    with g:
+        recup = m["mois_recuperation"]
+        duree = (f"Le sommet d'avant a été retrouvé en <b>{recup} mois</b>."
+                 if recup else
+                 "<b>Le sommet d'avant n'a jamais été retrouvé</b> sur la période.")
+        st.markdown(_carte(
+            "Perte maximale", _pct(m["perte_maximale"]),
+            _cmp(m["perte_maximale"], med["perte_maximale"],
+                 moins_c_est_mieux=False),
+            f"La plus forte chute d'un sommet à un creux — ce qu'un actionnaire "
+            f"entré au plus haut a réellement subi. {duree}"),
+            unsafe_allow_html=True)
+    with d:
+        sh, so = m["sharpe"], m["sortino"]
+        st.markdown(_carte(
+            "Rendement par unité de risque",
+            "—" if sh is None else f"{sh:.2f}",
+            ("<span class='muted'>—</span>" if med["sharpe"] is None else
+             f"médiane du {ou} {med['sharpe']:.2f}"),
+            f"Ratio de Sharpe : le gain au-delà du sans-risque, divisé par la "
+            f"volatilité. Sortino <b>{'—' if so is None else f'{so:.2f}'}</b> "
+            f"fait le même calcul en ne comptant que les baisses. "
+            f"Taux sans risque retenu : <b>{TAUX_SANS_RISQUE:.0%}</b>, une "
+            f"hypothèse."), unsafe_allow_html=True)
+
+    st.caption(
+        f"Rang de volatilité : **{profil['rang_volatilite']}ᵉ titre le plus "
+        f"calme sur {profil['nb_titres']}**. Rendement annualisé sur la "
+        f"période : **{_pct(m['rendement_annualise'])}**, à comparer aux "
+        f"**{_pct(marche['rendement_annualise'])}** du titre médian de la cote."
+        + ("" if profil["portee"] == "secteur" else
+           f" Le secteur *{profil['secteur']}* compte moins de trois autres "
+           f"titres mesurables : la comparaison porte sur le marché entier.")
+    )
+
+
 def _render_recommendation(result, fundamentals):
     """Onglet Recommandation v3 : verdict card avec composition + 3 score
     cards descriptives + Points forts/Vigilance en tables + Plan d'action
@@ -2021,6 +2154,55 @@ def _render_recommendation(result, fundamentals):
         f"</div>",
         unsafe_allow_html=True,
     )
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Card "CE QUE LE SCORE NE DIT PAS" — le risque, qui n'y entre pas
+    # ═══════════════════════════════════════════════════════════════════
+    # Le score vaut Fondamental /50 + Technique /50 : le risque n'en fait pas
+    # partie, et ce n'est pas un oubli. Il juge une societe et une tendance,
+    # pas la facon dont le cours y arrive. Mais un lecteur qui voit « Achat »
+    # sans rien d'autre suppose naturellement que le risque a ete pese. Cette
+    # carte le detrompe, et renvoie a l'onglet qui le mesure.
+    try:
+        from analysis.risque import profil_de_risque
+        _risque = profil_de_risque(fundamentals.get("ticker"),
+                                   fundamentals.get("sector"))
+    except Exception:                                           # noqa: BLE001
+        _risque = None
+    if _risque:
+        _m = _risque["titre"]
+        _recup = _m["mois_recuperation"]
+        _phrase = (f"retrouvé son sommet en {_recup} mois"
+                   if _recup else "n'a jamais retrouvé son sommet depuis")
+        _asym = _m["asymetrie"] or 0
+        _tempo = ("dont l'essentiel à la hausse" if _asym < 0.45
+                  else "à dominante baissière" if _asym > 0.60
+                  else "hausses et baisses équilibrées")
+        _alerte = ("<br><b>Ce titre ne cote pas "
+                   f"{_m['part_mois_immobiles'] * 100:.0f} % du temps</b> : ces "
+                   "mesures le font paraître plus calme qu'il n'est."
+                   if _m["peu_liquide"] else "")
+        st.markdown(
+            f"<div style='background:var(--bg-elev);border:1px solid "
+            f"var(--border);border-radius:10px;padding:16px 18px;"
+            f"margin-top:14px;'>"
+            f"<div class='label-xs' style='margin-bottom:6px;'>"
+            f"Ce que le score ne dit pas</div>"
+            f"<div style='font-size:13px;line-height:1.6;color:var(--ink-2);'>"
+            f"Le verdict ci-dessus pèse <b>la société</b> et <b>la tendance</b>. "
+            f"Il ne tient <b>aucun compte du risque</b> : deux titres au même "
+            f"score peuvent s'obtenir au prix d'un calme plat ou d'une descente "
+            f"de deux ans.<br><br>"
+            f"Sur cinq ans, ce titre a bougé de <b>"
+            f"{_m['volatilite'] * 100:.0f} %</b> par an, {_tempo}. Sa pire "
+            f"chute a été de <b>{abs(_m['perte_maximale']) * 100:.0f} %</b>, et "
+            f"il a {_phrase}.{_alerte}"
+            f"</div>"
+            f"<div style='font-size:11.5px;color:var(--ink-3);margin-top:8px;'>"
+            f"Le détail, et la comparaison aux pairs, dans l'onglet "
+            f"<b>Risque</b>.</div></div>",
+            unsafe_allow_html=True,
+        )
 
     # ═══════════════════════════════════════════════════════════════════
     # Card "PRIX CIBLE" — modèle PER sectoriel + Yield cible
