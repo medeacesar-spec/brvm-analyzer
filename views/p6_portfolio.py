@@ -271,569 +271,589 @@ def render():
         st.info("Aucune position en portefeuille. Cliquez sur **Ajouter position** en haut.")
         return
 
-    # --- Portfolio summary (pas de divider — la hiérarchie suffit) ---
+    # ─── Trois onglets : où j'en suis, que faire, quoi ajouter ───────
+    # La page reunissait positions, dividendes, frais, allocation, risque,
+    # equilibre, diagnostic, ventes, renforcements, opportunites et cash —
+    # seize cents lignes pour trois questions differentes. Des ONGLETS
+    # plutot que trois entrees de menu : la navigation, les liens et
+    # l'authentification ne bougent pas, et c'est deja le motif d'« Analyse
+    # d'un titre ».
+    onglet_perf, onglet_reco, onglet_neuf = st.tabs(
+        ["Performance", "Recommandations", "Renforcer"])
 
-    # Try to get current prices : 1) from DB market_data (fast, always there),
-    # 2) fallback to live fetch only if DB is empty or very stale.
-    price_map = {}
-    try:
-        from data.storage import get_connection
-        conn = get_connection()
-        md_rows = conn.execute(
-            "SELECT ticker, price FROM market_data WHERE price > 0"
-        ).fetchall()
-        conn.close()
-        price_map = {r[0]: r[1] for r in md_rows}
-    except Exception:
+    with onglet_perf:
+        # --- Portfolio summary (pas de divider — la hiérarchie suffit) ---
+
+        # Try to get current prices : 1) from DB market_data (fast, always there),
+        # 2) fallback to live fetch only if DB is empty or very stale.
         price_map = {}
-
-    # If DB is empty, try a live scrape as last resort
-    if not price_map:
         try:
-            quotes = fetch_daily_quotes()
-            price_map = dict(zip(quotes["ticker"], quotes["last"]))
+            from data.storage import get_connection
+            conn = get_connection()
+            md_rows = conn.execute(
+                "SELECT ticker, price FROM market_data WHERE price > 0"
+            ).fetchall()
+            conn.close()
+            price_map = {r[0]: r[1] for r in md_rows}
         except Exception:
             price_map = {}
 
-    # Enrich portfolio with current prices
-    portfolio["current_price"] = portfolio["ticker"].map(price_map)
-    # Le coût de revient inclut désormais les frais de transaction (Type 1)
-    if "fees" not in portfolio.columns:
-        portfolio["fees"] = 0
-    portfolio["fees"] = pd.to_numeric(portfolio["fees"], errors="coerce").fillna(0)
-    portfolio["invested"] = (
-        portfolio["quantity"] * portfolio["avg_price"] + portfolio["fees"]
-    )
-    portfolio["current_value"] = portfolio.apply(
-        lambda r: r["quantity"] * r["current_price"] if pd.notna(r["current_price"]) else r["invested"],
-        axis=1,
-    )
-    portfolio["pnl"] = portfolio["current_value"] - portfolio["invested"]
-    portfolio["pnl_pct"] = portfolio["pnl"] / portfolio["invested"] * 100
+        # If DB is empty, try a live scrape as last resort
+        if not price_map:
+            try:
+                quotes = fetch_daily_quotes()
+                price_map = dict(zip(quotes["ticker"], quotes["last"]))
+            except Exception:
+                price_map = {}
 
-    # ═══════════════════════════════════════════════════════════════════
-    # 4 KPI cards : Valeur totale / Total Return / Yield / Positions
-    # ═══════════════════════════════════════════════════════════════════
-    cash = st.session_state.portfolio_cash
-    total_invested = portfolio["invested"].sum()
-    total_value = portfolio["current_value"].sum()
-    total_pnl = total_value - total_invested
-    total_pnl_pct = (total_pnl / total_invested * 100) if total_invested > 0 else 0
-    total_portfolio = total_value + cash
-
-    # Dividendes encaissés + frais de compte + Total Return
-    total_dividends_received = get_total_dividends_received()
-    total_account_fees = get_total_account_fees()
-    total_return = total_pnl + total_dividends_received - total_account_fees
-    total_return_pct = (total_return / total_invested * 100) if total_invested > 0 else 0
-
-    _stocks_dict = _load_all_stocks_dict()
-    total_div = 0
-    for _, pos in portfolio.iterrows():
-        fund = _stocks_dict.get(pos["ticker"])
-        if fund and fund.get("dps"):
-            total_div += fund["dps"] * pos["quantity"]
-    yield_weighted = (total_div / total_value * 100) if total_value > 0 else 0
-
-    # Nombre de secteurs
-    tickers_data = load_tickers()
-    ticker_to_sector = {t["ticker"]: t["sector"] for t in tickers_data}
-    portfolio["sector"] = portfolio["ticker"].map(ticker_to_sector).fillna("Autre")
-    n_sectors = portfolio["sector"].nunique()
-
-    # Yield marché de référence (approx 4.1% pour BRVM)
-    MARKET_YIELD_REF = 4.1
-
-    def _kpi_card(label, value, sub, tone="neutral"):
-        arrow = {"up": "▲", "down": "▼"}.get(tone, "")
-        sub_color = {"up": "var(--up)", "down": "var(--down)"}.get(tone, "var(--ink-3)")
-        return (
-            f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
-            f"border-radius:10px;padding:14px 16px;min-height:92px;'>"
-            f"<div class='label-xs' style='margin-bottom:6px;'>{label}</div>"
-            f"<div style='font-size:22px;font-weight:600;letter-spacing:-0.02em;"
-            f"color:var(--ink);font-variant-numeric:tabular-nums;line-height:1.15;'>{value}</div>"
-            f"<div style='font-size:11.5px;color:{sub_color};margin-top:6px;font-weight:500;'>"
-            f"{arrow + ' ' if arrow else '— '}{sub}</div>"
-            f"</div>"
+        # Enrich portfolio with current prices
+        portfolio["current_price"] = portfolio["ticker"].map(price_map)
+        # Le coût de revient inclut désormais les frais de transaction (Type 1)
+        if "fees" not in portfolio.columns:
+            portfolio["fees"] = 0
+        portfolio["fees"] = pd.to_numeric(portfolio["fees"], errors="coerce").fillna(0)
+        portfolio["invested"] = (
+            portfolio["quantity"] * portfolio["avg_price"] + portfolio["fees"]
         )
-
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        st.markdown(_kpi_card("Valeur totale", f"{total_portfolio:,.0f}", CURRENCY),
-                     unsafe_allow_html=True)
-    with c2:
-        ret_sign = "−" if total_return < 0 else "+"
-        ret_str = f"{ret_sign}{abs(total_return):,.0f}"
-        pnl_sign_txt = "−" if total_pnl < 0 else "+"
-        parts = [
-            f"{'−' if total_return_pct < 0 else '+'}{abs(total_return_pct):.2f}%",
-            f"PV {pnl_sign_txt}{abs(total_pnl):,.0f}",
-        ]
-        if total_dividends_received > 0:
-            parts.append(f"Div +{total_dividends_received:,.0f}")
-        if total_account_fees > 0:
-            parts.append(f"Frais −{total_account_fees:,.0f}")
-        ret_sub = " · ".join(parts)
-        ret_tone = "up" if total_return >= 0 else "down"
-        st.markdown(_kpi_card("Total Return", ret_str, ret_sub, ret_tone),
-                     unsafe_allow_html=True)
-    with c3:
-        yield_tone = "up" if yield_weighted >= MARKET_YIELD_REF else "down"
-        yield_sub = f"vs {MARKET_YIELD_REF:.1f}% marché"
-        st.markdown(_kpi_card("Yield pondéré", f"{yield_weighted:.2f}%", yield_sub, yield_tone),
-                     unsafe_allow_html=True)
-    with c4:
-        st.markdown(_kpi_card("Positions", str(len(portfolio)),
-                                f"{n_sectors} secteur{'s' if n_sectors > 1 else ''}"),
-                     unsafe_allow_html=True)
-
-    # ═══════════════════════════════════════════════════════════════════
-    # Tableau Positions editorial
-    # ═══════════════════════════════════════════════════════════════════
-    section_heading("Positions", spacing="loose")
-
-    header_style = (
-        "font-size:10.5px;text-transform:uppercase;letter-spacing:0.08em;"
-        "color:var(--ink-3);font-weight:500;padding:9px 10px;"
-        "border-bottom:1px solid var(--border);background:var(--bg-sunken);"
-    )
-    cell_style = "padding:10px;font-size:13px;border-bottom:1px solid var(--border);"
-    num_style = cell_style + "text-align:right;font-variant-numeric:tabular-nums;"
-
-    rows_html = (
-        f"<tr>"
-        f"<th style='{header_style};text-align:left;'>Ticker</th>"
-        f"<th style='{header_style};text-align:left;'>Nom</th>"
-        f"<th style='{header_style};text-align:right;'>Qté</th>"
-        f"<th style='{header_style};text-align:right;'>PRU</th>"
-        f"<th style='{header_style};text-align:right;'>Cours</th>"
-        f"<th style='{header_style};text-align:right;'>P&L</th>"
-        f"<th style='{header_style};text-align:right;'>Poids</th>"
-        f"<th style='{header_style};text-align:right;'>Yield</th>"
-        f"</tr>"
-    )
-    for _, pos in portfolio.iterrows():
-        poids_pct = (pos["current_value"] / total_value * 100) if total_value else 0
-        fund = _stocks_dict.get(pos["ticker"]) or {}
-        dps = fund.get("dps") or 0
-        cur_price = pos.get("current_price")
-        yield_pos = (dps / cur_price * 100) if cur_price else 0
-        pnl = pos.get("pnl")
-        cur_str = f"{cur_price:,.0f}" if pd.notna(cur_price) else "—"
-        if pd.notna(cur_price) and pnl is not None:
-            pnl_sign = "−" if pnl < 0 else "+"
-            pnl_str = f"{pnl_sign}{abs(pnl):,.0f}"
-            pnl_color = "var(--up)" if pnl >= 0 else "var(--down)"
-        else:
-            pnl_str = "—"
-            pnl_color = "var(--ink-3)"
-
-        rows_html += (
-            f"<tr>"
-            f"<td style='{cell_style}'><span class='ticker'>{pos['ticker']}</span></td>"
-            f"<td style='{cell_style};font-weight:500;'>{pos['company_name']}</td>"
-            f"<td style='{num_style}'>{pos['quantity']:,.0f}</td>"
-            f"<td style='{num_style}'>{pos['avg_price']:,.2f}</td>"
-            f"<td style='{num_style}'>{cur_str}</td>"
-            f"<td style='{num_style};color:{pnl_color};font-weight:600;'>{pnl_str}</td>"
-            f"<td style='{num_style}'>{poids_pct:.1f}%</td>"
-            f"<td style='{num_style}'>{yield_pos:.2f}%</td>"
-            f"</tr>"
+        portfolio["current_value"] = portfolio.apply(
+            lambda r: r["quantity"] * r["current_price"] if pd.notna(r["current_price"]) else r["invested"],
+            axis=1,
         )
+        portfolio["pnl"] = portfolio["current_value"] - portfolio["invested"]
+        portfolio["pnl_pct"] = portfolio["pnl"] / portfolio["invested"] * 100
 
-    st.markdown(
-        f"<div style='border:1px solid var(--border);border-radius:10px;"
-        f"overflow:hidden;background:var(--bg-elev);margin-bottom:16px;'>"
-        f"<table style='width:100%;border-collapse:collapse;'>{rows_html}</table></div>",
-        unsafe_allow_html=True,
-    )
+        # ═══════════════════════════════════════════════════════════════════
+        # 4 KPI cards : Valeur totale / Total Return / Yield / Positions
+        # ═══════════════════════════════════════════════════════════════════
+        cash = st.session_state.portfolio_cash
+        total_invested = portfolio["invested"].sum()
+        total_value = portfolio["current_value"].sum()
+        total_pnl = total_value - total_invested
+        total_pnl_pct = (total_pnl / total_invested * 100) if total_invested > 0 else 0
+        total_portfolio = total_value + cash
 
-    # Actions par ligne : Ouvrir / Modifier / Supprimer
-    with st.expander("Actions par position", expanded=False):
+        # Dividendes encaissés + frais de compte + Total Return
+        total_dividends_received = get_total_dividends_received()
+        total_account_fees = get_total_account_fees()
+        total_return = total_pnl + total_dividends_received - total_account_fees
+        total_return_pct = (total_return / total_invested * 100) if total_invested > 0 else 0
+
+        _stocks_dict = _load_all_stocks_dict()
+        total_div = 0
         for _, pos in portfolio.iterrows():
-            pid = int(pos["id"])
-            edit_flag_key = f"pf_edit_open_{pid}"
+            fund = _stocks_dict.get(pos["ticker"])
+            if fund and fund.get("dps"):
+                total_div += fund["dps"] * pos["quantity"]
+        yield_weighted = (total_div / total_value * 100) if total_value > 0 else 0
 
-            cols = st.columns([3, 1, 1, 1])
-            cols[0].markdown(f"**{pos['company_name']}** · {pos['ticker']}")
-            with cols[1]:
-                ticker_analyze_button(
-                    pos["ticker"],
-                    key=f"pf_goto_{pid}",
-                    help_text=f"Analyser {pos['ticker']}",
-                    use_container_width=True,
-                )
-            if cols[2].button("Modifier", key=f"edit_{pid}",
-                                use_container_width=True):
-                st.session_state[edit_flag_key] = not st.session_state.get(edit_flag_key, False)
-                st.rerun()
-            if cols[3].button("Supprimer", key=f"del_{pid}",
-                                use_container_width=True):
-                delete_position(pid)
-                st.rerun()
-
-            # ─── Panneau Modifier (inline sous la ligne) ──
-            if st.session_state.get(edit_flag_key):
-                st.markdown(
-                    "<div style='background:var(--bg-elev);border:1px solid var(--border);"
-                    "border-radius:10px;padding:12px 14px;margin:6px 0 10px 0;'>",
-                    unsafe_allow_html=True,
-                )
-                with st.form(f"edit_form_{pid}"):
-                    st.markdown(
-                        f"<div class='label-xs' style='margin-bottom:8px;'>"
-                        f"Modifier {pos['ticker']} — {pos['company_name']}</div>",
-                        unsafe_allow_html=True,
-                    )
-                    c1, c2 = st.columns(2)
-                    new_qty = c1.number_input(
-                        "Quantité", min_value=1,
-                        value=int(pos["quantity"]), step=1,
-                        key=f"edit_qty_{pid}",
-                    )
-                    new_pru = c2.number_input(
-                        f"PRU ({CURRENCY})", min_value=0.01,
-                        value=float(pos["avg_price"]), step=0.01,
-                        format="%.2f", key=f"edit_pru_{pid}",
-                    )
-                    c_s, c_c = st.columns(2)
-                    saved = c_s.form_submit_button(
-                        "Enregistrer", type="primary", use_container_width=True,
-                    )
-                    cancelled = c_c.form_submit_button(
-                        "Annuler", use_container_width=True,
-                    )
-                    if saved:
-                        ok = update_position(pid, new_qty, new_pru)
-                        if ok:
-                            st.session_state[edit_flag_key] = False
-                            st.success(f"{pos['ticker']} mis à jour")
-                            st.rerun()
-                        else:
-                            st.error("Échec de la mise à jour.")
-                    if cancelled:
-                        st.session_state[edit_flag_key] = False
-                        st.rerun()
-                st.markdown("</div>", unsafe_allow_html=True)
-
-    # ═══════════════════════════════════════════════════════════════════
-    # Section Dividendes encaissés
-    # ═══════════════════════════════════════════════════════════════════
-    section_heading("Dividendes encaissés", spacing="loose")
-
-    dividends_df = get_dividends()
-    _add_key = "pf_div_add_open"
-    if _add_key not in st.session_state:
-        st.session_state[_add_key] = False
-
-    hcol, bcol = st.columns([5, 1])
-    hcol.caption(
-        f"**{len(dividends_df)}** dividende(s) · Total net encaissé : "
-        f"**{total_dividends_received:,.0f} {CURRENCY}**"
-    )
-    if bcol.button("+ Ajouter", key="pf_div_add_btn",
-                    use_container_width=True):
-        st.session_state[_add_key] = not st.session_state[_add_key]
-
-    # Formulaire d'ajout (repliable)
-    if st.session_state[_add_key]:
-        st.markdown(
-            "<div style='background:var(--bg-elev);border:1px solid var(--border);"
-            "border-radius:10px;padding:14px 16px;margin:10px 0;'>",
-            unsafe_allow_html=True,
-        )
-        tickers_data = load_tickers()
-        div_options = [f"{t['ticker']} - {t['name']}" for t in tickers_data]
-        with st.form("add_dividend"):
-            c1, c2, c3, c4 = st.columns([2.5, 1.4, 1.6, 1])
-            div_sel = c1.selectbox("Titre", div_options, key="div_ticker")
-            div_date = c2.date_input("Date paiement", key="div_date")
-            div_net_str = c3.text_input(
-                f"Net reçu ({CURRENCY})", value="0",
-                help="Virgule ou point acceptés (ex. 19536,00)",
-                key="div_net",
-            )
-            div_fy = c4.number_input(
-                "Exercice", min_value=2015, max_value=2100, value=2025,
-                step=1, key="div_fy",
-            )
-            div_notes = st.text_input("Notes (optionnel)", key="div_notes")
-
-            csave, ccancel = st.columns(2)
-            saved = csave.form_submit_button(
-                "Enregistrer", type="primary", use_container_width=True,
-            )
-            if ccancel.form_submit_button("Annuler", use_container_width=True):
-                st.session_state[_add_key] = False
-                st.rerun()
-            if saved:
-                try:
-                    net_val = float(div_net_str.replace(" ", "")
-                                      .replace(" ", "")
-                                      .replace(",", "."))
-                    if net_val <= 0:
-                        raise ValueError("Le montant doit être positif")
-                except (ValueError, AttributeError):
-                    st.error(
-                        f"Montant net invalide : « {div_net_str} ». "
-                        f"Exemples : 19536 · 19 536,00 · 19536.00"
-                    )
-                else:
-                    ticker = div_sel.split(" - ")[0]
-                    save_dividend({
-                        "ticker": ticker,
-                        "payment_date": str(div_date),
-                        "net_amount": net_val,
-                        "fiscal_year": int(div_fy),
-                        "notes": div_notes,
-                    })
-                    st.session_state[_add_key] = False
-                    st.rerun()
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    # Tableau des dividendes
-    if dividends_df.empty:
-        st.caption("Aucun dividende enregistré. Cliquez « + Ajouter » ci-dessus.")
-    else:
-        header_style = (
-            "font-size:11.5px;color:var(--ink-3);letter-spacing:0.02em;"
-            "text-transform:uppercase;padding:6px 8px;border-bottom:1px solid var(--border);"
-        )
-        num_style = (
-            "font-family:var(--font-mono);font-size:14px;padding:8px;"
-            "border-bottom:1px solid var(--border-soft);text-align:right;"
-        )
-        cell_style = (
-            "font-size:14px;padding:8px;border-bottom:1px solid var(--border-soft);"
-        )
-        html = (
-            "<table style='width:100%;border-collapse:collapse;"
-            "background:var(--bg-elev);border-radius:10px;overflow:hidden;"
-            "border:1px solid var(--border);'>"
-            "<thead><tr>"
-            f"<th style='{header_style};text-align:left;'>Date</th>"
-            f"<th style='{header_style};text-align:left;'>Ticker</th>"
-            f"<th style='{header_style};text-align:right;'>Net encaissé</th>"
-            f"<th style='{header_style};text-align:center;'>Exercice</th>"
-            f"<th style='{header_style};text-align:left;'>Notes</th>"
-            "</tr></thead><tbody>"
-        )
-        for _, div in dividends_df.iterrows():
-            date_str = str(div.get("payment_date") or "")[:10]
-            html += (
-                "<tr>"
-                f"<td style='{cell_style}'>{date_str}</td>"
-                f"<td style='{cell_style}'><code>{div['ticker']}</code></td>"
-                f"<td style='{num_style}'>{float(div['net_amount']):,.0f}</td>"
-                f"<td style='{cell_style};text-align:center;'>{div.get('fiscal_year') or ''}</td>"
-                f"<td style='{cell_style};color:var(--ink-3);font-size:12.5px;'>"
-                f"{(div.get('notes') or '')[:60]}</td>"
-                "</tr>"
-            )
-        html += "</tbody></table>"
-        st.markdown(html, unsafe_allow_html=True)
-
-        # Actions par ligne : bouton supprimer sous le tableau (compact)
-        with st.expander("Supprimer un dividende", expanded=False):
-            for _, div in dividends_df.iterrows():
-                dc1, dc2, dc3 = st.columns([3, 1.5, 1.5])
-                dc1.markdown(
-                    f"`{div['ticker']}` · {str(div.get('payment_date') or '')[:10]} · "
-                    f"{float(div['net_amount']):,.0f} {CURRENCY}"
-                )
-                if dc2.button("Supprimer", key=f"div_del_{div['id']}",
-                                use_container_width=True):
-                    delete_dividend(int(div["id"]))
-                    st.rerun()
-
-    # ═══════════════════════════════════════════════════════════════════
-    # Section Frais de compte (Type 2)
-    # ═══════════════════════════════════════════════════════════════════
-    section_heading("Frais de compte", spacing="loose")
-
-    account_fees_df = get_account_fees()
-    _add_fee_key = "pf_fee_add_open"
-    if _add_fee_key not in st.session_state:
-        st.session_state[_add_fee_key] = False
-
-    fhcol, fbcol = st.columns([5, 1])
-    fhcol.caption(
-        f"**{len(account_fees_df)}** frais · Total payé : "
-        f"**{total_account_fees:,.0f} {CURRENCY}** "
-        "(débités automatiquement du cash)"
-    )
-    if fbcol.button("+ Ajouter", key="pf_fee_add_btn",
-                     use_container_width=True):
-        st.session_state[_add_fee_key] = not st.session_state[_add_fee_key]
-
-    if st.session_state[_add_fee_key]:
-        st.markdown(
-            "<div style='background:var(--bg-elev);border:1px solid var(--border);"
-            "border-radius:10px;padding:14px 16px;margin:10px 0;'>",
-            unsafe_allow_html=True,
-        )
-        CATEGORY_LABEL = {
-            "droits_garde": "Droits de garde",
-            "tenue_compte": "Tenue de compte",
-            "virement": "Frais de virement",
-            "commission_dividende": "Commission sur dividende",
-            "conversion": "Conversion de devise",
-            "autre": "Autre",
-        }
-        cat_options = [(c, CATEGORY_LABEL.get(c, c))
-                        for c in ACCOUNT_FEE_CATEGORIES]
-        with st.form("add_account_fee"):
-            fc1, fc2, fc3 = st.columns([1.4, 1.8, 1])
-            fee_date = fc1.date_input("Date", key="fee_date")
-            fee_cat = fc2.selectbox(
-                "Catégorie",
-                options=[c for c, _ in cat_options],
-                format_func=lambda c: CATEGORY_LABEL.get(c, c),
-                key="fee_cat",
-            )
-            fee_amount_str = fc3.text_input(
-                f"Montant ({CURRENCY})", value="0",
-                help="Virgule ou point acceptés",
-                key="fee_amount",
-            )
-            fee_notes = st.text_input("Notes (optionnel)", key="fee_notes")
-
-            cs, cc = st.columns(2)
-            f_saved = cs.form_submit_button(
-                "Enregistrer", type="primary", use_container_width=True,
-            )
-            if cc.form_submit_button("Annuler", use_container_width=True):
-                st.session_state[_add_fee_key] = False
-                st.rerun()
-            if f_saved:
-                try:
-                    amt = float(fee_amount_str.replace(" ", "")
-                                 .replace(" ", "").replace(",", "."))
-                    if amt <= 0:
-                        raise ValueError("Montant doit être positif")
-                except (ValueError, AttributeError):
-                    st.error(
-                        f"Montant invalide : « {fee_amount_str} »."
-                    )
-                else:
-                    save_account_fee({
-                        "fee_date": str(fee_date),
-                        "category": fee_cat,
-                        "amount": amt,
-                        "notes": fee_notes,
-                    })
-                    st.session_state[_add_fee_key] = False
-                    st.rerun()
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    if account_fees_df.empty:
-        st.caption("Aucun frais de compte enregistré.")
-    else:
-        CATEGORY_LABEL_TABLE = {
-            "droits_garde": "Droits de garde",
-            "tenue_compte": "Tenue de compte",
-            "virement": "Frais de virement",
-            "commission_dividende": "Commission sur dividende",
-            "conversion": "Conversion de devise",
-            "autre": "Autre",
-        }
-        header_style = (
-            "font-size:11.5px;color:var(--ink-3);letter-spacing:0.02em;"
-            "text-transform:uppercase;padding:6px 8px;"
-            "border-bottom:1px solid var(--border);"
-        )
-        num_style = (
-            "font-family:var(--font-mono);font-size:14px;padding:8px;"
-            "border-bottom:1px solid var(--border-soft);text-align:right;"
-        )
-        cell_style = (
-            "font-size:14px;padding:8px;border-bottom:1px solid var(--border-soft);"
-        )
-        html = (
-            "<table style='width:100%;border-collapse:collapse;"
-            "background:var(--bg-elev);border-radius:10px;overflow:hidden;"
-            "border:1px solid var(--border);'>"
-            "<thead><tr>"
-            f"<th style='{header_style};text-align:left;'>Date</th>"
-            f"<th style='{header_style};text-align:left;'>Catégorie</th>"
-            f"<th style='{header_style};text-align:right;'>Montant</th>"
-            f"<th style='{header_style};text-align:left;'>Notes</th>"
-            "</tr></thead><tbody>"
-        )
-        for _, fee in account_fees_df.iterrows():
-            date_str = str(fee.get("fee_date") or "")[:10]
-            cat_lbl = CATEGORY_LABEL_TABLE.get(fee.get("category"),
-                                                fee.get("category") or "—")
-            html += (
-                "<tr>"
-                f"<td style='{cell_style}'>{date_str}</td>"
-                f"<td style='{cell_style}'>{cat_lbl}</td>"
-                f"<td style='{num_style};color:var(--down);'>−{float(fee['amount']):,.0f}</td>"
-                f"<td style='{cell_style};color:var(--ink-3);font-size:12.5px;'>"
-                f"{(fee.get('notes') or '')[:60]}</td>"
-                "</tr>"
-            )
-        html += "</tbody></table>"
-        st.markdown(html, unsafe_allow_html=True)
-
-        with st.expander("Supprimer un frais (recrédite le cash)",
-                          expanded=False):
-            for _, fee in account_fees_df.iterrows():
-                fc1, fc2 = st.columns([4, 1.5])
-                cat_lbl = CATEGORY_LABEL_TABLE.get(
-                    fee.get("category"), fee.get("category") or "—"
-                )
-                fc1.markdown(
-                    f"`{cat_lbl}` · {str(fee.get('fee_date') or '')[:10]} · "
-                    f"{float(fee['amount']):,.0f} {CURRENCY}"
-                )
-                if fc2.button("Supprimer", key=f"fee_del_{fee['id']}",
-                                use_container_width=True):
-                    delete_account_fee(int(fee["id"]))
-                    st.rerun()
-
-    # Allocation
-    section_heading("Allocation", spacing="loose")
-    col_pie1, col_pie2 = st.columns(2)
-
-    with col_pie1:
-        st.markdown(
-            "<div class='label-xs' style='margin-bottom:6px;'>Par titre</div>",
-            unsafe_allow_html=True,
-        )
-        labels = portfolio["company_name"].tolist()
-        values = portfolio["current_value"].tolist()
-        if cash > 0:
-            labels.append("Cash")
-            values.append(cash)
-        fig = pie_chart(labels, values, "")
-        st.plotly_chart(fig, use_container_width=True)
-
-    with col_pie2:
-        st.markdown(
-            "<div class='label-xs' style='margin-bottom:6px;'>Par secteur</div>",
-            unsafe_allow_html=True,
-        )
+        # Nombre de secteurs
         tickers_data = load_tickers()
         ticker_to_sector = {t["ticker"]: t["sector"] for t in tickers_data}
         portfolio["sector"] = portfolio["ticker"].map(ticker_to_sector).fillna("Autre")
-        sector_alloc = portfolio.groupby("sector")["current_value"].sum()
-        sec_labels = sector_alloc.index.tolist()
-        sec_values = sector_alloc.values.tolist()
-        if cash > 0:
-            sec_labels.append("Cash")
-            sec_values.append(cash)
-        fig = pie_chart(sec_labels, sec_values, "")
-        st.plotly_chart(fig, use_container_width=True)
+        n_sectors = portfolio["sector"].nunique()
 
-    # Sections suivantes (pas de divider — hiérarchie portée par les titres)
-    _render_risque_ensemble(portfolio)
-    _render_portfolio_analysis(portfolio, cash, total_value, total_portfolio, ticker_to_sector)
-    _render_position_recommendations(portfolio, total_value, cash)
-    _render_recommandations_ajustees(portfolio)
-    if cash > 0:
-        _render_cash_recommendations(portfolio, cash, total_portfolio, ticker_to_sector)
+        # Yield marché de référence (approx 4.1% pour BRVM)
+        MARKET_YIELD_REF = 4.1
+
+        def _kpi_card(label, value, sub, tone="neutral"):
+            arrow = {"up": "▲", "down": "▼"}.get(tone, "")
+            sub_color = {"up": "var(--up)", "down": "var(--down)"}.get(tone, "var(--ink-3)")
+            return (
+                f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
+                f"border-radius:10px;padding:14px 16px;min-height:92px;'>"
+                f"<div class='label-xs' style='margin-bottom:6px;'>{label}</div>"
+                f"<div style='font-size:22px;font-weight:600;letter-spacing:-0.02em;"
+                f"color:var(--ink);font-variant-numeric:tabular-nums;line-height:1.15;'>{value}</div>"
+                f"<div style='font-size:11.5px;color:{sub_color};margin-top:6px;font-weight:500;'>"
+                f"{arrow + ' ' if arrow else '— '}{sub}</div>"
+                f"</div>"
+            )
+
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            st.markdown(_kpi_card("Valeur totale", f"{total_portfolio:,.0f}", CURRENCY),
+                         unsafe_allow_html=True)
+        with c2:
+            ret_sign = "−" if total_return < 0 else "+"
+            ret_str = f"{ret_sign}{abs(total_return):,.0f}"
+            pnl_sign_txt = "−" if total_pnl < 0 else "+"
+            parts = [
+                f"{'−' if total_return_pct < 0 else '+'}{abs(total_return_pct):.2f}%",
+                f"PV {pnl_sign_txt}{abs(total_pnl):,.0f}",
+            ]
+            if total_dividends_received > 0:
+                parts.append(f"Div +{total_dividends_received:,.0f}")
+            if total_account_fees > 0:
+                parts.append(f"Frais −{total_account_fees:,.0f}")
+            ret_sub = " · ".join(parts)
+            ret_tone = "up" if total_return >= 0 else "down"
+            st.markdown(_kpi_card("Total Return", ret_str, ret_sub, ret_tone),
+                         unsafe_allow_html=True)
+        with c3:
+            yield_tone = "up" if yield_weighted >= MARKET_YIELD_REF else "down"
+            yield_sub = f"vs {MARKET_YIELD_REF:.1f}% marché"
+            st.markdown(_kpi_card("Yield pondéré", f"{yield_weighted:.2f}%", yield_sub, yield_tone),
+                         unsafe_allow_html=True)
+        with c4:
+            st.markdown(_kpi_card("Positions", str(len(portfolio)),
+                                    f"{n_sectors} secteur{'s' if n_sectors > 1 else ''}"),
+                         unsafe_allow_html=True)
+
+        # ═══════════════════════════════════════════════════════════════════
+        # Tableau Positions editorial
+        # ═══════════════════════════════════════════════════════════════════
+        section_heading("Positions", spacing="loose")
+
+        header_style = (
+            "font-size:10.5px;text-transform:uppercase;letter-spacing:0.08em;"
+            "color:var(--ink-3);font-weight:500;padding:9px 10px;"
+            "border-bottom:1px solid var(--border);background:var(--bg-sunken);"
+        )
+        cell_style = "padding:10px;font-size:13px;border-bottom:1px solid var(--border);"
+        num_style = cell_style + "text-align:right;font-variant-numeric:tabular-nums;"
+
+        rows_html = (
+            f"<tr>"
+            f"<th style='{header_style};text-align:left;'>Ticker</th>"
+            f"<th style='{header_style};text-align:left;'>Nom</th>"
+            f"<th style='{header_style};text-align:right;'>Qté</th>"
+            f"<th style='{header_style};text-align:right;'>PRU</th>"
+            f"<th style='{header_style};text-align:right;'>Cours</th>"
+            f"<th style='{header_style};text-align:right;'>P&L</th>"
+            f"<th style='{header_style};text-align:right;'>Poids</th>"
+            f"<th style='{header_style};text-align:right;'>Yield</th>"
+            f"</tr>"
+        )
+        for _, pos in portfolio.iterrows():
+            poids_pct = (pos["current_value"] / total_value * 100) if total_value else 0
+            fund = _stocks_dict.get(pos["ticker"]) or {}
+            dps = fund.get("dps") or 0
+            cur_price = pos.get("current_price")
+            yield_pos = (dps / cur_price * 100) if cur_price else 0
+            pnl = pos.get("pnl")
+            cur_str = f"{cur_price:,.0f}" if pd.notna(cur_price) else "—"
+            if pd.notna(cur_price) and pnl is not None:
+                pnl_sign = "−" if pnl < 0 else "+"
+                pnl_str = f"{pnl_sign}{abs(pnl):,.0f}"
+                pnl_color = "var(--up)" if pnl >= 0 else "var(--down)"
+            else:
+                pnl_str = "—"
+                pnl_color = "var(--ink-3)"
+
+            rows_html += (
+                f"<tr>"
+                f"<td style='{cell_style}'><span class='ticker'>{pos['ticker']}</span></td>"
+                f"<td style='{cell_style};font-weight:500;'>{pos['company_name']}</td>"
+                f"<td style='{num_style}'>{pos['quantity']:,.0f}</td>"
+                f"<td style='{num_style}'>{pos['avg_price']:,.2f}</td>"
+                f"<td style='{num_style}'>{cur_str}</td>"
+                f"<td style='{num_style};color:{pnl_color};font-weight:600;'>{pnl_str}</td>"
+                f"<td style='{num_style}'>{poids_pct:.1f}%</td>"
+                f"<td style='{num_style}'>{yield_pos:.2f}%</td>"
+                f"</tr>"
+            )
+
+        st.markdown(
+            f"<div style='border:1px solid var(--border);border-radius:10px;"
+            f"overflow:hidden;background:var(--bg-elev);margin-bottom:16px;'>"
+            f"<table style='width:100%;border-collapse:collapse;'>{rows_html}</table></div>",
+            unsafe_allow_html=True,
+        )
+
+        # Actions par ligne : Ouvrir / Modifier / Supprimer
+        with st.expander("Actions par position", expanded=False):
+            for _, pos in portfolio.iterrows():
+                pid = int(pos["id"])
+                edit_flag_key = f"pf_edit_open_{pid}"
+
+                cols = st.columns([3, 1, 1, 1])
+                cols[0].markdown(f"**{pos['company_name']}** · {pos['ticker']}")
+                with cols[1]:
+                    ticker_analyze_button(
+                        pos["ticker"],
+                        key=f"pf_goto_{pid}",
+                        help_text=f"Analyser {pos['ticker']}",
+                        use_container_width=True,
+                    )
+                if cols[2].button("Modifier", key=f"edit_{pid}",
+                                    use_container_width=True):
+                    st.session_state[edit_flag_key] = not st.session_state.get(edit_flag_key, False)
+                    st.rerun()
+                if cols[3].button("Supprimer", key=f"del_{pid}",
+                                    use_container_width=True):
+                    delete_position(pid)
+                    st.rerun()
+
+                # ─── Panneau Modifier (inline sous la ligne) ──
+                if st.session_state.get(edit_flag_key):
+                    st.markdown(
+                        "<div style='background:var(--bg-elev);border:1px solid var(--border);"
+                        "border-radius:10px;padding:12px 14px;margin:6px 0 10px 0;'>",
+                        unsafe_allow_html=True,
+                    )
+                    with st.form(f"edit_form_{pid}"):
+                        st.markdown(
+                            f"<div class='label-xs' style='margin-bottom:8px;'>"
+                            f"Modifier {pos['ticker']} — {pos['company_name']}</div>",
+                            unsafe_allow_html=True,
+                        )
+                        c1, c2 = st.columns(2)
+                        new_qty = c1.number_input(
+                            "Quantité", min_value=1,
+                            value=int(pos["quantity"]), step=1,
+                            key=f"edit_qty_{pid}",
+                        )
+                        new_pru = c2.number_input(
+                            f"PRU ({CURRENCY})", min_value=0.01,
+                            value=float(pos["avg_price"]), step=0.01,
+                            format="%.2f", key=f"edit_pru_{pid}",
+                        )
+                        c_s, c_c = st.columns(2)
+                        saved = c_s.form_submit_button(
+                            "Enregistrer", type="primary", use_container_width=True,
+                        )
+                        cancelled = c_c.form_submit_button(
+                            "Annuler", use_container_width=True,
+                        )
+                        if saved:
+                            ok = update_position(pid, new_qty, new_pru)
+                            if ok:
+                                st.session_state[edit_flag_key] = False
+                                st.success(f"{pos['ticker']} mis à jour")
+                                st.rerun()
+                            else:
+                                st.error("Échec de la mise à jour.")
+                        if cancelled:
+                            st.session_state[edit_flag_key] = False
+                            st.rerun()
+                    st.markdown("</div>", unsafe_allow_html=True)
+
+        # ═══════════════════════════════════════════════════════════════════
+        # Section Dividendes encaissés
+        # ═══════════════════════════════════════════════════════════════════
+        section_heading("Dividendes encaissés", spacing="loose")
+
+        dividends_df = get_dividends()
+        _add_key = "pf_div_add_open"
+        if _add_key not in st.session_state:
+            st.session_state[_add_key] = False
+
+        hcol, bcol = st.columns([5, 1])
+        hcol.caption(
+            f"**{len(dividends_df)}** dividende(s) · Total net encaissé : "
+            f"**{total_dividends_received:,.0f} {CURRENCY}**"
+        )
+        if bcol.button("+ Ajouter", key="pf_div_add_btn",
+                        use_container_width=True):
+            st.session_state[_add_key] = not st.session_state[_add_key]
+
+        # Formulaire d'ajout (repliable)
+        if st.session_state[_add_key]:
+            st.markdown(
+                "<div style='background:var(--bg-elev);border:1px solid var(--border);"
+                "border-radius:10px;padding:14px 16px;margin:10px 0;'>",
+                unsafe_allow_html=True,
+            )
+            tickers_data = load_tickers()
+            div_options = [f"{t['ticker']} - {t['name']}" for t in tickers_data]
+            with st.form("add_dividend"):
+                c1, c2, c3, c4 = st.columns([2.5, 1.4, 1.6, 1])
+                div_sel = c1.selectbox("Titre", div_options, key="div_ticker")
+                div_date = c2.date_input("Date paiement", key="div_date")
+                div_net_str = c3.text_input(
+                    f"Net reçu ({CURRENCY})", value="0",
+                    help="Virgule ou point acceptés (ex. 19536,00)",
+                    key="div_net",
+                )
+                div_fy = c4.number_input(
+                    "Exercice", min_value=2015, max_value=2100, value=2025,
+                    step=1, key="div_fy",
+                )
+                div_notes = st.text_input("Notes (optionnel)", key="div_notes")
+
+                csave, ccancel = st.columns(2)
+                saved = csave.form_submit_button(
+                    "Enregistrer", type="primary", use_container_width=True,
+                )
+                if ccancel.form_submit_button("Annuler", use_container_width=True):
+                    st.session_state[_add_key] = False
+                    st.rerun()
+                if saved:
+                    try:
+                        net_val = float(div_net_str.replace(" ", "")
+                                          .replace(" ", "")
+                                          .replace(",", "."))
+                        if net_val <= 0:
+                            raise ValueError("Le montant doit être positif")
+                    except (ValueError, AttributeError):
+                        st.error(
+                            f"Montant net invalide : « {div_net_str} ». "
+                            f"Exemples : 19536 · 19 536,00 · 19536.00"
+                        )
+                    else:
+                        ticker = div_sel.split(" - ")[0]
+                        save_dividend({
+                            "ticker": ticker,
+                            "payment_date": str(div_date),
+                            "net_amount": net_val,
+                            "fiscal_year": int(div_fy),
+                            "notes": div_notes,
+                        })
+                        st.session_state[_add_key] = False
+                        st.rerun()
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        # Tableau des dividendes
+        if dividends_df.empty:
+            st.caption("Aucun dividende enregistré. Cliquez « + Ajouter » ci-dessus.")
+        else:
+            header_style = (
+                "font-size:11.5px;color:var(--ink-3);letter-spacing:0.02em;"
+                "text-transform:uppercase;padding:6px 8px;border-bottom:1px solid var(--border);"
+            )
+            num_style = (
+                "font-family:var(--font-mono);font-size:14px;padding:8px;"
+                "border-bottom:1px solid var(--border-soft);text-align:right;"
+            )
+            cell_style = (
+                "font-size:14px;padding:8px;border-bottom:1px solid var(--border-soft);"
+            )
+            html = (
+                "<table style='width:100%;border-collapse:collapse;"
+                "background:var(--bg-elev);border-radius:10px;overflow:hidden;"
+                "border:1px solid var(--border);'>"
+                "<thead><tr>"
+                f"<th style='{header_style};text-align:left;'>Date</th>"
+                f"<th style='{header_style};text-align:left;'>Ticker</th>"
+                f"<th style='{header_style};text-align:right;'>Net encaissé</th>"
+                f"<th style='{header_style};text-align:center;'>Exercice</th>"
+                f"<th style='{header_style};text-align:left;'>Notes</th>"
+                "</tr></thead><tbody>"
+            )
+            for _, div in dividends_df.iterrows():
+                date_str = str(div.get("payment_date") or "")[:10]
+                html += (
+                    "<tr>"
+                    f"<td style='{cell_style}'>{date_str}</td>"
+                    f"<td style='{cell_style}'><code>{div['ticker']}</code></td>"
+                    f"<td style='{num_style}'>{float(div['net_amount']):,.0f}</td>"
+                    f"<td style='{cell_style};text-align:center;'>{div.get('fiscal_year') or ''}</td>"
+                    f"<td style='{cell_style};color:var(--ink-3);font-size:12.5px;'>"
+                    f"{(div.get('notes') or '')[:60]}</td>"
+                    "</tr>"
+                )
+            html += "</tbody></table>"
+            st.markdown(html, unsafe_allow_html=True)
+
+            # Actions par ligne : bouton supprimer sous le tableau (compact)
+            with st.expander("Supprimer un dividende", expanded=False):
+                for _, div in dividends_df.iterrows():
+                    dc1, dc2, dc3 = st.columns([3, 1.5, 1.5])
+                    dc1.markdown(
+                        f"`{div['ticker']}` · {str(div.get('payment_date') or '')[:10]} · "
+                        f"{float(div['net_amount']):,.0f} {CURRENCY}"
+                    )
+                    if dc2.button("Supprimer", key=f"div_del_{div['id']}",
+                                    use_container_width=True):
+                        delete_dividend(int(div["id"]))
+                        st.rerun()
+
+        # ═══════════════════════════════════════════════════════════════════
+        # Section Frais de compte (Type 2)
+        # ═══════════════════════════════════════════════════════════════════
+        section_heading("Frais de compte", spacing="loose")
+
+        account_fees_df = get_account_fees()
+        _add_fee_key = "pf_fee_add_open"
+        if _add_fee_key not in st.session_state:
+            st.session_state[_add_fee_key] = False
+
+        fhcol, fbcol = st.columns([5, 1])
+        fhcol.caption(
+            f"**{len(account_fees_df)}** frais · Total payé : "
+            f"**{total_account_fees:,.0f} {CURRENCY}** "
+            "(débités automatiquement du cash)"
+        )
+        if fbcol.button("+ Ajouter", key="pf_fee_add_btn",
+                         use_container_width=True):
+            st.session_state[_add_fee_key] = not st.session_state[_add_fee_key]
+
+        if st.session_state[_add_fee_key]:
+            st.markdown(
+                "<div style='background:var(--bg-elev);border:1px solid var(--border);"
+                "border-radius:10px;padding:14px 16px;margin:10px 0;'>",
+                unsafe_allow_html=True,
+            )
+            CATEGORY_LABEL = {
+                "droits_garde": "Droits de garde",
+                "tenue_compte": "Tenue de compte",
+                "virement": "Frais de virement",
+                "commission_dividende": "Commission sur dividende",
+                "conversion": "Conversion de devise",
+                "autre": "Autre",
+            }
+            cat_options = [(c, CATEGORY_LABEL.get(c, c))
+                            for c in ACCOUNT_FEE_CATEGORIES]
+            with st.form("add_account_fee"):
+                fc1, fc2, fc3 = st.columns([1.4, 1.8, 1])
+                fee_date = fc1.date_input("Date", key="fee_date")
+                fee_cat = fc2.selectbox(
+                    "Catégorie",
+                    options=[c for c, _ in cat_options],
+                    format_func=lambda c: CATEGORY_LABEL.get(c, c),
+                    key="fee_cat",
+                )
+                fee_amount_str = fc3.text_input(
+                    f"Montant ({CURRENCY})", value="0",
+                    help="Virgule ou point acceptés",
+                    key="fee_amount",
+                )
+                fee_notes = st.text_input("Notes (optionnel)", key="fee_notes")
+
+                cs, cc = st.columns(2)
+                f_saved = cs.form_submit_button(
+                    "Enregistrer", type="primary", use_container_width=True,
+                )
+                if cc.form_submit_button("Annuler", use_container_width=True):
+                    st.session_state[_add_fee_key] = False
+                    st.rerun()
+                if f_saved:
+                    try:
+                        amt = float(fee_amount_str.replace(" ", "")
+                                     .replace(" ", "").replace(",", "."))
+                        if amt <= 0:
+                            raise ValueError("Montant doit être positif")
+                    except (ValueError, AttributeError):
+                        st.error(
+                            f"Montant invalide : « {fee_amount_str} »."
+                        )
+                    else:
+                        save_account_fee({
+                            "fee_date": str(fee_date),
+                            "category": fee_cat,
+                            "amount": amt,
+                            "notes": fee_notes,
+                        })
+                        st.session_state[_add_fee_key] = False
+                        st.rerun()
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        if account_fees_df.empty:
+            st.caption("Aucun frais de compte enregistré.")
+        else:
+            CATEGORY_LABEL_TABLE = {
+                "droits_garde": "Droits de garde",
+                "tenue_compte": "Tenue de compte",
+                "virement": "Frais de virement",
+                "commission_dividende": "Commission sur dividende",
+                "conversion": "Conversion de devise",
+                "autre": "Autre",
+            }
+            header_style = (
+                "font-size:11.5px;color:var(--ink-3);letter-spacing:0.02em;"
+                "text-transform:uppercase;padding:6px 8px;"
+                "border-bottom:1px solid var(--border);"
+            )
+            num_style = (
+                "font-family:var(--font-mono);font-size:14px;padding:8px;"
+                "border-bottom:1px solid var(--border-soft);text-align:right;"
+            )
+            cell_style = (
+                "font-size:14px;padding:8px;border-bottom:1px solid var(--border-soft);"
+            )
+            html = (
+                "<table style='width:100%;border-collapse:collapse;"
+                "background:var(--bg-elev);border-radius:10px;overflow:hidden;"
+                "border:1px solid var(--border);'>"
+                "<thead><tr>"
+                f"<th style='{header_style};text-align:left;'>Date</th>"
+                f"<th style='{header_style};text-align:left;'>Catégorie</th>"
+                f"<th style='{header_style};text-align:right;'>Montant</th>"
+                f"<th style='{header_style};text-align:left;'>Notes</th>"
+                "</tr></thead><tbody>"
+            )
+            for _, fee in account_fees_df.iterrows():
+                date_str = str(fee.get("fee_date") or "")[:10]
+                cat_lbl = CATEGORY_LABEL_TABLE.get(fee.get("category"),
+                                                    fee.get("category") or "—")
+                html += (
+                    "<tr>"
+                    f"<td style='{cell_style}'>{date_str}</td>"
+                    f"<td style='{cell_style}'>{cat_lbl}</td>"
+                    f"<td style='{num_style};color:var(--down);'>−{float(fee['amount']):,.0f}</td>"
+                    f"<td style='{cell_style};color:var(--ink-3);font-size:12.5px;'>"
+                    f"{(fee.get('notes') or '')[:60]}</td>"
+                    "</tr>"
+                )
+            html += "</tbody></table>"
+            st.markdown(html, unsafe_allow_html=True)
+
+            with st.expander("Supprimer un frais (recrédite le cash)",
+                              expanded=False):
+                for _, fee in account_fees_df.iterrows():
+                    fc1, fc2 = st.columns([4, 1.5])
+                    cat_lbl = CATEGORY_LABEL_TABLE.get(
+                        fee.get("category"), fee.get("category") or "—"
+                    )
+                    fc1.markdown(
+                        f"`{cat_lbl}` · {str(fee.get('fee_date') or '')[:10]} · "
+                        f"{float(fee['amount']):,.0f} {CURRENCY}"
+                    )
+                    if fc2.button("Supprimer", key=f"fee_del_{fee['id']}",
+                                    use_container_width=True):
+                        delete_account_fee(int(fee["id"]))
+                        st.rerun()
+
+        # Allocation
+        section_heading("Allocation", spacing="loose")
+        col_pie1, col_pie2 = st.columns(2)
+
+        with col_pie1:
+            st.markdown(
+                "<div class='label-xs' style='margin-bottom:6px;'>Par titre</div>",
+                unsafe_allow_html=True,
+            )
+            labels = portfolio["company_name"].tolist()
+            values = portfolio["current_value"].tolist()
+            if cash > 0:
+                labels.append("Cash")
+                values.append(cash)
+            fig = pie_chart(labels, values, "")
+            st.plotly_chart(fig, use_container_width=True)
+
+        with col_pie2:
+            st.markdown(
+                "<div class='label-xs' style='margin-bottom:6px;'>Par secteur</div>",
+                unsafe_allow_html=True,
+            )
+            tickers_data = load_tickers()
+            ticker_to_sector = {t["ticker"]: t["sector"] for t in tickers_data}
+            portfolio["sector"] = portfolio["ticker"].map(ticker_to_sector).fillna("Autre")
+            sector_alloc = portfolio.groupby("sector")["current_value"].sum()
+            sec_labels = sector_alloc.index.tolist()
+            sec_values = sector_alloc.values.tolist()
+            if cash > 0:
+                sec_labels.append("Cash")
+                sec_values.append(cash)
+            fig = pie_chart(sec_labels, sec_values, "")
+            st.plotly_chart(fig, use_container_width=True)
+
+        _render_risque_ensemble(portfolio)
+
+    with onglet_reco:
+        _render_portfolio_analysis(portfolio, cash, total_value,
+                                   total_portfolio, ticker_to_sector)
+        _render_position_recommendations(portfolio, total_value, cash,
+                                         volet="detenus")
+        _render_recommandations_ajustees(portfolio)
+
+    with onglet_neuf:
+        _render_position_recommendations(portfolio, total_value, cash,
+                                         volet="nouveaux")
+        if cash > 0:
+            _render_cash_recommendations(portfolio, cash, total_portfolio,
+                                         ticker_to_sector)
+
     _render_info_box()
 
 
@@ -1073,7 +1093,18 @@ def _render_portfolio_analysis(portfolio, cash, total_value, total_portfolio, ti
     )
 
 
-def _render_position_recommendations(portfolio, total_value, cash):
+
+
+def _render_position_recommendations(portfolio, total_value, cash,
+                                     volet="tout"):
+    """Les suggestions, par volet.
+
+    `volet` vaut « detenus » — ce qu'il faut faire de ce qu'on a — ou
+    « nouveaux » — ce qu'on pourrait ajouter. Les deux repondent a des
+    questions differentes et vivent desormais dans deux onglets ; le calcul,
+    lui, reste commun, parce qu'il faut connaitre les positions detenues pour
+    savoir ce qui manque.
+    """
     """Recommandation globale du portefeuille : action synthétique, priorités
     d'achat/vente (basées sur les signaux consolidés), usage du cash, diversification."""
     from config import load_tickers
@@ -1193,7 +1224,8 @@ def _render_position_recommendations(portfolio, total_value, cash):
     )
 
     # ---- Carte verdict éditoriale ----
-    st.markdown(
+    if volet != "nouveaux":
+        st.markdown(
         f"<div style='border:1px solid var(--border);border-left:4px solid {global_color};"
         f"border-radius:10px;padding:16px 18px;background:var(--bg-elev);margin-bottom:18px;'>"
         f"<div class='label-xs' style='margin-bottom:4px;'>Verdict portefeuille</div>"
@@ -1208,101 +1240,111 @@ def _render_position_recommendations(portfolio, total_value, cash):
         "compte du risque ni de la liquidité. La section suivante montre ce "
         "que l'ajustement y change.")
 
-    # ---- 3 colonnes : Ventes / Renforcer / Nouveaux achats ----
-    col_sell, col_reinforce, col_new = st.columns(3)
+    # ---- Colonnes, selon le volet demande ----
+    if volet == "nouveaux":
+        col_sell = col_reinforce = None
+        col_new = st.container()
+    else:
+        col_sell, col_reinforce = st.columns(2)
+        col_new = None
 
-    with col_sell:
-        section_heading("À vendre / alléger", spacing="default")
-        if sells:
-            from utils.ui_helpers import tag as _tag, ticker as _tkr, delta as _delta
-            for s in sells[:5]:
-                _action = "VENDRE" if s["verdict"] == "VENTE FORTE CONFIRMÉE" else "ALLÉGER"
-                col_info, col_btn = st.columns([5, 1])
-                with col_info:
-                    st.markdown(
-                        f"{_tag(_action, 'down')} {s['name']} {_tkr(s['ticker'])}<br>"
-                        f"<small class='muted'>Poids {s['weight']:.1f}% · "
-                        f"P&L {_delta(s['pnl_pct'], with_arrow=False)} · "
-                        f"Confiance {s['confidence']}%</small>",
-                        unsafe_allow_html=True,
-                    )
-                    if s["signals_top"]:
-                        st.caption(f"↳ {s['signals_top']}")
-                with col_btn:
-                    ticker_analyze_button(
-                        s["ticker"], label=None,
-                        key=f"reco_sell_{s['ticker']}",
-                    )
-                st.markdown("")
-        else:
-            st.markdown(
-                "<div style='color:var(--ink-3);font-size:13px;padding:6px 0;'>"
-                "Aucune vente recommandée.</div>",
-                unsafe_allow_html=True,
-            )
+    if volet != "nouveaux":
+        with col_sell:
+            section_heading("À vendre / alléger", spacing="default")
+            if sells:
+                from utils.ui_helpers import tag as _tag, ticker as _tkr, delta as _delta
+                for s in sells[:5]:
+                    _action = "VENDRE" if s["verdict"] == "VENTE FORTE CONFIRMÉE" else "ALLÉGER"
+                    col_info, col_btn = st.columns([5, 1])
+                    with col_info:
+                        st.markdown(
+                            f"{_tag(_action, 'down')} {s['name']} {_tkr(s['ticker'])}<br>"
+                            f"<small class='muted'>Poids {s['weight']:.1f}% · "
+                            f"P&L {_delta(s['pnl_pct'], with_arrow=False)} · "
+                            f"Confiance {s['confidence']}%</small>",
+                            unsafe_allow_html=True,
+                        )
+                        if s["signals_top"]:
+                            st.caption(f"↳ {s['signals_top']}")
+                    with col_btn:
+                        ticker_analyze_button(
+                            s["ticker"], label=None,
+                            key=f"reco_sell_{s['ticker']}",
+                        )
+                    st.markdown("")
+            else:
+                st.markdown(
+                    "<div style='color:var(--ink-3);font-size:13px;padding:6px 0;'>"
+                    "Aucune vente recommandée.</div>",
+                    unsafe_allow_html=True,
+                )
 
-    with col_reinforce:
-        section_heading("À renforcer (détenus)", spacing="default")
-        if reinforce:
-            from utils.ui_helpers import tag as _tag, ticker as _tkr, delta as _delta
-            for s in reinforce[:5]:
-                label = "ACHAT FORT" if s["verdict"] == "ACHAT FORT CONFIRMÉ" else "ACHAT"
-                col_info, col_btn = st.columns([5, 1])
-                with col_info:
-                    st.markdown(
-                        f"{_tag(label, 'up')} {s['name']} {_tkr(s['ticker'])}<br>"
-                        f"<small class='muted'>Poids actuel {s['weight']:.1f}% · "
-                        f"P&L {_delta(s['pnl_pct'], with_arrow=False)} · "
-                        f"Confiance {s['confidence']}%</small>",
-                        unsafe_allow_html=True,
-                    )
-                    if s["signals_top"]:
-                        st.caption(f"↳ {s['signals_top']}")
-                with col_btn:
-                    ticker_analyze_button(
-                        s["ticker"], label=None,
-                        key=f"reco_reinforce_{s['ticker']}",
-                    )
-                st.markdown("")
-        else:
-            st.markdown(
-                "<div style='color:var(--ink-3);font-size:13px;padding:6px 0;'>"
-                "Pas de position à renforcer.</div>",
-                unsafe_allow_html=True,
-            )
+    if volet != "nouveaux":
+        with col_reinforce:
+            section_heading("À renforcer (détenus)", spacing="default")
+            if reinforce:
+                from utils.ui_helpers import tag as _tag, ticker as _tkr, delta as _delta
+                for s in reinforce[:5]:
+                    label = "ACHAT FORT" if s["verdict"] == "ACHAT FORT CONFIRMÉ" else "ACHAT"
+                    col_info, col_btn = st.columns([5, 1])
+                    with col_info:
+                        st.markdown(
+                            f"{_tag(label, 'up')} {s['name']} {_tkr(s['ticker'])}<br>"
+                            f"<small class='muted'>Poids actuel {s['weight']:.1f}% · "
+                            f"P&L {_delta(s['pnl_pct'], with_arrow=False)} · "
+                            f"Confiance {s['confidence']}%</small>",
+                            unsafe_allow_html=True,
+                        )
+                        if s["signals_top"]:
+                            st.caption(f"↳ {s['signals_top']}")
+                    with col_btn:
+                        ticker_analyze_button(
+                            s["ticker"], label=None,
+                            key=f"reco_reinforce_{s['ticker']}",
+                        )
+                    st.markdown("")
+            else:
+                st.markdown(
+                    "<div style='color:var(--ink-3);font-size:13px;padding:6px 0;'>"
+                    "Pas de position à renforcer.</div>",
+                    unsafe_allow_html=True,
+                )
 
-    with col_new:
-        section_heading("Nouvelles opportunités", spacing="default")
-        if new_buys:
-            from utils.ui_helpers import tag as _tag, ticker as _tkr
-            for s in new_buys[:5]:
-                label = "ACHAT FORT" if s["verdict"] == "ACHAT FORT CONFIRMÉ" else "ACHAT"
-                yield_pct = (s['dps']/s['price']*100) if s['price'] else 0
-                col_info, col_btn = st.columns([5, 1])
-                with col_info:
-                    st.markdown(
-                        f"{_tag(label, 'up')} {s['name']} {_tkr(s['ticker'])}<br>"
-                        f"<small class='muted'>Prix "
-                        f"<span style='font-variant-numeric:tabular-nums'>{s['price']:,.0f}</span> · "
-                        f"Yield {yield_pct:.1f}% · Confiance {s['confidence']}%</small>",
-                        unsafe_allow_html=True,
-                    )
-                    if s["signals_top"]:
-                        st.caption(f"↳ {s['signals_top']}")
-                with col_btn:
-                    ticker_analyze_button(
-                        s["ticker"], label=None,
-                        key=f"reco_new_{s['ticker']}",
-                    )
-                st.markdown("")
-        else:
-            st.markdown(
-                "<div style='color:var(--ink-3);font-size:13px;padding:6px 0;'>"
-                "Pas d'opportunité majeure détectée.</div>",
-                unsafe_allow_html=True,
-            )
+    if volet != "detenus":
+        with col_new:
+            section_heading("Nouvelles opportunités", spacing="default")
+            if new_buys:
+                from utils.ui_helpers import tag as _tag, ticker as _tkr
+                for s in new_buys[:5]:
+                    label = "ACHAT FORT" if s["verdict"] == "ACHAT FORT CONFIRMÉ" else "ACHAT"
+                    yield_pct = (s['dps']/s['price']*100) if s['price'] else 0
+                    col_info, col_btn = st.columns([5, 1])
+                    with col_info:
+                        st.markdown(
+                            f"{_tag(label, 'up')} {s['name']} {_tkr(s['ticker'])}<br>"
+                            f"<small class='muted'>Prix "
+                            f"<span style='font-variant-numeric:tabular-nums'>{s['price']:,.0f}</span> · "
+                            f"Yield {yield_pct:.1f}% · Confiance {s['confidence']}%</small>",
+                            unsafe_allow_html=True,
+                        )
+                        if s["signals_top"]:
+                            st.caption(f"↳ {s['signals_top']}")
+                    with col_btn:
+                        ticker_analyze_button(
+                            s["ticker"], label=None,
+                            key=f"reco_new_{s['ticker']}",
+                        )
+                    st.markdown("")
+            else:
+                st.markdown(
+                    "<div style='color:var(--ink-3);font-size:13px;padding:6px 0;'>"
+                    "Pas d'opportunité majeure détectée.</div>",
+                    unsafe_allow_html=True,
+                )
 
     # ---- Recommandations cash et diversification ----
+    if volet == "detenus":
+        return
     col_cash, col_div = st.columns(2)
 
     with col_cash:
