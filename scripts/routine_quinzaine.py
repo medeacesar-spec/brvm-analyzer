@@ -16,6 +16,7 @@ La routine fait quatre choses, dans cet ordre, et rend compte de chacune :
   4. CONTROLER  ce qui vient d'etre ecrit, avec les neuf sondes de coherence
   5. RECALCULER l'instantane des scores, sans quoi la page Signaux continue
                 d'afficher l'etat d'avant
+  6. FIGER      les mesures de risque du mois, pour qu'elles fassent serie
 
 Elle ne juge pas la qualite des chiffres — `coherence_interne.py` le fait — et
 ne corrige rien. Elle DIT : voila ce qui est paru, voila ce qui est entre en
@@ -148,6 +149,15 @@ def main() -> int:
     if not args.simuler:
         _lancer("5. Instantane des scores",
                 [python, "scripts/build_daily_snapshot.py"], journal)
+
+        # 6. FIGER ----------------------------------------------------------
+        # Le risque etait recalcule a chaque affichage et jamais conserve : il
+        # ne s'en gardait aucune trace, donc aucune evolution mesurable. Une
+        # fois par mois suffit — la source est mensuelle, et une volatilite
+        # sur soixante mois ne bouge pas d'un jour a l'autre. Le script ecrase
+        # la ligne du mois courant, deux passages ne creent pas deux series.
+        _lancer("6. Mesures de risque du mois",
+                [python, "scripts/figer_risque_mensuel.py"], journal)
 
     cnx = get_connection()
     apres = _etat(cnx)
