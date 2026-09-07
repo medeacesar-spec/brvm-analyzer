@@ -20,6 +20,8 @@ Mis à jour le 2026-09-06.
 | 19 | **BOABF.bf — coût du risque figé.** +4,303 Md en 2024 et −4,303 Md en 2025 : même valeur, signe opposé. Le stock de provisions du bilan (5 650 328 968 fin 2025) n'est pas le coût du risque, qui est un flux du compte de résultat. | 2026-09-06 | à relire |
 | 17 | **BOAB.bj — la page parle de deux exercices.** La grille bancaire recule à 2023 (7 indicateurs sur 10) pendant que le tableau des pairs lit 2025 (4 sur 10). C'est une lacune de données, pas un défaut d'affichage : il manque dépôts, crédits, coût du risque, RBE et résultat avant impôt sur l'exercice 2025. | 2026-09-06 | à combler |
 | 18 | **La sonde « vocabulaire » du diagnostic classe à tort.** Elle range en « vocabulaire » tout champ manquant dans un document qui contient du texte, sans vérifier que le poste y figure : 6 des 8 constats sont en réalité des bilans absents ou en image. | 2026-09-06 | à corriger |
+| 24 | **Introduction d'une banque le 14 septembre 2026.** Nom à confirmer. À ajouter à `data/brvm_tickers.json` avec son secteur, puis lancer les deux collectes d'historique. La page Risque affichera « pas assez d'historique » pendant deux ans, comme pour BICI Bénin et la Loterie du Bénin. | 2026-09-07 | à faire le 14/09 |
+| 25 | **La routine de quinzaine ne peut pas découvrir un nouveau titre.** `scan_brvm_reports.py` parcourt une table `TICKER_TO_BRVM_SLUG` écrite à la main : une société absente de cette table n'est jamais visitée. Une introduction reste donc invisible tant que personne ne l'ajoute — ce que la routine était pourtant censée éviter. | 2026-09-07 | à corriger |
 | 5 | **Bilans en image** — NEI-CEDA, TotalEnergies Sénégal et d'autres publient un bilan qui n'existe qu'en image ; la lecture optique ne les traite pas encore. | 2026-09-06 | à instruire |
 
 ## Défauts de données connus
@@ -52,6 +54,10 @@ Mis à jour le 2026-09-06.
 | Campagne capitaux propres — 47 titres sur 48 | 2026-09-05 |
 | Campagne dette — tous les titres non bancaires sauf SAFCA (nulle) et SEMC (non publiée) | 2026-09-06 |
 | Routine de quinzaine — recense, traite, collecte les avis, contrôle, et ouvre un billet en cas d'échec | 2026-09-06 |
+| Historique de cours — `price_monthly` (5 ans) et `price_quarterly` (10 ans), 49 séries chacune, indices compris | 2026-09-07 |
+| Colonne `dps_paiement` — date de versement du dividende, 303 couples remplis depuis les avis BRVM | 2026-09-07 |
+| 41 dividendes reconduits sans avis marqués comme non sourcés — **conservés sur décision** | 2026-09-07 |
+| Onglet Risque et carte « ce que le score ne dit pas » dans Recommandation | 2026-09-07 |
 | Sonatel — capitaux propres consolidés corrigés (1 274,6 et 1 399,3 Md), actif et dette renseignés | 2026-09-06 |
 | 41 dividendes reconduits sans avis marqués comme non sourcés (conservés sur décision) | 2026-09-06 |
 | 26 des 35 contradictions de dividende expliquées par une opération sur titre | 2026-09-06 |
