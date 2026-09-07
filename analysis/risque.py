@@ -155,6 +155,23 @@ MESURES = (
 # s'adressent pas au meme lecteur, et qu'aucun des deux ne remplace l'autre :
 # une definition seule n'aide personne a decider, une paraphrase seule ne se
 # verifie pas.
+# Le resume tient sur une ligne, sous le libelle, dans le tableau lui-meme.
+# Il ne remplace pas l'explication longue : il evite d'avoir a l'ouvrir pour
+# se rappeler ce qu'on regarde. Quelques mots, la formule si elle tient.
+RESUMES = {
+    "volatilite":
+        "Écart-type des rendements mensuels, annualisé",
+    "semi_volatilite":
+        "Même calcul, sur les seuls mois sous le taux sans risque",
+    "perte_maximale":
+        "Plus forte chute d'un sommet à un creux",
+    "sharpe":
+        "Ratio de Sharpe : rendement en excès du sans-risque, "
+        "divisé par l'écart-type",
+    "rendement_annualise":
+        "Croissance moyenne par an, dividendes compris",
+}
+
 EXPLICATIONS = {
     "volatilite": (
         "De combien le cours bouge d'un mois sur l'autre, hausses et baisses "
