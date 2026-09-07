@@ -139,6 +139,124 @@ def _mesures(rendements: list, points: list) -> dict:
 # toute la serie mensuelle de la cote a chaque appel, parce qu'il compare le
 # titre a ses pairs. Cinq minutes de memoire suffisent a rendre la navigation
 # fluide sans risquer d'afficher des mesures perimees.
+# Les mesures ordonnees, et le sens dans lequel elles sont bonnes.
+# « moindre est meilleur » pour un risque, l'inverse pour un rendement.
+MESURES = (
+    ("volatilite", "Volatilité", True),
+    ("semi_volatilite", "Semi-volatilité", True),
+    ("perte_maximale", "Perte maximale", False),   # -5 % vaut mieux que -40 %
+    ("sharpe", "Rendement par unité de risque", False),
+    ("rendement_annualise", "Rendement annualisé", False),
+)
+
+
+def _situer(valeur, population: dict, champ: str, moindre_est_mieux: bool):
+    """Ou se place ce titre parmi les autres : rang, mediane et moyenne.
+
+    Le rang dit plus qu'un chiffre absolu. « Volatilite 23,7 % » ne parle a
+    personne ; « 7e titre le plus calme sur 45 » se comprend sans formation.
+
+    La mediane ET la moyenne figurent toutes deux, et c'est deliberé : leur
+    ecart dit si le groupe est homogene ou tire par un cas extreme. Sur la
+    volatilite de la cote, la mediane vaut 36 % et la moyenne 42 % — l'ecart,
+    ce sont les quelques lignes peu echangees qui montent a 80 et 106 %.
+    """
+    valeurs = [m[champ] for m in population.values() if m.get(champ) is not None]
+    if valeur is None or len(valeurs) < MINIMUM_PAIRS:
+        return None
+    ordonnees = sorted(valeurs, reverse=not moindre_est_mieux)
+    rang = sum(1 for v in ordonnees if (v < valeur if moindre_est_mieux
+                                        else v > valeur)) + 1
+    return {
+        "rang": rang,
+        "effectif": len(valeurs),
+        "mediane": st.median(valeurs),
+        "moyenne": st.mean(valeurs),
+    }
+
+
+def _rang(n: int) -> str:
+    """« 1er », « 2e »… Ecrire « 1e » trahit une phrase ecrite par une machine."""
+    return "1er" if n == 1 else f"{n}e"
+
+
+def lecture(profil: dict) -> list:
+    """Ce que les mesures disent, en phrases, sans conseiller quoi que ce soit.
+
+    Une lecture, pas un avis : elle rapporte ce que les chiffres montrent et
+    s'arrete la. Le modele a deja un verdict, et il ne porte pas sur le risque.
+    """
+    m = profil["titre"]
+    phrases = []
+
+    vol = profil["situations"]["volatilite"]["marché"]
+    rdt = profil["situations"]["rendement_annualise"]["marché"]
+    if vol and rdt:
+        n = vol["effectif"]
+        phrases.append(
+            f"Sur les {n} titres mesurables de la cote, celui-ci est le "
+            f"**{_rang(vol['rang'])} plus calme** et le "
+            f"**{_rang(rdt['rang'])} plus rentable**.")
+        # Un rendement negatif se dit d'abord : aucune position de risque ne
+        # rattrape une perte, et comparer deux rangs le ferait oublier.
+        if (m.get("rendement_annualise") or 0) < 0:
+            phrases.append(
+                f"Il a **perdu {abs(m['rendement_annualise']):.1%} par an** sur "
+                f"la période. Aucune mesure de risque ne rattrape un rendement "
+                f"négatif : sa place parmi les titres calmes ne le rend pas "
+                f"prudent, seulement lent à descendre.")
+        else:
+            # Les deux rangs se lisent dans le meme sens : petit vaut mieux.
+            # Le rendement mieux classe que le risque decrit un titre qui paie
+            # plus que son agitation ne le laisserait attendre ; l'inverse
+            # decrit un titre defensif. Aucun des deux n'est meilleur en soi.
+            ecart = vol["rang"] - rdt["rang"]
+            if ecart > n * 0.20:
+                phrases.append(
+                    "Il **rend mieux qu'il n'agite** : son rendement le classe "
+                    "nettement au-dessus de ce que son niveau de risque "
+                    "laisserait attendre.")
+            elif ecart < -n * 0.20:
+                phrases.append(
+                    "Il est **plus calme que rentable** : un profil défensif, "
+                    "qui achète de la tranquillité au prix du rendement.")
+            else:
+                phrases.append(
+                    "Rendement et risque le classent au même niveau : il paie "
+                    "ce qu'il fait courir, ni plus ni moins.")
+
+    asym = m.get("asymetrie")
+    if asym is not None:
+        if asym > 0.60:
+            phrases.append(
+                f"**Les baisses dominent son agitation** — elles en font "
+                f"{asym:.0%}. Un titre peut être peu volatil et pourtant "
+                f"pénible à détenir : c'est le cas ici.")
+        elif asym < 0.40:
+            phrases.append(
+                f"Son agitation est surtout **haussière** : les baisses n'en "
+                f"font que {asym:.0%}.")
+
+    perte, recup = m.get("perte_maximale"), m.get("mois_recuperation")
+    if perte is not None:
+        if recup:
+            phrases.append(
+                f"Sa pire chute a coûté **{abs(perte):.0%}**, effacés en "
+                f"**{recup} mois**.")
+        else:
+            phrases.append(
+                f"Sa pire chute a coûté **{abs(perte):.0%}**, et **le sommet "
+                f"d'avant n'a jamais été retrouvé** sur la période mesurée.")
+
+    if m.get("peu_liquide"):
+        phrases.append(
+            f"**Ces mesures le flattent.** Il ne cote pas "
+            f"{m['part_mois_immobiles']:.0%} du temps, et un cours immobile "
+            f"passe pour un cours stable : sa volatilité réelle est plus "
+            f"élevée que celle affichée.")
+    return phrases
+
+
 @_maybe_cache_data(ttl=300)
 def profil_de_risque(ticker: str, secteur: Optional[str] = None) -> Optional[dict]:
     """Mesures du titre, et les memes mesures medianes chez ses pairs.
@@ -172,33 +290,29 @@ def profil_de_risque(ticker: str, secteur: Optional[str] = None) -> Optional[dic
     portee = "secteur" if len(pairs) >= MINIMUM_PAIRS else "marché"
     comparables = pairs if portee == "secteur" else [t for t in tous if t != ticker]
 
-    champs = ("volatilite", "semi_volatilite", "perte_maximale", "sharpe",
-              "sortino", "rendement_annualise")
-    medianes = {}
-    for champ in champs:
-        valeurs = [tous[t][champ] for t in comparables if tous[t].get(champ) is not None]
-        medianes[champ] = st.median(valeurs) if len(valeurs) >= MINIMUM_PAIRS else None
+    # Le titre se situe DEUX fois : parmi ses pairs de metier, et parmi toute
+    # la cote. Les deux reponses different souvent, et l'ecart est instructif —
+    # une banque peu agitee pour une banque peut rester agitee pour la cote.
+    du_secteur = {t: tous[t] for t in pairs + [ticker]}
+    situations = {}
+    for champ, _, moindre in MESURES:
+        situations[champ] = {
+            "secteur": (_situer(tous[ticker][champ], du_secteur, champ, moindre)
+                        if len(pairs) >= MINIMUM_PAIRS else None),
+            "marché": _situer(tous[ticker][champ], tous, champ, moindre),
+        }
 
-    marche = {}
-    for champ in champs:
-        valeurs = [m[champ] for t, m in tous.items() if m.get(champ) is not None]
-        marche[champ] = st.median(valeurs) if valeurs else None
+    indice_reference = _mesures(*series["BRVMC"]) if "BRVMC" in series else {}
 
-    # Rang du titre sur la volatilite, du plus calme au plus agite.
-    classement = sorted(tous, key=lambda t: tous[t]["volatilite"])
-    indice_reference = {}
-    if "BRVMC" in series:
-        indice_reference = _mesures(*series["BRVMC"])
-
-    return {
+    profil = {
         "titre": tous[ticker],
-        "medianes": medianes,
-        "marche": marche,
+        "situations": situations,
         "indice": indice_reference,
         "portee": portee,
         "secteur": secteur,
-        "nb_pairs": len(comparables),
-        "rang_volatilite": classement.index(ticker) + 1,
-        "nb_titres": len(classement),
+        "nb_pairs_secteur": len(pairs),
+        "nb_titres": len(tous),
         "taux_sans_risque": TAUX_SANS_RISQUE,
     }
+    profil["lecture"] = lecture(profil)
+    return profil
