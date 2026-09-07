@@ -2006,12 +2006,9 @@ def _render_risque(ticker, fundamentals):
     cell = "padding:9px 10px;border-bottom:1px solid var(--border);font-size:13px;"
     nb = cell + "text-align:right;font-variant-numeric:tabular-nums;"
 
-    def _fmt(champ, valeur):
-        if valeur is None:
-            return "—"
-        if champ == "sharpe":
-            return f"{valeur:.2f}"
-        return f"{valeur * 100:.1f} %"
+    # Le format vit dans le module, avec la mesure : un montant en francs et
+    # un pourcentage ne s'ecrivent pas pareil, et la page n'a pas a le savoir.
+    _fmt = formater
 
     def _position(situation, champ):
         if not situation:
@@ -2026,32 +2023,47 @@ def _render_risque(ticker, fundamentals):
                 f"méd. {_fmt(champ, situation['mediane'])} · "
                 f"moy. {_fmt(champ, situation['moyenne'])}</span>")
 
-    lignes = (
-        f"<tr><th style='{entete}'>Mesure</th>"
-        f"<th style='{entete};text-align:right;'>Valeur</th>"
-        f"<th style='{entete}'>Rang · secteur</th>"
-        f"<th style='{entete}'>Rang · toute la cote</th></tr>"
-    )
-    for champ, libelle, _ in MESURES:
-        situations = profil["situations"][champ]
-        # Le libelle, et sous lui ce que la mesure calcule. Sans cette ligne,
-        # le lecteur doit ouvrir l'explication longue pour se rappeler ce
-        # qu'il regarde — et il ne l'ouvre pas.
-        intitule = (
-            f"<div style='font-weight:500;'>{libelle}</div>"
-            f"<div style='font-size:11px;color:var(--ink-3);line-height:1.4;"
-            f"margin-top:2px;'>{RESUMES.get(champ, '')}</div>")
-        lignes += (
-            f"<tr><td style='{cell};'>{intitule}</td>"
-            f"<td style='{nb}'>{_fmt(champ, m.get(champ))}</td>"
-            f"<td style='{cell}'>{_position(situations['secteur'], champ)}</td>"
-            f"<td style='{cell}'>{_position(situations['marché'], champ)}</td></tr>"
+    def _tableau(mesures, titre_bloc, sous_titre):
+        lignes = (
+            f"<tr><th style='{entete}'>{titre_bloc}</th>"
+            f"<th style='{entete};text-align:right;'>Valeur</th>"
+            f"<th style='{entete}'>Rang · secteur</th>"
+            f"<th style='{entete}'>Rang · toute la cote</th></tr>"
         )
-    st.markdown(
-        f"<div style='border:1px solid var(--border);border-radius:10px;"
-        f"overflow:hidden;background:var(--bg-elev);margin-top:14px;'>"
-        f"<table style='width:100%;border-collapse:collapse;'>{lignes}</table>"
-        f"</div>", unsafe_allow_html=True)
+        for champ, libelle, _ in mesures:
+            situations = profil["situations"][champ]
+            # Le libelle, et sous lui ce que la mesure calcule : sans cette
+            # ligne le lecteur devrait deplier l'explication longue, ce qu'il
+            # ne fait pas au milieu d'une lecture.
+            intitule = (
+                f"<div style='font-weight:500;'>{libelle}</div>"
+                f"<div style='font-size:11px;color:var(--ink-3);"
+                f"line-height:1.4;margin-top:2px;'>"
+                f"{RESUMES.get(champ, '')}</div>")
+            lignes += (
+                f"<tr><td style='{cell};'>{intitule}</td>"
+                f"<td style='{nb}'>{_fmt(champ, m.get(champ))}</td>"
+                f"<td style='{cell}'>"
+                f"{_position(situations['secteur'], champ)}</td>"
+                f"<td style='{cell}'>"
+                f"{_position(situations['marché'], champ)}</td></tr>")
+        st.markdown(
+            f"<div style='border:1px solid var(--border);border-radius:10px;"
+            f"overflow:hidden;background:var(--bg-elev);margin-top:14px;'>"
+            f"<table style='width:100%;border-collapse:collapse;'>{lignes}"
+            f"</table></div>", unsafe_allow_html=True)
+        st.caption(sous_titre)
+
+    _tableau(MESURES_RISQUE, "Risque et rendement",
+             "Ce que détenir le titre fait subir, et ce qu'il rapporte en "
+             "échange.")
+    _tableau(MESURES_LIQUIDITE, "Liquidité",
+             "Ce qu'il en coûte d'entrer ou de sortir. **Ce n'est pas un "
+             "risque de plus** : la volatilité coûte pendant qu'on détient, "
+             "l'illiquidité seulement au moment de vendre. Un excellent titre "
+             "illiquide reste excellent — il est simplement difficile à "
+             "quitter, et c'est la taille de la position qui s'en trouve "
+             "limitée.")
 
     # ── Ce que chaque mesure veut dire, sur demande ───────────────────────
     # Deux registres, jamais un seul : « en clair » pour qui veut comprendre ce
@@ -2223,6 +2235,18 @@ def _render_recommendation(result, fundamentals):
                 f"Sur les {_vol['effectif']} titres mesurables de la cote, "
                 f"il est le <b>{_vol['rang']}<sup>e</sup> plus calme</b> et le "
                 f"<b>{_rdt['rang']}<sup>e</sup> plus rentable</b>.<br><br>")
+        # La synthese, en deux phrases de nature differente : ce que le titre
+        # fait subir, et ce qu'il en coute d'en sortir. La seconde n'est pas un
+        # risque de plus — elle limite la TAILLE d'une position, pas son
+        # opportunite.
+        _s = _risque.get("synthese") or {}
+        _synthese = ""
+        if _s.get("risque") or _s.get("liquidite"):
+            _synthese = "<br><br>" + "<br>".join(
+                f"<b>{intitule}</b> — {_gras(texte)}"
+                for intitule, texte in (("Profil", _s.get("risque")),
+                                        ("Sortie", _s.get("liquidite")))
+                if texte)
         _alerte = ("<br><b>Ce titre ne cote pas "
                    f"{_m['part_mois_immobiles'] * 100:.0f} % du temps</b> : ces "
                    "mesures le font paraître plus calme qu'il n'est."
@@ -2241,7 +2265,7 @@ def _render_recommendation(result, fundamentals):
             f"{_situation}Sur cinq ans, ce titre a bougé de <b>"
             f"{_m['volatilite'] * 100:.0f} %</b> par an, {_tempo}. Sa pire "
             f"chute a été de <b>{abs(_m['perte_maximale']) * 100:.0f} %</b>, et "
-            f"il a {_phrase}.{_alerte}"
+            f"il a {_phrase}.{_alerte}{_synthese}"
             f"</div>"
             f"<div style='font-size:11.5px;color:var(--ink-3);margin-top:8px;'>"
             f"Le détail, et la comparaison aux pairs, dans l'onglet "

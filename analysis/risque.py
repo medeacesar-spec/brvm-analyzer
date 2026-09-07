@@ -47,10 +47,12 @@ def _rendements_mensuels(cnx) -> dict:
     pairs et au marche, elle a besoin de tout le monde de toute facon.
     """
     cours = defaultdict(list)
-    for ligne in cnx.execute("SELECT ticker, date, close FROM price_monthly "
-                             "WHERE close > 0 ORDER BY ticker, date"):
+    for ligne in cnx.execute("SELECT ticker, date, close, volume FROM "
+                             "price_monthly WHERE close > 0 "
+                             "ORDER BY ticker, date"):
         ligne = dict(ligne)
-        cours[ligne["ticker"]].append((ligne["date"], ligne["close"]))
+        cours[ligne["ticker"]].append(
+            (ligne["date"], ligne["close"], ligne["volume"] or 0))
 
     # Le MOIS de versement compte autant que le montant : ranger tous les
     # dividendes en juillet cree un pic artificiel qui gonfle la volatilite —
@@ -78,11 +80,18 @@ def _rendements_mensuels(cnx) -> dict:
             verses[cle] = verses.get(cle, 0) + montant
         rendements = []
         for i in range(1, len(points)):
-            (_, avant), (jour, apres) = points[i - 1], points[i]
+            (_, avant, _), (jour, apres, _) = points[i - 1], points[i]
             verse = verses.get((jour.year, jour.month), 0)
             rendements.append((apres + verse) / avant - 1)
         series[ticker] = (rendements, points)
     return series
+
+
+def _mediane(valeurs):
+    """La mediane, ou rien si la liste est vide — un titre sans volume connu
+    ne doit pas faire echouer tout le profil."""
+    valeurs = [v for v in valeurs if v is not None]
+    return st.median(valeurs) if valeurs else None
 
 
 def _mesures(rendements: list, points: list) -> dict:
@@ -128,6 +137,17 @@ def _mesures(rendements: list, points: list) -> dict:
         # le multipliant par douze, pas par racine de douze une fois de plus.
         "sortino": (st.mean(exces) * 12 / semi) if semi else None,
         "rendement_annualise": (points[-1][1] / points[0][1]) ** (12 / n) - 1,
+        # LIQUIDITE. Le montant echange est le plus concret des trois :
+        # Sonatel traite 3 878 millions par mois, Unilever 0,9 — un facteur
+        # quatre mille. L'illiquidite d'Amihud rapporte le mouvement du cours
+        # au montant qui l'a provoque : combien de pour cent de variation par
+        # million de francs echange. Elle mesure ce que coute VRAIMENT une
+        # sortie, la ou le montant echange ne dit que la taille du marche.
+        "montant_echange": _mediane([v * p for _, p, v in points[1:]]),
+        "impact_transaction": _mediane(
+            [abs(r) / (points[i + 1][2] * points[i + 1][1] / 1e6)
+             for i, r in enumerate(rendements)
+             if points[i + 1][2] and points[i + 1][1]]),
         "part_mois_immobiles": immobiles,
         "observations": n,
         "peu_liquide": immobiles >= IMMOBILITE_SUSPECTE,
@@ -141,7 +161,12 @@ def _mesures(rendements: list, points: list) -> dict:
 # fluide sans risquer d'afficher des mesures perimees.
 # Les mesures ordonnees, et le sens dans lequel elles sont bonnes.
 # « moindre est meilleur » pour un risque, l'inverse pour un rendement.
-MESURES = (
+# Le RISQUE et la LIQUIDITE ne sont pas de meme nature, et les melanger dans
+# un seul tableau brouille les deux. La volatilite coute pendant qu'on detient ;
+# l'illiquidite ne coute qu'au moment ou l'on veut sortir. Un excellent titre
+# illiquide reste excellent — il est seulement difficile a quitter. La
+# liquidite dit donc ce qu'on PEUT faire, pas ce qu'on risque.
+MESURES_RISQUE = (
     ("volatilite", "Volatilité", True),
     ("semi_volatilite", "Semi-volatilité", True),
     ("perte_maximale", "Perte maximale", False),   # -5 % vaut mieux que -40 %
@@ -149,12 +174,43 @@ MESURES = (
     ("rendement_annualise", "Rendement annualisé", False),
 )
 
+MESURES_LIQUIDITE = (
+    ("montant_echange", "Montant échangé par mois", False),
+    ("impact_transaction", "Impact d'une transaction", True),
+    ("part_mois_immobiles", "Mois sans variation de cours", True),
+)
+
+MESURES = MESURES_RISQUE + MESURES_LIQUIDITE
+
 # Chaque mesure se dit DEUX fois. « En clair » pour qui veut comprendre ce que
 # le chiffre change pour lui ; « techniquement » pour qui veut verifier le
 # calcul ou le refaire. Les deux registres cohabitent parce qu'ils ne
 # s'adressent pas au meme lecteur, et qu'aucun des deux ne remplace l'autre :
 # une definition seule n'aide personne a decider, une paraphrase seule ne se
 # verifie pas.
+def formater(champ: str, valeur) -> str:
+    """Chaque mesure a son unite, et les confondre rend la page absurde.
+
+    Un pourcentage, un ratio et un montant en francs ne s'ecrivent pas de la
+    meme facon : afficher le montant echange comme un pourcentage donnerait
+    « 387 806 147 000 % ». Le format vit donc ici, avec la mesure, plutot que
+    dans la page — pour que tout ce qui lit ces valeurs les ecrive pareil.
+    """
+    if valeur is None:
+        return "—"
+    if champ == "montant_echange":
+        if valeur >= 1e9:
+            return f"{valeur / 1e9:.2f} Md"
+        if valeur >= 1e6:
+            return f"{valeur / 1e6:.1f} M"
+        return f"{valeur / 1e3:.0f} k"
+    if champ == "impact_transaction":
+        return f"{valeur:.4f}"
+    if champ in ("sharpe", "sortino", "asymetrie"):
+        return f"{valeur:.2f}"
+    return f"{valeur * 100:.1f} %"
+
+
 # Le resume tient sur une ligne, sous le libelle, dans le tableau lui-meme.
 # Il ne remplace pas l'explication longue : il evite d'avoir a l'ouvrir pour
 # se rappeler ce qu'on regarde. Quelques mots, la formule si elle tient.
@@ -170,6 +226,12 @@ RESUMES = {
         "divisé par l'écart-type",
     "rendement_annualise":
         "Croissance moyenne par an, dividendes compris",
+    "montant_echange":
+        "Valeur médiane traitée en un mois, en francs",
+    "impact_transaction":
+        "Illiquidité d'Amihud : variation du cours par million échangé",
+    "part_mois_immobiles":
+        "Part des mois où le cours n'a pas bougé du tout",
 }
 
 EXPLICATIONS = {
@@ -218,6 +280,35 @@ EXPLICATIONS = {
         "de la période. Un taux géométrique, non arithmétique : il tient "
         "compte de la composition d'une année sur l'autre.",
     ),
+    "montant_echange": (
+        "Combien de francs changent de main en un mois. C'est la taille du "
+        "marché du titre : sur cette place, Sonatel en traite près de quatre "
+        "milliards quand certaines lignes n'en traitent pas un million. En "
+        "dessous d'un certain seuil, vendre sa position prend des semaines, "
+        "ou fait chuter le cours soi-même.",
+        "Médiane du produit volume × cours sur les mois de la période. La "
+        "médiane et non la moyenne : une seule transaction de bloc suffirait "
+        "à donner l'illusion d'un marché actif.",
+    ),
+    "impact_transaction": (
+        "De combien le cours bouge quand un million de francs s'échange. "
+        "C'est le vrai coût d'une sortie : là où le montant échangé dit la "
+        "taille du marché, celui-ci dit ce qu'il en coûte d'y entrer ou d'en "
+        "sortir. Plus il est bas, plus on peut acheter ou vendre sans "
+        "déplacer le cours contre soi.",
+        "Ratio d'illiquidité d'Amihud : médiane de |rendement| divisé par le "
+        "montant échangé, exprimé ici en pourcentage de variation par million "
+        "de FCFA traité.",
+    ),
+    "part_mois_immobiles": (
+        "La proportion de mois où le cours n'a pas bougé d'un franc. Un titre "
+        "immobile n'est pas un titre stable : c'est un titre que personne "
+        "n'échange. Cette part fausse toutes les autres mesures dans le sens "
+        "qui flatte — un rendement nul passe pour du calme.",
+        "Part des rendements mensuels exactement égaux à zéro. Mesure "
+        "d'illiquidité de Lesmond : l'absence de transaction laisse le "
+        "dernier cours en place et fabrique un faux rendement nul.",
+    ),
 }
 
 
@@ -249,6 +340,65 @@ def _situer(valeur, population: dict, champ: str, moindre_est_mieux: bool):
 def _rang(n: int) -> str:
     """« 1er », « 2e »… Ecrire « 1e » trahit une phrase ecrite par une machine."""
     return "1er" if n == 1 else f"{n}e"
+
+
+def synthese(profil: dict) -> dict:
+    """Deux phrases, une par nature : ce qu'on subit, ce qu'il en coute de sortir.
+
+    Elles ne se melangent pas. La premiere resume le couple risque-rendement,
+    la seconde la liquidite — un titre peut etre tranquille et impossible a
+    vendre, ou agite et liquide comme l'eau. Les fondre en une seule phrase
+    obligerait a arbitrer entre les deux a la place du lecteur.
+    """
+    m = profil["titre"]
+    vol = profil["situations"]["volatilite"]["marché"]
+    rdt = profil["situations"]["rendement_annualise"]["marché"]
+    ech = (profil["situations"].get("montant_echange") or {}).get("marché")
+
+    if not (vol and rdt):
+        return {"risque": None, "liquidite": None}
+
+    n = vol["effectif"]
+    calme = vol["rang"] <= n / 3
+    agite = vol["rang"] > 2 * n / 3
+    paye = rdt["rang"] <= n / 3
+    faible = rdt["rang"] > 2 * n / 3
+
+    if (m.get("rendement_annualise") or 0) < 0:
+        risque = ("Il a **perdu de l'argent** sur la période, quelle que soit "
+                  "la tranquillité apparente de son cours.")
+    elif calme and paye:
+        risque = ("**Rare** : il rend beaucoup en bougeant peu — le haut du "
+                  "panier sur les deux tableaux à la fois.")
+    elif calme and faible:
+        risque = ("**Défensif** : peu d'agitation, peu de rendement. Il "
+                  "protège plus qu'il ne fait gagner.")
+    elif agite and paye:
+        risque = ("**Nerveux mais payant** : il rend beaucoup et le fait "
+                  "durement sentir. À ne détenir qu'en sachant l'encaisser.")
+    elif agite and faible:
+        risque = ("**Le plus mauvais compromis** : il agite beaucoup pour "
+                  "rendre peu.")
+    else:
+        risque = ("**Dans la moyenne de la cote**, autant par son agitation "
+                  "que par son rendement.")
+
+    liquidite = None
+    if ech:
+        montant = formater("montant_echange", m.get("montant_echange"))
+        if ech["rang"] > 2 * ech["effectif"] / 3:
+            liquidite = (f"**Difficile à quitter** : {montant} de FCFA "
+                         f"échangés par mois seulement. La taille d'une "
+                         f"position s'y décide avant l'achat, pas à la vente.")
+        elif ech["rang"] <= ech["effectif"] / 3:
+            liquidite = (f"**Facile à quitter** : {montant} de FCFA échangés "
+                         f"par mois. Entrer et sortir n'y pose pas de "
+                         f"difficulté.")
+        else:
+            liquidite = (f"**Liquidité moyenne** : {montant} de FCFA par "
+                         f"mois. Une position modeste se dénoue sans "
+                         f"difficulté, une position lourde demande du temps.")
+    return {"risque": risque, "liquidite": liquidite}
 
 
 def lecture(profil: dict) -> list:
@@ -319,6 +469,23 @@ def lecture(profil: dict) -> list:
                 f"Sa pire chute a coûté **{abs(perte):.0%}**, et **le sommet "
                 f"d'avant n'a jamais été retrouvé** sur la période mesurée.")
 
+    # La liquidite est le risque qu'on ne decouvre qu'en essayant de vendre.
+    echange = (profil["situations"].get("montant_echange") or {}).get("marché")
+    if echange and m.get("montant_echange") is not None:
+        n = echange["effectif"]
+        montant = formater("montant_echange", m["montant_echange"])
+        if echange["rang"] > 2 * n / 3:
+            phrases.append(
+                f"**Il ne s'en échange que {montant} de FCFA par mois** — "
+                f"{_rang(echange['rang'])} marché de la cote sur {n}. Sortir "
+                f"d'une position importante peut demander des semaines, ou "
+                f"faire baisser le cours soi-même.")
+        elif echange["rang"] <= n / 3:
+            phrases.append(
+                f"Il s'en échange **{montant} de FCFA par mois**, "
+                f"{_rang(echange['rang'])} marché de la cote : entrer et en "
+                f"sortir n'y pose pas de difficulté.")
+
     if m.get("peu_liquide"):
         phrases.append(
             f"**Ces mesures le flattent.** Il ne cote pas "
@@ -386,4 +553,5 @@ def profil_de_risque(ticker: str, secteur: Optional[str] = None) -> Optional[dic
         "taux_sans_risque": TAUX_SANS_RISQUE,
     }
     profil["lecture"] = lecture(profil)
+    profil["synthese"] = synthese(profil)
     return profil
