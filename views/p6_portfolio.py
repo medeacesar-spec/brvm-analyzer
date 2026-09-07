@@ -279,7 +279,7 @@ def render():
     # l'authentification ne bougent pas, et c'est deja le motif d'« Analyse
     # d'un titre ».
     onglet_perf, onglet_reco, onglet_neuf = st.tabs(
-        ["Performance", "Recommandations", "Renforcer"])
+        ["Performance", "Recommandations", "Risque et optimisation"])
 
     with onglet_perf:
         # --- Portfolio summary (pas de divider — la hiérarchie suffit) ---
@@ -838,21 +838,25 @@ def render():
             fig = pie_chart(sec_labels, sec_values, "")
             st.plotly_chart(fig, use_container_width=True)
 
-        _render_risque_ensemble(portfolio)
 
     with onglet_reco:
+        # TOUTES les recommandations du modele, sans ajustement : ce qu'il dit
+        # de la societe et de la tendance, alleger, renforcer et acheter.
         _render_portfolio_analysis(portfolio, cash, total_value,
                                    total_portfolio, ticker_to_sector)
         _render_position_recommendations(portfolio, total_value, cash,
-                                         volet="detenus")
-        _render_recommandations_ajustees(portfolio)
-
-    with onglet_neuf:
-        _render_position_recommendations(portfolio, total_value, cash,
-                                         volet="nouveaux")
+                                         volet="tout")
         if cash > 0:
             _render_cash_recommendations(portfolio, cash, total_portfolio,
                                          ticker_to_sector)
+
+    with onglet_neuf:
+        # Les memes questions, sous l'angle du risque — et elargies a toute la
+        # cote : on ne peut pas ameliorer un portefeuille en ne regardant que
+        # ce qu'il contient deja.
+        _render_risque_ensemble(portfolio)
+        _render_recommandations_ajustees(portfolio)
+        _render_optimisation(portfolio, cash)
 
     _render_info_box()
 
@@ -1244,9 +1248,11 @@ def _render_position_recommendations(portfolio, total_value, cash,
     if volet == "nouveaux":
         col_sell = col_reinforce = None
         col_new = st.container()
-    else:
+    elif volet == "detenus":
         col_sell, col_reinforce = st.columns(2)
         col_new = None
+    else:                                   # « tout » : les trois cotes a cote
+        col_sell, col_reinforce, col_new = st.columns(3)
 
     if volet != "nouveaux":
         with col_sell:
@@ -1651,6 +1657,147 @@ def _render_recommandations_ajustees(portfolio):
         if changements else
         "Aucune suggestion ne change : les poids de ce portefeuille sont "
         "cohérents avec les risques que chaque ligne y apporte.")
+
+
+
+def _render_optimisation(portfolio, cash):
+    """Ce qu'il faudrait acheter, ou alleger, pour mieux payer le risque porte.
+
+    La question n'est pas « ce titre est-il bon », mais « ce titre ameliore-t-il
+    CET ensemble ». Un titre agite mais decorrele reduit le risque du tout ; un
+    excellent titre qui double une position deja lourde l'augmente.
+    """
+    from utils.ui_helpers import section_heading
+    from analysis.risque import formater
+    try:
+        from analysis.portefeuille_risque import candidats_amelioration
+        positions = tuple(sorted(
+            (r["ticker"], float(r.get("current_value") or 0))
+            for _, r in portfolio.iterrows()))
+        r = candidats_amelioration(positions, float(cash or 0))
+    except Exception as err:                                    # noqa: BLE001
+        st.caption(f"Optimisation indisponible : {err}")
+        return
+    if not r:
+        return
+
+    section_heading("Maximiser le retour, minimiser le risque", spacing="loose")
+
+    # Le seuil se regle ici plutot que d'etre impose : ce qui compte comme
+    # « trop etroit » depend de la taille des positions qu'on envisage. Le voir
+    # bouger apprend plus que de le subir — abaisse, il elargit le champ des
+    # candidats ; releve, il ne garde que les valeurs ou l'on entre et sort
+    # sans peine. Par defaut, le quart le moins echange de la cote.
+    defaut = (r.get("seuil_illiquidite") or 0) / 1e6
+    col_seuil, col_effet = st.columns([1, 2])
+    with col_seuil:
+        st.markdown("<div class='label-xs' style='margin-bottom:4px;'>"
+                    "Seuil de liquidité · millions échangés par mois</div>",
+                    unsafe_allow_html=True)
+        seuil_m = st.number_input(
+            "Seuil de liquidité", min_value=0.0, max_value=500.0,
+            value=float(round(defaut, 1)), step=5.0, key="pf_seuil_liquidite",
+            label_visibility="collapsed",
+            help="Les titres qui échangent moins que cela sont écartés du "
+                 "classement : un titre qui ne s'échange pas paraît décorrélé "
+                 "sans l'être.")
+    if abs(seuil_m * 1e6 - (r.get("seuil_illiquidite") or 0)) > 1:
+        r = candidats_amelioration(positions, float(cash or 0), seuil_m * 1e6)
+        if not r:
+            return
+    with col_effet:
+        st.markdown(
+            f"<div style='padding-top:22px;font-size:12.5px;"
+            f"color:var(--ink-3);'>{len(r['ecartes_illiquides'])} titre(s) "
+            f"écarté(s) · {len([c for c in r['candidats'] if c['ameliore']])} "
+            f"candidat(s) retenu(s) sur {len(r['candidats'])} mesurés</div>",
+            unsafe_allow_html=True)
+
+    st.caption(
+        f"Un titre **améliore** le portefeuille si son rendement, rapporté à "
+        f"ce qu'il ajoute **au risque déjà porté**, dépasse le même rapport "
+        f"calculé sur le portefeuille — aujourd'hui **{r['ratio_portefeuille']:.0f}**. "
+        f"Ce n'est pas la volatilité du titre qui compte, mais sa "
+        f"**corrélation** : un titre agité mais décorrélé réduit le risque de "
+        f"l'ensemble.")
+
+    entete = ("font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;"
+              "color:var(--ink-3);font-weight:500;padding:9px 10px;"
+              "border-bottom:1px solid var(--border);background:var(--bg-sunken);")
+    cell = "padding:8px 10px;font-size:13px;border-bottom:1px solid var(--border);"
+    nb = cell + "text-align:right;font-variant-numeric:tabular-nums;"
+
+    def _table(liste, titre_bloc):
+        if not liste:
+            return
+        html = (f"<tr><th style='{entete};text-align:left;'>{titre_bloc}</th>"
+                f"<th style='{entete};text-align:right;'>Apport</th>"
+                f"<th style='{entete};text-align:right;'>Rendement</th>"
+                f"<th style='{entete};text-align:right;'>Corrélation</th>"
+                f"<th style='{entete};text-align:right;'>Position max</th></tr>")
+        for c in liste:
+            if c["decorrele"]:
+                apport, teinte = "décorrélé", "var(--up)"
+            else:
+                apport = f"{c['ratio']:.0f}"
+                teinte = ("var(--up)" if c["ameliore"] else "var(--down)")
+            # La correlation est l'information qui explique le rang : basse,
+            # elle vaut mieux qu'un rendement eleve.
+            html += (
+                f"<tr><td style='{cell}'>"
+                f"<span class='ticker'>{c['ticker']}</span>"
+                + (" <span class='muted' style='font-size:11px;'>détenu "
+                   f"{c['poids']:.0%}</span>" if c["detenu"] else "")
+                + f"</td>"
+                f"<td style='{nb};font-weight:600;color:{teinte};'>{apport}</td>"
+                f"<td style='{nb}'>{c['rendement_annuel']:.1%}</td>"
+                f"<td style='{nb}'>"
+                f"{'—' if c['correlation'] is None else format(c['correlation'], '+.2f')}</td>"
+                f"<td style='{nb};color:var(--ink-3);'>"
+                f"{formater('montant_echange', c['taille_max'])}</td></tr>")
+        st.markdown(
+            f"<div style='border:1px solid var(--border);border-radius:10px;"
+            f"overflow:hidden;background:var(--bg-elev);margin-top:10px;'>"
+            f"<table style='width:100%;border-collapse:collapse;'>{html}</table>"
+            f"</div>", unsafe_allow_html=True)
+
+    ameliorent = [c for c in r["candidats"] if c["ameliore"]]
+    degradent = [c for c in r["candidats"] if not c["ameliore"]]
+    _table(ameliorent[:10], "Améliorent le portefeuille")
+    st.caption(
+        "**Position max** : ce qui se revendrait en cinq séances au rythme "
+        "d'échange habituel du titre. Au-delà, la ligne se détient bien mais "
+        "ne se vend pas."
+        + (f" Avec **{cash:,.0f} FCFA** de liquidités disponibles."
+           if cash else ""))
+
+    if degradent:
+        with st.expander(f"Les {len(degradent)} autres, qui dégraderaient "
+                         f"le couple rendement-risque"):
+            _table(degradent, "Dégradent le portefeuille")
+
+    detenus_ecartes = [t for t in r["ecartes_illiquides"]
+                       if t in {p[0] for p in positions}]
+    avertissements = []
+    if detenus_ecartes:
+        avertissements.append(
+            f"**{', '.join(detenus_ecartes)}** : détenu(s) mais écarté(s) du "
+            f"classement. Un titre qui ne cote pas paraît décorrélé — son "
+            f"cours ne bouge pas quand le marché bouge — et le classement le "
+            f"récompenserait pour son illiquidité.")
+    avertissements.append(
+        "**Le rendement passé n'est pas le rendement attendu.** Ce classement "
+        "dit ce qui **aurait** amélioré le portefeuille sur "
+        f"{r['observations']} mois, pas ce qui l'améliorera. Il désigne des "
+        "candidats à examiner ; il ne décide de rien.")
+    st.markdown(
+        "<div style='background:var(--bg-elev);border:1px solid var(--border);"
+        "border-left:3px solid var(--ocre);border-radius:10px;"
+        "padding:14px 16px;margin-top:14px;'>"
+        + "".join(f"<div style='font-size:12.5px;line-height:1.6;"
+                  f"color:var(--ink-2);margin-bottom:6px;'>· {_gras_html(a)}</div>"
+                  for a in avertissements)
+        + "</div>", unsafe_allow_html=True)
 
 
 

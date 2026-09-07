@@ -24,7 +24,8 @@ import math
 import statistics as st
 from typing import Optional
 
-from analysis.risque import _rendements_mensuels, toutes_les_mesures
+from analysis.risque import (_rendements_mensuels, toutes_les_mesures,
+                             TAUX_SANS_RISQUE)
 from data.db import get_connection
 from data.storage import _maybe_cache_data
 
@@ -194,3 +195,136 @@ def lecture_portefeuille(p: dict) -> list:
             f"{', '.join(p['hors_mesure'])} : moins de deux ans de cotation, "
             f"donc hors de ce calcul. Le risque affiché ne les couvre pas.")
     return phrases
+
+# Combien de seances on accepte de mettre pour sortir d'une position. Au-dela,
+# la ligne est un piege : elle se detient bien et ne se vend pas.
+SEANCES_DE_SORTIE_ACCEPTABLES = 5
+
+
+@_maybe_cache_data(ttl=300)
+def candidats_amelioration(positions: tuple, cash: float = 0.0,
+                           seuil_illiquidite: Optional[float] = None) -> Optional[dict]:
+    """Quels titres ameliorent le couple rendement-risque du portefeuille.
+
+    LA REGLE. Ajouter une petite quantite d'un titre ameliore le portefeuille
+    si son rendement en exces du sans-risque, rapporte a sa COVARIANCE avec le
+    portefeuille, depasse le meme rapport calcule sur le portefeuille lui-meme.
+    Ce n'est pas la volatilite du titre qui compte, c'est la part de cette
+    volatilite qui s'ajoute a celle qu'on porte deja : un titre agite mais
+    decorrele peut reduire le risque de l'ensemble.
+
+    Filtisac l'illustre sur un portefeuille reel : 61 % de volatilite propre,
+    mais une covariance NEGATIVE avec le portefeuille. Il monte quand le reste
+    descend.
+
+    TROIS RESERVES, et elles sont serieuses.
+
+    Le rendement passe n'est pas le rendement attendu. Ce classement dit ce qui
+    AURAIT ameliore le portefeuille sur cinq ans, pas ce qui l'ameliorera. Il
+    designe des candidats a examiner, il ne decide de rien.
+
+    Soixante observations pour quarante-cinq titres : un optimiseur de Markowitz
+    complet produirait ici des poids extremes et instables, en ajustant la
+    matrice de covariance au bruit. Un classement marginal, titre par titre,
+    resiste mieux — c'est pourquoi on s'y tient.
+
+    Un titre qui ne cote pas parait decorrele : son cours ne bouge pas quand le
+    marche bouge. L'optimiseur recompenserait donc l'illiquidite. Les titres au
+    dela du seuil d'immobilite sont ecartes du classement, et la liquidite de
+    chaque candidat s'affiche a cote de son rang.
+    """
+    valeurs = {}
+    for ticker, valeur in positions:
+        if valeur and valeur > 0:
+            valeurs[ticker] = valeurs.get(ticker, 0) + valeur
+    total = sum(valeurs.values())
+    if not total:
+        return None
+
+    cnx = get_connection()
+    try:
+        series = _rendements_mensuels(cnx)
+    finally:
+        cnx.close()
+    mesures = toutes_les_mesures()
+    seuil = seuil_illiquidite
+    if seuil is None and mesures:
+        seuil = next(iter(mesures.values())).get("seuil_illiquidite")
+
+    suivis = [t for t in valeurs if t in series]
+    if not suivis:
+        return None
+    n = min(len(series[t][0]) for t in suivis)
+    poids = {t: valeurs[t] / total for t in suivis}
+    somme = sum(poids.values())
+    poids = {t: p / somme for t, p in poids.items()}
+
+    # La serie du portefeuille lui-meme, mois par mois.
+    rendements = {t: series[t][0][-n:] for t in series if len(series[t][0]) >= n}
+    portefeuille = [sum(poids[t] * rendements[t][i] for t in suivis)
+                    for i in range(n)]
+    moyenne_pf = st.mean(portefeuille)
+    variance_pf = st.variance(portefeuille)
+    if variance_pf <= 0:
+        return None
+    mensuel_sans_risque = (1 + TAUX_SANS_RISQUE) ** (1 / 12) - 1
+    ratio_portefeuille = (moyenne_pf - mensuel_sans_risque) / variance_pf
+
+    candidats = []
+    for ticker, serie in rendements.items():
+        if ticker in ("BRVMC", "BRVM30"):
+            continue
+        mesure = mesures.get(ticker) or {}
+        echange_titre = mesure.get("montant_echange")
+        # Le seuil se regle depuis la page : abaisse, il elargit le champ des
+        # candidats ; releve, il ne garde que les valeurs ou l'on entre et sort
+        # sans peine. Le voir bouger vaut mieux que le subir.
+        trop_etroit = (echange_titre is not None and echange_titre <= seuil
+                       if seuil is not None else mesure.get("peu_liquide"))
+        if trop_etroit:
+            continue                    # sa decorrelation serait un artefact
+        covariance = _covariance(serie, portefeuille)
+        moyenne = st.mean(serie)
+        exces = moyenne - mensuel_sans_risque
+        # Covariance negative : le titre amortit le portefeuille. Le rapport
+        # n'a alors plus de sens, mais la conclusion est claire.
+        if covariance <= 0:
+            ratio, decorrele = float("inf"), True
+        else:
+            ratio, decorrele = exces / covariance, False
+        echange = mesure.get("montant_echange") or 0
+        # Ce qu'on peut detenir sans etre piege : ce qui se vend en cinq
+        # seances au rythme habituel du titre.
+        taille_max = (echange / SEANCES_PAR_MOIS
+                      * SEANCES_DE_SORTIE_ACCEPTABLES) if echange else None
+        candidats.append({
+            "ticker": ticker,
+            "detenu": ticker in valeurs,
+            "poids": poids.get(ticker),
+            "ratio": ratio,
+            "decorrele": decorrele,
+            "ameliore": (decorrele or ratio > ratio_portefeuille) and exces > 0,
+            "rendement_annuel": (1 + moyenne) ** 12 - 1,
+            "covariance": covariance,
+            "correlation": (covariance / (st.stdev(serie)
+                                          * st.stdev(portefeuille))
+                            if st.stdev(serie) else None),
+            "montant_echange": echange or None,
+            "taille_max": taille_max,
+            "volatilite": mesure.get("volatilite"),
+        })
+    candidats.sort(key=lambda c: (-c["ratio"], c["ticker"]))
+
+    ecartes = sorted(t for t, m in mesures.items()
+                     if (m.get("montant_echange") is not None
+                         and seuil is not None
+                         and m["montant_echange"] <= seuil))
+    return {
+        "ratio_portefeuille": ratio_portefeuille,
+        "rendement_portefeuille": (1 + moyenne_pf) ** 12 - 1,
+        "candidats": candidats,
+        "ecartes_illiquides": ecartes,
+        "cash": cash,
+        "observations": n,
+        "seuil_illiquidite": seuil,
+    }

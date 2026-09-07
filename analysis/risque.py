@@ -37,7 +37,29 @@ from data.storage import _maybe_cache_data
 TAUX_SANS_RISQUE = 0.06
 MINIMUM_MOIS = 24                 # en deçà, aucune mesure n'est publiée
 MINIMUM_PAIRS = 3                 # une médiane sur deux sociétés décrit une société
-IMMOBILITE_SUSPECTE = 0.20        # au-delà, les mesures sont annoncées douteuses
+IMMOBILITE_SUSPECTE = 0.20        # au-delà, l'immobilité mérite une explication
+
+# UN TITRE IMMOBILE N'EST PAS FORCEMENT ILLIQUIDE. Ecobank Transnational cote
+# 71 francs : le plus petit saut possible, un franc, vaut 1,41 % de son cours.
+# Il ne PEUT pas bouger un peu. Ses 37 % de mois sans variation viennent du pas
+# de cotation, pas d'une absence d'echanges — il traite 148 millions par mois,
+# rang 23 sur 45. A l'inverse SICOR n'en traite que 2,9 millions avec 3 % de
+# mois immobiles.
+#
+# L'illiquidite se mesure donc au MONTANT ECHANGE, et relativement a la cote :
+# est peu liquide le QUART LE MOINS ECHANGE. Un seuil absolu vieillirait — les
+# montants traites montent avec le marche — quand un quartile suit de lui-meme.
+# Au 7 septembre 2026 il tombe a 44 millions par mois, soit deux millions par
+# seance.
+QUANTILE_ILLIQUIDE = 0.25
+
+
+def _seuil_illiquidite(montants) -> float:
+    """Le premier quartile des montants echanges, ou zero si trop peu de titres."""
+    valeurs = sorted(m for m in montants if m)
+    if len(valeurs) < 4:
+        return 0.0
+    return valeurs[int(QUANTILE_ILLIQUIDE * (len(valeurs) - 1))]
 
 
 def _rendements_mensuels(cnx) -> dict:
@@ -125,6 +147,7 @@ def _mesures(rendements: list, points: list) -> dict:
             break
 
     immobiles = sum(1 for r in rendements if r == 0) / n
+    echange_median = _mediane([v * p for _, p, v in points[1:]])
     return {
         "volatilite": volatilite,
         "semi_volatilite": semi,
@@ -143,14 +166,20 @@ def _mesures(rendements: list, points: list) -> dict:
         # au montant qui l'a provoque : combien de pour cent de variation par
         # million de francs echange. Elle mesure ce que coute VRAIMENT une
         # sortie, la ou le montant echange ne dit que la taille du marche.
-        "montant_echange": _mediane([v * p for _, p, v in points[1:]]),
+        "montant_echange": echange_median,
         "impact_transaction": _mediane(
             [abs(r) / (points[i + 1][2] * points[i + 1][1] / 1e6)
              for i, r in enumerate(rendements)
              if points[i + 1][2] and points[i + 1][1]]),
         "part_mois_immobiles": immobiles,
         "observations": n,
-        "peu_liquide": immobiles >= IMMOBILITE_SUSPECTE,
+        # `peu_liquide` se pose plus tard, une fois toute la cote mesuree : il
+        # designe le quart le moins echange, ce qu'un titre seul ne peut pas
+        # savoir. L'immobilite, elle, se lit sur la seule serie du titre — et
+        # ne se confond pas avec l'illiquidite : sur un titre a faible nominal,
+        # le pas de cotation suffit a figer le cours.
+        "immobile": immobiles >= IMMOBILITE_SUSPECTE,
+        "peu_liquide": False,
     }
 
 
@@ -486,12 +515,22 @@ def lecture(profil: dict) -> list:
                 f"{_rang(echange['rang'])} marché de la cote : entrer et en "
                 f"sortir n'y pose pas de difficulté.")
 
+    # Immobilite et illiquidite se confondent souvent, et ce n'est pas la meme
+    # chose : l'une decrit un cours qui ne peut pas bouger finement, l'autre un
+    # marche ou l'on n'echange pas. Les dire separement evite un contresens.
     if m.get("peu_liquide"):
         phrases.append(
-            f"**Ces mesures le flattent.** Il ne cote pas "
-            f"{m['part_mois_immobiles']:.0%} du temps, et un cours immobile "
-            f"passe pour un cours stable : sa volatilité réelle est plus "
-            f"élevée que celle affichée.")
+            f"**Marché très étroit** : "
+            f"{formater('montant_echange', m.get('montant_echange'))} de FCFA "
+            f"échangés par mois. Ses mesures reposent sur peu de transactions "
+            f"et sont à prendre avec prudence.")
+    elif m.get("immobile"):
+        phrases.append(
+            f"Son cours n'a pas bougé {m['part_mois_immobiles']:.0%} des mois. "
+            f"**Ce n'est pas forcément un manque d'échanges** : sur un titre à "
+            f"faible nominal, le plus petit saut de cotation pèse déjà un ou "
+            f"deux pour cent, et le cours ne peut pas varier moins. Ses "
+            f"mesures sont donc plus grossières que celles des autres.")
     return phrases
 
 
@@ -513,8 +552,14 @@ def toutes_les_mesures() -> dict:
         series = _rendements_mensuels(cnx)
     finally:
         cnx.close()
-    return {t: _mesures(*v) for t, v in series.items()
-            if t not in ("BRVMC", "BRVM30")}
+    mesures = {t: _mesures(*v) for t, v in series.items()
+               if t not in ("BRVMC", "BRVM30")}
+    seuil = _seuil_illiquidite(m.get("montant_echange") for m in mesures.values())
+    for m in mesures.values():
+        echange = m.get("montant_echange")
+        m["peu_liquide"] = bool(echange is not None and echange <= seuil)
+        m["seuil_illiquidite"] = seuil
+    return mesures
 
 
 @_maybe_cache_data(ttl=300)
@@ -542,6 +587,11 @@ def profil_de_risque(ticker: str, secteur: Optional[str] = None) -> Optional[dic
     secteur = secteur or secteurs.get(ticker)
     indices = {"BRVMC", "BRVM30"}
     tous = {t: _mesures(*v) for t, v in series.items() if t not in indices}
+    seuil = _seuil_illiquidite(m.get("montant_echange") for m in tous.values())
+    for m in tous.values():
+        echange = m.get("montant_echange")
+        m["peu_liquide"] = bool(echange is not None and echange <= seuil)
+        m["seuil_illiquidite"] = seuil
     if ticker not in tous:
         return None
 
