@@ -496,6 +496,28 @@ def lecture(profil: dict) -> list:
 
 
 @_maybe_cache_data(ttl=300)
+def toutes_les_mesures() -> dict:
+    """Les mesures de tous les titres d'un coup, pour les pages qui listent.
+
+    `profil_de_risque` sert une fiche : il calcule toute la cote pour situer un
+    titre, et rend un objet riche. Le screening, la performance et le
+    portefeuille n'ont pas besoin de cette richesse quarante-cinq fois — ils
+    veulent un tableau. Passer par la fiche titre par titre reviendrait a
+    relire la meme serie a chaque ligne.
+
+    Les indices sont ecartes : ils n'ont pas leur place dans un classement de
+    titres, et fausseraient les medianes.
+    """
+    cnx = get_connection()
+    try:
+        series = _rendements_mensuels(cnx)
+    finally:
+        cnx.close()
+    return {t: _mesures(*v) for t, v in series.items()
+            if t not in ("BRVMC", "BRVM30")}
+
+
+@_maybe_cache_data(ttl=300)
 def profil_de_risque(ticker: str, secteur: Optional[str] = None) -> Optional[dict]:
     """Mesures du titre, et les memes mesures medianes chez ses pairs.
 

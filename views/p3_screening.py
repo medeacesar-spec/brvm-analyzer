@@ -43,6 +43,14 @@ def render():
         return
 
     verdicts = _load_verdicts_dict()
+    # Volatilite, rendement et liquidite viennent de la serie mensuelle, pas
+    # des fondamentaux : un titre peut etre excellent au bilan et impossible a
+    # vendre. Charge une fois pour toute la page.
+    try:
+        from analysis.risque import toutes_les_mesures, formater as _fmt_risque
+        mesures_risque = toutes_les_mesures()
+    except Exception:                                           # noqa: BLE001
+        mesures_risque, _fmt_risque = {}, None
 
     # ─── Univers d'analyse ──────────────────────────────────────────────
     section_heading("Univers d'analyse", spacing="tight")
@@ -147,6 +155,35 @@ def render():
             "D/E", "de", 20.0, step=0.5, divide=False, max_abs=20.0
         )
 
+    # ─── Filtres de risque et de liquidité ──────────────────────────────
+    # Separes des fondamentaux, et c'est deliberé : ils ne se lisent pas dans
+    # les comptes mais dans le cours. Un titre peut tenir tous les seuils
+    # comptables et n'echanger que 900 000 francs par mois.
+    if mesures_risque:
+        section_heading("Risque et liquidité", spacing="loose")
+        col_r1, col_r2, col_r3, _col_vide = st.columns(4)
+        with col_r1:
+            min_vol, max_vol = _filter_col(
+                "Volatilité annuelle", "vol", 150.0, step=5.0, divide=True,
+                max_abs=150.0)
+        with col_r2:
+            min_rdt, max_rdt = _filter_col(
+                "Rendement annualisé", "rdt", 100.0, step=5.0, divide=True,
+                min_abs=-100.0, max_abs=200.0)
+        with col_r3:
+            st.markdown(
+                "<div class='label-xs' style='margin-bottom:4px;'>"
+                "Échangé par mois, minimum</div>", unsafe_allow_html=True)
+            min_echange = st.number_input(
+                "Montant échangé minimum", min_value=0.0, value=0.0,
+                step=10.0, key="echange_min", label_visibility="collapsed",
+                help="En millions de FCFA. Un titre sous 10 M par mois se "
+                     "revend difficilement.") * 1e6
+    else:
+        min_vol, max_vol = 0.0, 99.0
+        min_rdt, max_rdt = -99.0, 99.0
+        min_echange = 0.0
+
     # ─── Compute ratios ─────────────────────────────────────────────────
     results = []
     for _, row in filtered_stocks.iterrows():
@@ -164,6 +201,20 @@ def render():
                 dy = data["market_dividend_yield"]
 
             verdict, hybrid = verdicts.get(ticker, (None, None))
+            risque = mesures_risque.get(ticker) or {}
+            # Un titre sans historique mensuel suffisant n'est pas ecarte : il
+            # n'a simplement pas ces mesures. L'exclure reviendrait a punir une
+            # introduction recente de sa jeunesse.
+            if risque:
+                vol = risque.get("volatilite")
+                rdt = risque.get("rendement_annualise")
+                ech = risque.get("montant_echange")
+                if vol is not None and not (min_vol <= vol <= max_vol):
+                    continue
+                if rdt is not None and not (min_rdt <= rdt <= max_rdt):
+                    continue
+                if ech is not None and ech < min_echange:
+                    continue
 
             results.append({
                 "ticker": ticker,
@@ -178,6 +229,9 @@ def render():
                 "fundamental_score": ratios.get("fundamental_score"),
                 "hybrid_score": hybrid,
                 "verdict": verdict,
+                "volatilite": risque.get("volatilite"),
+                "rendement_annualise": risque.get("rendement_annualise"),
+                "montant_echange": risque.get("montant_echange"),
             })
         except Exception:
             continue
@@ -253,6 +307,13 @@ def render():
             return "—"
         return f"{v:,.0f}"
 
+    def _fmt_echange(v):
+        """Un montant echange se lit en milliards ou en millions, jamais en
+        francs : la colonne servirait a compter des zeros."""
+        if v is None or pd.isna(v) or not v:
+            return "—"
+        return f"{v / 1e9:.1f} Md" if v >= 1e9 else f"{v / 1e6:.0f} M"
+
     header_style = (
         "font-size:10.5px;text-transform:uppercase;letter-spacing:0.08em;"
         "color:var(--ink-3);font-weight:500;padding:10px;"
@@ -271,6 +332,9 @@ def render():
         f"<th style='{header_style};text-align:right;'>PER</th>"
         f"<th style='{header_style};text-align:right;'>ROE</th>"
         f"<th style='{header_style};text-align:right;'>Payout</th>"
+        f"<th style='{header_style};text-align:right;'>Volat.</th>"
+        f"<th style='{header_style};text-align:right;'>Rdt/an</th>"
+        f"<th style='{header_style};text-align:right;'>Échangé</th>"
         f"<th style='{header_style};text-align:right;'>Score</th>"
         f"<th style='{header_style};text-align:left;'>Verdict</th>"
         f"</tr>"
@@ -288,6 +352,10 @@ def render():
             f"<td style='{num_style}'>{_fmt_dec(r['per'])}</td>"
             f"<td style='{num_style}'>{_fmt_pct(r['roe'], 1)}</td>"
             f"<td style='{num_style}'>{_fmt_pct(r['payout_ratio'], 0)}</td>"
+            f"<td style='{num_style}'>{_fmt_pct(r.get('volatilite'), 0)}</td>"
+            f"<td style='{num_style}'>"
+            f"{_fmt_pct(r.get('rendement_annualise'), 0)}</td>"
+            f"<td style='{num_style}'>{_fmt_echange(r.get('montant_echange'))}</td>"
             f"<td style='{num_style};font-weight:600;'>{score_str}</td>"
             f"<td style='{cell_style}'>{_verdict_tag(r.get('verdict'))}</td>"
             f"</tr>"
@@ -313,6 +381,7 @@ def render():
     with col_csv:
         csv = filtered[["ticker", "name", "sector", "price", "dividend_yield",
                         "per", "roe", "payout_ratio", "debt_equity",
+                        "volatilite", "rendement_annualise", "montant_echange",
                         "fundamental_score", "verdict"]].to_csv(index=False)
         st.download_button("Exporter CSV", csv, "brvm_screening.csv", "text/csv",
                            use_container_width=True)
