@@ -1099,6 +1099,33 @@ def _render_portfolio_analysis(portfolio, cash, total_value, total_portfolio, ti
 
 
 
+def _barre_titres(paires, cle, intitule="Ouvrir l'analyse d'un titre"):
+    """UNE barre d'ouverture par onglet, plutot qu'une sous chaque tableau.
+
+    Trois selecteurs empiles sous des colonnes de hauteurs differentes ne
+    s'alignent jamais, et chacun ramenait son propre libelle : le regard
+    croisait quatre polices pour une seule action. Une barre unique, en bas de
+    l'onglet, regroupe tous les titres qui viennent d'etre cites.
+    """
+    from utils.nav import goto_ticker
+    paires = [(t, n) for t, n in dict(paires).items() if t]
+    if not paires:
+        return
+    st.markdown(
+        f"<div style='border-top:1px solid var(--border);margin-top:18px;"
+        f"padding-top:12px;'><div class='label-xs' style='margin-bottom:6px;'>"
+        f"{intitule}</div></div>", unsafe_allow_html=True)
+    col_sel, col_btn = st.columns([5, 1])
+    with col_sel:
+        choix = st.selectbox(
+            intitule, options=[f"{t} — {n}" for t, n in paires],
+            key=f"{cle}_select", label_visibility="collapsed")
+    with col_btn:
+        if st.button("Ouvrir", key=f"{cle}_btn", use_container_width=True):
+            goto_ticker(choix.split(" — ")[0])
+
+
+
 def _table_suggestions(liste, intitule, action, tone, montrer_poids=True):
     """Les suggestions en tableau, comme la page Risque et optimisation.
 
@@ -1109,7 +1136,6 @@ def _table_suggestions(liste, intitule, action, tone, montrer_poids=True):
     tableau ouvre n'importe lequel des titres cites.
     """
     from utils.ui_helpers import section_heading
-    from utils.nav import ticker_quick_picker
     section_heading(intitule, spacing="default")
     if not liste:
         st.markdown("<div style='color:var(--ink-3);font-size:13px;"
@@ -1149,9 +1175,7 @@ def _table_suggestions(liste, intitule, action, tone, montrer_poids=True):
         f"overflow:hidden;background:var(--bg-elev);'>"
         f"<table style='width:100%;border-collapse:collapse;'>{html}</table>"
         f"</div>", unsafe_allow_html=True)
-    ticker_quick_picker([(s["ticker"], f"{s['ticker']} — {s.get('name','')}")
-                         for s in liste],
-                        key=f"reco_{action}", label="Ouvrir l'analyse d'un titre")
+
 
 
 
@@ -1322,9 +1346,12 @@ def _render_position_recommendations(portfolio, total_value, cash,
         with col_new:
             _table_suggestions(new_buys[:5], "Nouvelles opportunités",
                                "new", "up", montrer_poids=False)
-    # ---- Recommandations cash et diversification ----
     if volet == "detenus":
+        _barre_titres([(x["ticker"], x.get("name", ""))
+                       for x in sells[:5] + reinforce[:5]], "reco_detenus")
         return
+
+    # ---- Recommandations cash et diversification ----
     col_cash, col_div = st.columns(2)
 
     with col_cash:
@@ -1337,6 +1364,11 @@ def _render_position_recommendations(portfolio, total_value, cash,
             nb_sectors, top_sector, nb_titres,
             top_ticker, unheld_scans, sectors_held,
         )
+
+    _barre_titres([(x["ticker"], x.get("name", ""))
+                   for x in (sells[:5] + reinforce[:5] + new_buys[:5]
+                             if volet == "tout" else new_buys[:5])],
+                  "reco_tout")
 
 
 def _top_signals(signals_cons: dict, limit: int = 2) -> str:
@@ -1437,18 +1469,13 @@ def _render_cash_suggestion(cash, cash_pct, new_buys, reinforce):
     )
     for a in allocations:
         if a["nb_shares"] > 0:
-            col_a, col_b = st.columns([6, 1])
-            with col_a:
-                st.markdown(
-                    f"- **{a['name']}** ({a['ticker']}) : "
-                    f"{a['pct']:.0f}% → **{a['nb_shares']} titres** "
-                    f"à {a['price']:,.0f} = {a['budget']:,.0f} {CURRENCY}"
-                )
-            with col_b:
-                ticker_analyze_button(
-                    a["ticker"], label=None,
-                    key=f"cash_alloc_{a['ticker']}",
-                )
+            # Pas de bouton par ligne : la barre d'ouverture en bas d'onglet
+            # rassemble tous les titres cites, et la lecture reste sur le texte.
+            st.markdown(
+                f"- **{a['name']}** ({a['ticker']}) : "
+                f"{a['pct']:.0f}% → **{a['nb_shares']} titres** "
+                f"à {a['price']:,.0f} = {a['budget']:,.0f} {CURRENCY}"
+            )
     total_used = sum(a["budget"] for a in allocations)
     remaining = cash - total_used
     if remaining > 0:
@@ -1504,18 +1531,12 @@ def _render_diversification_suggestion(nb_sectors, top_sector, nb_titres,
         for m in msgs:
             st.markdown(m, unsafe_allow_html=True)
         if best_candidate:
-            col_msg, col_btn = st.columns([5, 1])
-            with col_msg:
-                st.markdown(
-                    f"Pour diversifier : **{best_candidate['name']}** "
-                    f"({best_candidate['ticker']}) secteur _{best_candidate['sector']}_ "
-                    f"— {best_candidate['verdict']}"
-                )
-            with col_btn:
-                ticker_analyze_button(
-                    best_candidate["ticker"], label=None,
-                    key=f"div_candidate_{best_candidate['ticker']}",
-                )
+            st.markdown(
+                f"Pour diversifier : **{best_candidate['name']}** "
+                f"({best_candidate['ticker']}) secteur "
+                f"_{best_candidate['sector']}_ — {best_candidate['verdict']}"
+            )
+
 
 
 def _render_recommandations_ajustees(portfolio):
@@ -1760,6 +1781,7 @@ def _render_optimisation(portfolio, cash):
     # Le classement marginal ne regarde que le couple rendement-risque PASSE.
     # Un titre peut y bien figurer et etre une societe qui se degrade : la
     # repartition croise donc les deux, et n'en retient que trois au plus.
+    plan = None
     if cash and cash > 0:
         try:
             from analysis.portefeuille_risque import allocation_suggeree
@@ -1864,6 +1886,12 @@ def _render_optimisation(portfolio, cash):
         with st.expander(f"Les {len(degradent)} autres, qui dégraderaient "
                          f"le couple rendement-risque"):
             _table(degradent, "Dégradent le portefeuille")
+
+    # Tous les titres cites sur cet onglet, ouvrables d'un seul endroit.
+    _cites = ([(c["ticker"], _noms.get(c["ticker"], "")) for c in ameliorent[:5]]
+              + [(l["ticker"], _noms.get(l["ticker"], ""))
+                 for l in ((plan or {}).get("lignes") or [])])
+    _barre_titres(_cites, "optim")
 
     detenus_ecartes = [t for t in r["ecartes_illiquides"]
                        if t in {p[0] for p in positions}]
