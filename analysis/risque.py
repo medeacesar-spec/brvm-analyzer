@@ -62,6 +62,22 @@ def _seuil_illiquidite(montants) -> float:
     return valeurs[int(QUANTILE_ILLIQUIDE * (len(valeurs) - 1))]
 
 
+@_maybe_cache_data(ttl=300)
+def series_mensuelles() -> dict:
+    """Les series de rendement de toute la cote, memoisees.
+
+    Elles sont lues par le profil d'un titre, par le tableau de la cote, par le
+    risque du portefeuille et par chaque simulation d'allocation — quatre fois
+    la meme lecture de base et le meme calcul. Memoisees, elles ramenent le
+    reglage du seuil de liquidite d'une dizaine de secondes a l'instantane.
+    """
+    cnx = get_connection()
+    try:
+        return _rendements_mensuels(cnx)
+    finally:
+        cnx.close()
+
+
 def _rendements_mensuels(cnx) -> dict:
     """Rendement total mois par mois, pour tous les titres a la fois.
 
@@ -547,11 +563,7 @@ def toutes_les_mesures() -> dict:
     Les indices sont ecartes : ils n'ont pas leur place dans un classement de
     titres, et fausseraient les medianes.
     """
-    cnx = get_connection()
-    try:
-        series = _rendements_mensuels(cnx)
-    finally:
-        cnx.close()
+    series = series_mensuelles()
     mesures = {t: _mesures(*v) for t, v in series.items()
                if t not in ("BRVMC", "BRVM30")}
     seuil = _seuil_illiquidite(m.get("montant_echange") for m in mesures.values())
@@ -571,11 +583,11 @@ def profil_de_risque(ticker: str, secteur: Optional[str] = None) -> Optional[dic
     entier et on le DIT : `portee` vaut « secteur » ou « marché ». Ecrire
     « secteur » quand on montre le marche a deja trompe des lecteurs.
     """
+    series = series_mensuelles()
+    if ticker not in series:
+        return None
     cnx = get_connection()
     try:
-        series = _rendements_mensuels(cnx)
-        if ticker not in series:
-            return None
         secteurs = {}
         for ligne in cnx.execute("SELECT ticker, sector FROM market_data "
                                  "WHERE sector IS NOT NULL"):

@@ -20,11 +20,12 @@ peut le dire — cela ne se voit que dans l'ensemble.
 """
 from __future__ import annotations
 
+import itertools
 import math
 import statistics as st
 from typing import Optional
 
-from analysis.risque import (_rendements_mensuels, toutes_les_mesures,
+from analysis.risque import (series_mensuelles, toutes_les_mesures,
                              TAUX_SANS_RISQUE)
 from data.db import get_connection
 from data.storage import _maybe_cache_data
@@ -61,11 +62,7 @@ def mesures_portefeuille(positions: tuple) -> Optional[dict]:
     if not total:
         return None
 
-    cnx = get_connection()
-    try:
-        series = _rendements_mensuels(cnx)
-    finally:
-        cnx.close()
+    series = series_mensuelles()
     mesures_titres = toutes_les_mesures()
 
     poids = {t: v / total for t, v in valeurs.items()}
@@ -241,11 +238,7 @@ def candidats_amelioration(positions: tuple, cash: float = 0.0,
     if not total:
         return None
 
-    cnx = get_connection()
-    try:
-        series = _rendements_mensuels(cnx)
-    finally:
-        cnx.close()
+    series = series_mensuelles()
     mesures = toutes_les_mesures()
     seuil = seuil_illiquidite
     if seuil is None and mesures:
@@ -327,4 +320,186 @@ def candidats_amelioration(positions: tuple, cash: float = 0.0,
         "cash": cash,
         "observations": n,
         "seuil_illiquidite": seuil,
+    }
+
+def _qualite(ticker: str, scores: dict) -> tuple:
+    """Ce que le modele pense de la societe, pour ne pas acheter n'importe quoi.
+
+    Le classement marginal ne regarde que le couple rendement-risque PASSE. Un
+    titre peut y bien figurer et etre une societe en perdition : Oragroup a un
+    rendement negatif, Onatel distribue plus qu'elle ne gagne. Croiser les deux
+    evite de recommander un titre que le modele juge par ailleurs mauvais.
+
+    Rend (score sur 100, verdict).
+    """
+    ligne = scores.get(ticker) or {}
+    return (ligne.get("hybrid_score") or 0), (ligne.get("verdict") or "")
+
+
+# Combien de candidats on met en concurrence. Au-dela, le nombre de
+# combinaisons explose sans rien apprendre : les titres de rang douze n'entrent
+# jamais dans une repartition de trois lignes.
+CANDIDATS_EN_LICE = 8
+
+
+def _table_covariance(rendements):
+    """La matrice de covariance, calculee UNE fois.
+
+    Sans elle, chaque combinaison essayee refait la serie du portefeuille mois
+    par mois : quatre-vingt-douze combinaisons coutaient dix-huit secondes,
+    soit une page inutilisable. La variance d'un portefeuille est une forme
+    quadratique sur cette matrice — une fois qu'on l'a, chaque essai se calcule
+    en quelques multiplications.
+    """
+    moyennes = {t: st.mean(r) for t, r in rendements.items()}
+    tickers = sorted(rendements)
+    n = len(next(iter(rendements.values())))
+    centres = {t: [x - moyennes[t] for x in rendements[t]] for t in tickers}
+    cov = {}
+    for i, a in enumerate(tickers):
+        for b in tickers[i:]:
+            v = sum(x * y for x, y in zip(centres[a], centres[b])) / (n - 1)
+            cov[(a, b)] = cov[(b, a)] = v
+    return cov, moyennes
+
+
+def _volatilite_et_rendement(valeurs, cov, moyennes):
+    """Volatilite annualisee et rendement annuel, par la forme quadratique."""
+    total = sum(valeurs.values())
+    suivis = [t for t in valeurs if t in moyennes]
+    if not suivis or total <= 0:
+        return None, None
+    poids = {t: valeurs[t] / total for t in suivis}
+    somme = sum(poids.values())
+    poids = {t: p / somme for t, p in poids.items()}
+    variance = sum(poids[a] * poids[b] * cov[(a, b)]
+                   for a in suivis for b in suivis)
+    moyenne = sum(poids[t] * moyennes[t] for t in suivis)
+    if variance <= 0:
+        return None, None
+    return math.sqrt(variance) * math.sqrt(12), (1 + moyenne) ** 12 - 1
+
+
+@_maybe_cache_data(ttl=300)
+def allocation_suggeree(positions: tuple, cash: float, scores: tuple,
+                        seuil_illiquidite: Optional[float] = None,
+                        nombre_max: int = 3) -> Optional[dict]:
+    """La meilleure repartition du cash — sur une, deux ou trois lignes.
+
+    ON N'EST PAS OBLIGE D'ALLER JUSQU'A TROIS. Trois lignes valent mieux que
+    deux si elles se decorrelent ; elles valent moins si la troisieme ne fait
+    que diluer. Le modele essaie donc TOUTES les combinaisons d'une, deux et
+    trois lignes parmi les meilleurs candidats, simule chacune, et retient
+    celle qui donne le meilleur rendement par unite de risque.
+
+    Deux conditions pour entrer en lice, et les deux comptent :
+
+      le titre doit AMELIORER le couple rendement-risque du portefeuille ;
+      et le modele doit le juger correct — un bon rapport rendement-risque
+      passe ne fait pas une bonne societe.
+
+    Le resultat n'est pas une consigne mais une SIMULATION : il affiche le
+    portefeuille avant et apres, et les combinaisons rivales, pour que le choix
+    se juge sur des chiffres plutot que sur une autorite.
+    """
+    scores = dict(scores)
+    base = candidats_amelioration(positions, cash, seuil_illiquidite)
+    if not base or cash <= 0:
+        return None
+
+    eligibles = []
+    for c in base["candidats"]:
+        if not c["ameliore"]:
+            continue
+        score, verdict = _qualite(c["ticker"], scores)
+        if "VENTE" in verdict.upper() or "ÉVITER" in verdict.upper():
+            continue
+        if score and score < 50:
+            continue
+        eligibles.append({**c, "score": score, "verdict": verdict})
+        if len(eligibles) >= CANDIDATS_EN_LICE:
+            break
+    if not eligibles:
+        return {"lignes": [], "essais": [],
+                "raison": "aucun candidat ne réunit les deux conditions"}
+
+    valeurs = {}
+    for ticker, valeur in positions:
+        if valeur and valeur > 0:
+            valeurs[ticker] = valeurs.get(ticker, 0) + valeur
+
+    series = series_mensuelles()
+    concernes = set(valeurs) | {c["ticker"] for c in eligibles}
+    suivis = [t for t in concernes if t in series]
+    n = min(len(series[t][0]) for t in suivis)
+    rendements = {t: series[t][0][-n:] for t in suivis}
+
+    cov, moyennes = _table_covariance(rendements)
+    mensuel_sans_risque = (1 + TAUX_SANS_RISQUE) ** (1 / 12) - 1
+    vol_avant, rdt_avant = _volatilite_et_rendement(valeurs, cov, moyennes)
+
+    def _repartir(combinaison):
+        """Le cash reparti au prorata du rang marginal, borne par la liquidite."""
+        fini = [c["ratio"] for c in combinaison if c["ratio"] != float("inf")]
+        plafond = max(fini) if fini else 1.0
+        bruts = {c["ticker"]: (plafond if c["ratio"] == float("inf")
+                               else c["ratio"]) for c in combinaison}
+        somme = sum(bruts.values()) or 1.0
+        lignes = []
+        for c in combinaison:
+            montant = cash * bruts[c["ticker"]] / somme
+            limite = c.get("taille_max")
+            borne = limite is not None and montant > limite
+            lignes.append({**c, "montant": limite if borne else montant,
+                           "borne_par_liquidite": borne})
+        return lignes
+
+    essais = []
+    for taille in range(1, min(nombre_max, len(eligibles)) + 1):
+        for combinaison in itertools.combinations(eligibles, taille):
+            lignes = _repartir(list(combinaison))
+            apres = dict(valeurs)
+            for l in lignes:
+                apres[l["ticker"]] = apres.get(l["ticker"], 0) + l["montant"]
+            vol, rdt = _volatilite_et_rendement(apres, cov, moyennes)
+            if not vol:
+                continue
+            essais.append({
+                "tickers": [l["ticker"] for l in lignes],
+                "lignes": lignes,
+                "volatilite": vol,
+                "rendement": rdt,
+                # Le rendement par unite de risque : c'est lui qu'on maximise.
+                "sharpe": ((1 + rdt) ** (1 / 12) - 1 - mensuel_sans_risque)
+                          * 12 / vol,
+                "place": sum(l["montant"] for l in lignes),
+            })
+    if not essais:
+        return {"lignes": [], "essais": [], "raison": "aucune simulation possible"}
+    essais.sort(key=lambda e: -e["sharpe"])
+    meilleur = essais[0]
+    # Quand plusieurs combinaisons se tiennent a moins d'un pour cent, les
+    # departager serait arbitraire — mieux vaut le dire. A egalite, la plus
+    # SIMPLE gagne : moins de lignes, moins de frais et moins a surveiller.
+    proches = [e for e in essais
+               if meilleur["sharpe"] - e["sharpe"] <= abs(meilleur["sharpe"]) * 0.01]
+    if len(proches) > 1:
+        meilleur = min(proches, key=lambda e: (len(e["tickers"]), -e["sharpe"]))
+
+    return {
+        "lignes": meilleur["lignes"],
+        "essais": essais[:6],
+        "nb_essais": len(essais),
+        "cash": cash,
+        "place": meilleur["place"],
+        "reste": cash - meilleur["place"],
+        "volatilite_avant": vol_avant,
+        "volatilite_apres": meilleur["volatilite"],
+        "rendement_avant": rdt_avant,
+        "rendement_apres": meilleur["rendement"],
+        "sharpe_avant": ((1 + rdt_avant) ** (1 / 12) - 1 - mensuel_sans_risque)
+                        * 12 / vol_avant if vol_avant else None,
+        "sharpe_apres": meilleur["sharpe"],
+        "eligibles": len(eligibles),
+        "ex_aequo": len(proches),
     }
