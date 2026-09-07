@@ -264,6 +264,99 @@ def save_to_report_links(
     return added, skipped
 
 
+# Emetteurs obligataires et vehicules de titrisation : ils figurent sur la meme
+# liste que les societes cotees mais ne publient pas d'etats financiers
+# d'actions. Les signaler comme « nouveaux » a chaque passage noierait la seule
+# alerte qui compte — l'introduction d'une action.
+_NON_ACTIONS = re.compile(r"^(tnc|tp|fctc|fims|edk|dcbr|teyli)", re.I)
+
+
+def slugs_du_site(session, pages: int = 6) -> set:
+    """Les societes que la BRVM liste, telles qu'elle les liste.
+
+    Le scanner parcourait une table ecrite a la main : une societe absente de
+    cette table n'etait jamais visitee, et une INTRODUCTION restait donc
+    invisible jusqu'a ce que quelqu'un y pense. C'est precisement ce que la
+    routine de quinzaine devait empecher.
+
+    On lit desormais la liste a la source, pour pouvoir COMPARER. La table
+    reste necessaire — le site donne des slugs, pas des tickers — mais elle
+    n'est plus la seule source de verite sur QUI existe.
+    """
+    trouves = set()
+    for page in range(pages):
+        url = ("https://www.brvm.org/fr/rapports-societes-cotees"
+               + ("" if page == 0 else f"?page={page}"))
+        try:
+            reponse = session.get(url, timeout=40)
+            reponse.raise_for_status()
+        except Exception:                                       # noqa: BLE001
+            break
+        page_slugs = set(re.findall(
+            r'href="/fr/rapports-societe-cotes/([a-z0-9\-]+)"', reponse.text))
+        if not page_slugs - trouves:
+            break                                   # plus rien de nouveau
+        trouves |= page_slugs
+    return trouves
+
+
+def symboles_cotes(session) -> set:
+    """Les symboles qui COTENT aujourd'hui, lus sur la feuille des cours.
+
+    C'est la seule liste qui distingue une action d'un emprunt obligataire. La
+    page des rapports melange les deux : Fidelis Finance, la Societe Ivoirienne
+    de Raffinage ou Cote d'Ivoire Telecom y figurent pour leurs obligations,
+    sans etre des actions. Alerter sur elles a chaque passage noierait la seule
+    alerte qui compte.
+    """
+    try:
+        reponse = session.get("https://www.brvm.org/fr/cours-actions/0",
+                              timeout=40)
+        reponse.raise_for_status()
+    except Exception:                                           # noqa: BLE001
+        return set()
+    trouves = set(re.findall(r'>\s*([A-Z]{3,6})\s*<', reponse.text))
+    return trouves - {"FCFA", "BRVM", "TOP", "FLOP", "XOF"}
+
+
+def signaler_nouveautes(session) -> list:
+    """Une action nouvelle a la cote, et rien d'autre.
+
+    Le scanner parcourait une table ecrite a la main : une societe absente de
+    cette table n'etait jamais visitee, et une INTRODUCTION restait donc
+    invisible jusqu'a ce que quelqu'un y pense. C'est precisement ce que la
+    routine de quinzaine devait empecher.
+
+    Deux listes se croisent. La feuille des COURS dit qui cote — c'est le
+    signal qui compte, et il est propre. La page des RAPPORTS donne le slug
+    par lequel on ira chercher les documents, mais elle melange actions et
+    emetteurs obligataires : elle ne sert donc qu'a nommer, jamais a alerter.
+    """
+    cotes = symboles_cotes(session)
+    if not cotes:
+        print("  (feuille des cours illisible : aucune verification possible)")
+        return []
+    connus = {t.split(".")[0].upper() for t in TICKER_TO_BRVM_SLUG}
+    nouveaux = sorted(cotes - connus)
+    absents = sorted(connus - cotes)
+
+    if nouveaux:
+        slugs = slugs_du_site(session) - set(TICKER_TO_BRVM_SLUG.values())
+        print(f"\n  INTRODUCTION — {len(nouveaux)} action(s) cotee(s) et "
+              f"inconnue(s) de la table : {', '.join(nouveaux)}")
+        if slugs:
+            print("  Pages BRVM sans ticker rattache, l'une est peut-etre "
+                  "la sienne :")
+            for slug in sorted(slugs):
+                if not _NON_ACTIONS.match(slug):
+                    print(f"      {slug}")
+        print("  A rattacher dans TICKER_TO_BRVM_SLUG et data/brvm_tickers.json.")
+    if absents:
+        print(f"\n  {len(absents)} titre(s) de la table ne cotent plus : "
+              f"{', '.join(absents)}")
+    return nouveaux
+
+
 def main(only_ticker: str | None = None):
     session = requests.Session()
     session.headers.update({"User-Agent": "Mozilla/5.0 (BRVM analyzer)"})
@@ -276,6 +369,10 @@ def main(only_ticker: str | None = None):
         targets = {only_ticker: targets[only_ticker]}
 
     print(f"Scanning brvm.org pour {len(targets)} sociétés…\n")
+
+    # Avant de recolter, on regarde qui existe : recolter fidelement chez les
+    # quarante-sept societes connues n'apprend rien sur la quarante-huitieme.
+    nouveautes = signaler_nouveautes(session) if not only_ticker else []
 
     conn = get_connection()
     total_added = 0
@@ -303,10 +400,17 @@ def main(only_ticker: str | None = None):
     print(f"Total PDFs trouvés     : {total_pdfs}")
     print(f"Nouveaux insérés       : {total_added}")
     print(f"Doublons (déjà connus) : {total_skipped}")
+    if nouveautes:
+        print(f"\nA INSTRUIRE : {', '.join(nouveautes)}")
+    # Une introduction fait ECHOUER le scan, volontairement. La routine de
+    # quinzaine ouvre alors un billet : sans cela l'alerte s'afficherait dans
+    # un journal que personne ne lit, et une societe cotee resterait dehors
+    # jusqu'a ce qu'on s'en apercoive par hasard.
+    return 2 if nouveautes else 0
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--ticker", help="Limit scan to a single ticker")
     args = parser.parse_args()
-    main(only_ticker=args.ticker)
+    sys.exit(main(only_ticker=args.ticker) or 0)
