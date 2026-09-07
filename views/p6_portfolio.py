@@ -828,11 +828,107 @@ def render():
         st.plotly_chart(fig, use_container_width=True)
 
     # Sections suivantes (pas de divider — hiérarchie portée par les titres)
+    _render_risque_ensemble(portfolio)
     _render_portfolio_analysis(portfolio, cash, total_value, total_portfolio, ticker_to_sector)
     _render_position_recommendations(portfolio, total_value, cash)
+    _render_recommandations_ajustees(portfolio)
     if cash > 0:
         _render_cash_recommendations(portfolio, cash, total_portfolio, ticker_to_sector)
     _render_info_box()
+
+
+def _render_risque_ensemble(portfolio):
+    """Le risque du portefeuille, qui n'est pas la somme de celui des lignes.
+
+    Deux titres qui ne bougent pas ensemble s'annulent en partie. Sur les
+    portefeuilles reels, l'ecart va de 11 a 44 % : additionner les volatilites
+    des lignes surestimerait le risque de moitie.
+
+    La CONTRIBUTION AU RISQUE est la mesure qui change le regard. Un titre pese
+    un poids, et une part du risque, et les deux different — sur un
+    portefeuille reel, Ecobank Transnational pese 17 % et apporte 35 % du
+    risque, quand Ecobank Cote d'Ivoire pese 12 % et n'en apporte que 3.
+    Aucune mesure titre par titre ne peut le dire : cela ne se voit que dans
+    l'ensemble.
+    """
+    from utils.ui_helpers import section_heading
+    try:
+        from analysis.portefeuille_risque import (mesures_portefeuille,
+                                                  lecture_portefeuille)
+        positions = tuple(sorted(
+            (r["ticker"], float(r.get("current_value") or 0))
+            for _, r in portfolio.iterrows()))
+        p = mesures_portefeuille(positions)
+    except Exception as err:                                    # noqa: BLE001
+        st.caption(f"Risque d'ensemble indisponible : {err}")
+        return
+    if not p or not p.get("lignes"):
+        return
+
+    section_heading("Risque d'ensemble", spacing="loose")
+
+    phrases = lecture_portefeuille(p)
+    if phrases:
+        st.markdown(
+            "<div style='background:var(--bg-elev);border:1px solid "
+            "var(--border);border-left:3px solid var(--ocre);"
+            "border-radius:10px;padding:16px 18px;'>"
+            + "".join(
+                f"<div style='font-size:13.5px;line-height:1.65;"
+                f"color:var(--ink-2);margin-bottom:6px;'>· "
+                f"{_gras_html(ph)}</div>" for ph in phrases)
+            + "</div>", unsafe_allow_html=True)
+
+    entete = ("font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;"
+              "color:var(--ink-3);font-weight:500;padding:9px 10px;"
+              "border-bottom:1px solid var(--border);background:var(--bg-sunken);")
+    cell = "padding:8px 10px;font-size:13px;border-bottom:1px solid var(--border);"
+    nb = cell + "text-align:right;font-variant-numeric:tabular-nums;"
+
+    html = (f"<tr><th style='{entete};text-align:left;'>Ligne</th>"
+            f"<th style='{entete};text-align:right;'>Poids</th>"
+            f"<th style='{entete};text-align:right;'>Part du risque</th>"
+            f"<th style='{entete};text-align:right;'>Volatilité</th>"
+            f"<th style='{entete};text-align:right;'>Sortie</th></tr>")
+    for l in p["lignes"]:
+        # Un ecart entre le poids et la part du risque est l'information : le
+        # colorer le rend lisible d'un coup d'oeil.
+        if l["concentre"]:
+            teinte, note = "var(--down)", " concentre"
+        elif l["diversifie"]:
+            teinte, note = "var(--up)", " diversifie"
+        else:
+            teinte, note = "var(--ink)", ""
+        jours = l["jours_sortie"]
+        sortie = ("—" if jours is None else
+                  "< 1 séance" if jours < 1 else f"{jours:.0f} séances")
+        html += (
+            f"<tr><td style='{cell}'><span class='ticker'>{l['ticker']}</span>"
+            f"<span style='color:var(--ink-3);font-size:11px;'>{note}</span></td>"
+            f"<td style='{nb}'>{l['poids']:.1%}</td>"
+            f"<td style='{nb};font-weight:600;color:{teinte};'>"
+            f"{l['contribution_risque']:.1%}</td>"
+            f"<td style='{nb}'>"
+            f"{'—' if l['volatilite'] is None else format(l['volatilite'], '.1%')}</td>"
+            f"<td style='{nb};color:var(--ink-3);'>{sortie}</td></tr>")
+    st.markdown(
+        f"<div style='border:1px solid var(--border);border-radius:10px;"
+        f"overflow:hidden;background:var(--bg-elev);margin-top:14px;'>"
+        f"<table style='width:100%;border-collapse:collapse;'>{html}</table>"
+        f"</div>", unsafe_allow_html=True)
+    st.caption(
+        f"Volatilité mesurée sur **{p['observations']} mois**, dividendes "
+        f"compris. La **part du risque** tient compte des liens entre les "
+        f"lignes : elle diffère du poids, et c'est tout l'intérêt. La colonne "
+        f"**Sortie** estime le temps de vente au rythme d'échange habituel du "
+        f"titre.")
+
+
+def _gras_html(texte):
+    """Le gras Markdown en HTML : ces phrases sont rendues dans un bloc HTML."""
+    import re as _re
+    return _re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", texte)
+
 
 
 def _render_portfolio_analysis(portfolio, cash, total_value, total_portfolio, ticker_to_sector):
@@ -1106,6 +1202,11 @@ def _render_position_recommendations(portfolio, total_value, cash):
         f"</div>",
         unsafe_allow_html=True,
     )
+
+    st.caption(
+        "Ces suggestions pèsent **la société et la tendance**, sans tenir "
+        "compte du risque ni de la liquidité. La section suivante montre ce "
+        "que l'ajustement y change.")
 
     # ---- 3 colonnes : Ventes / Renforcer / Nouveaux achats ----
     col_sell, col_reinforce, col_new = st.columns(3)
@@ -1393,6 +1494,122 @@ def _render_diversification_suggestion(nb_sectors, top_sector, nb_titres,
                     best_candidate["ticker"], label=None,
                     key=f"div_candidate_{best_candidate['ticker']}",
                 )
+
+
+def _render_recommandations_ajustees(portfolio):
+    """Les memes suggestions, une fois le risque et la liquidite comptes.
+
+    Les deux versions s'affichent COTE A COTE, et c'est le point. Une
+    recommandation ajustee qui remplacerait l'autre cacherait ce que
+    l'ajustement change ; en les montrant ensemble, l'ecart devient
+    l'information — et il se justifie ligne par ligne.
+
+    Trois regles, et trois seulement, toutes verifiables sur les chiffres
+    affiches plus haut :
+
+      CONCENTRE   une ligne qui apporte nettement plus de risque que son poids
+                  se retrograde d'un cran. Alleger la reduit le risque plus que
+                  son poids ne le suggere.
+      DIVERSIFIE  une ligne qui apporte nettement moins de risque que son poids
+                  gagne un cran : elle amortit les autres.
+      ILLIQUIDE   une ligne dont la sortie demande plus de cinq seances ne se
+                  renforce pas. On n'augmente pas une position dont on ne peut
+                  pas sortir, quelle que soit la qualite de la societe.
+    """
+    from utils.ui_helpers import section_heading
+    try:
+        from analysis.portefeuille_risque import mesures_portefeuille
+        positions = tuple(sorted(
+            (r["ticker"], float(r.get("current_value") or 0))
+            for _, r in portfolio.iterrows()))
+        p = mesures_portefeuille(positions)
+    except Exception as err:                                    # noqa: BLE001
+        st.caption(f"Ajustement au risque indisponible : {err}")
+        return
+    if not p or not p.get("lignes"):
+        return
+
+    scoring = _load_scoring_dict()
+    ECHELLE = ["ALLÉGER", "CONSERVER", "ACHAT", "ACHAT FORT"]
+
+    def _cran(verdict):
+        v = (verdict or "").upper()
+        if "FORT" in v and "ACHAT" in v:
+            return 3
+        if "ACHAT" in v:
+            return 2
+        if "CONSERVER" in v or "PRUDENCE" in v:
+            return 1
+        return 0
+
+    section_heading("Les mêmes suggestions, ajustées", spacing="loose")
+    st.caption(
+        "Le risque et la liquidité ne changent pas la qualité d'une société — "
+        "ils changent la **place** qu'elle mérite dans **ce** portefeuille. "
+        "Une ligne excellente qui concentre le risque reste excellente : elle "
+        "pèse simplement trop lourd ici.")
+
+    entete = ("font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;"
+              "color:var(--ink-3);font-weight:500;padding:9px 10px;"
+              "border-bottom:1px solid var(--border);background:var(--bg-sunken);")
+    cell = "padding:9px 10px;font-size:13px;border-bottom:1px solid var(--border);"
+
+    html = (f"<tr><th style='{entete};text-align:left;'>Ligne</th>"
+            f"<th style='{entete};text-align:left;'>Sans ajustement</th>"
+            f"<th style='{entete};text-align:left;'>Ajusté au risque "
+            f"et à la liquidité</th>"
+            f"<th style='{entete};text-align:left;'>Pourquoi</th></tr>")
+    changements = 0
+    for l in p["lignes"]:
+        base = _cran((scoring.get(l["ticker"]) or {}).get("verdict"))
+        ajuste, motifs = base, []
+        if l["concentre"]:
+            ajuste -= 1
+            motifs.append(f"apporte {l['contribution_risque']:.0%} du risque "
+                          f"pour {l['poids']:.0%} du portefeuille")
+        elif l["diversifie"]:
+            ajuste += 1
+            motifs.append(f"n'apporte que {l['contribution_risque']:.0%} du "
+                          f"risque pour {l['poids']:.0%} du portefeuille")
+        jours = l["jours_sortie"]
+        if jours and jours > 5 and ajuste > 1:
+            ajuste = 1
+            motifs.append(f"sortie en {jours:.0f} séances : on ne renforce "
+                          f"pas ce dont on ne peut pas sortir")
+        # Un cran gagne au-dela du maximum, ou perdu en dessous du minimum,
+        # ne change rien : afficher son motif laisserait croire a un
+        # ajustement qui n'a pas eu lieu.
+        borne = max(0, min(3, ajuste))
+        if borne == base and motifs:
+            motifs = [m + (" — déjà au maximum de l'échelle" if ajuste > 3
+                           else " — déjà au minimum" if ajuste < 0 else "")
+                      for m in motifs]
+        ajuste = borne
+        differe = ajuste != base
+        changements += differe
+        teinte = ("var(--down)" if ajuste < base else
+                  "var(--up)" if ajuste > base else "var(--ink-3)")
+        html += (
+            f"<tr><td style='{cell}'>"
+            f"<span class='ticker'>{l['ticker']}</span></td>"
+            f"<td style='{cell};color:var(--ink-2);'>{ECHELLE[base]}</td>"
+            f"<td style='{cell};font-weight:600;color:{teinte};'>"
+            f"{ECHELLE[ajuste]}</td>"
+            f"<td style='{cell};color:var(--ink-3);font-size:12px;'>"
+            f"{' · '.join(motifs) if motifs else '—'}</td></tr>")
+
+    st.markdown(
+        f"<div style='border:1px solid var(--border);border-radius:10px;"
+        f"overflow:hidden;background:var(--bg-elev);'>"
+        f"<table style='width:100%;border-collapse:collapse;'>{html}</table>"
+        f"</div>", unsafe_allow_html=True)
+    st.caption(
+        f"**{changements} suggestion(s) sur {len(p['lignes'])}** changent une "
+        f"fois le risque et la liquidité comptés."
+        if changements else
+        "Aucune suggestion ne change : les poids de ce portefeuille sont "
+        "cohérents avec les risques que chaque ligne y apporte.")
+
 
 
 def _render_cash_recommendations(portfolio, cash, total_portfolio, ticker_to_sector):
