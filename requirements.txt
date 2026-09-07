@@ -28,14 +28,15 @@ pdfplumber>=0.11
 PyMuPDF>=1.24
 
 # OCR léger (import portefeuille depuis screenshot)
-# Pont vers le binaire `tesseract`, qui n'est PAS installé sur l'instance
-# Streamlit : le constructeur mélange des dépôts Debian bullseye et trixie,
-# et un fichier InRelease périmé y fait échouer tout apt-get — donc tout
-# déploiement portant un packages.txt.
+# Pont vers le binaire `tesseract`. INDISPENSABLE aux ateliers GitHub, qui
+# lisent les bilans publiés en image et installent ce fichier ; ils posent le
+# binaire eux-mêmes.
 #
-# Conséquence assumée : l'import d'un portefeuille par capture d'écran est
-# indisponible dans l'application, et le dit. La lecture optique des PDF
-# n'est pas touchée — les ateliers GitHub installent tesseract eux-mêmes.
+# L'instance Streamlit, elle, n'a pas le binaire : son paquet système passe par
+# un apt-get que le constructeur fait échouer (dépôts Debian bullseye et trixie
+# mélangés, fichier InRelease périmé). L'application ne s'en sert donc plus —
+# l'import de portefeuille par capture d'écran a été retiré plutôt que d'offrir
+# une fonction qui échoue à l'usage.
 pytesseract>=0.3.10
 Pillow>=10.0
 

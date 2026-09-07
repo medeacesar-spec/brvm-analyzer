@@ -112,7 +112,7 @@ def render():
         st.markdown("<div style='padding-top:8px;'></div>", unsafe_allow_html=True)
         col_a1, col_a2, col_a3 = st.columns(3)
         with col_a1:
-            show_import = st.button("Importer relevé", use_container_width=True,
+            show_import = st.button("Saisir en lot", use_container_width=True,
                                       key="pf_btn_import")
         with col_a2:
             show_cash = st.button("Ajouter cash", use_container_width=True,
@@ -243,49 +243,29 @@ def render():
                 st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # ─── Panneau Import OCR (si bouton cliqué + OCR disponible) ──
+    # ─── Panneau de saisie en lot ────────────────────────────────────
+    # L'import se faisait par capture d'ecran, lue par tesseract. Le moteur ne
+    # peut plus etre installe sur l'instance : son paquet systeme passe par un
+    # `apt-get` que le constructeur de Streamlit Cloud fait echouer. Offrir une
+    # fonction qui echoue au moment de s'en servir vaut moins que ne pas
+    # l'offrir — la saisie en lot, elle, a toujours marche.
     if show_import or st.session_state.get("pf_import_open"):
         st.session_state["pf_import_open"] = True
-        if _ocr_available():
-            st.markdown(
-                "<div style='background:var(--bg-elev);border:1px solid var(--border);"
-                "border-radius:10px;padding:14px 16px;margin:10px 0;'>"
-                "<div style='font-size:14px;font-weight:600;margin-bottom:8px;'>Importer depuis un screenshot SGI</div>"
-                "<div style='font-size:12.5px;color:var(--ink-3);margin-bottom:10px;'>"
-                "Max 1 Mo. Format PNG/JPG. La photo est supprimée après OCR."
-                "</div>",
-                unsafe_allow_html=True,
-            )
-            _uploader_nonce = st.session_state.get("sgi_uploader_nonce", 0)
-            screenshot = st.file_uploader(
-                "Screenshot", type=["png", "jpg", "jpeg"],
-                key=f"sgi_screenshot_{_uploader_nonce}",
-                label_visibility="collapsed",
-            )
-            if screenshot is not None:
-                MAX_BYTES = 1 * 1024 * 1024
-                size = getattr(screenshot, "size", None) or len(screenshot.getvalue())
-                if size > MAX_BYTES:
-                    st.error(f"Image trop lourde ({size/1024:.0f} Ko). Max : 1 Mo.")
-                else:
-                    with st.spinner("Analyse OCR…"):
-                        extracted = _extract_portfolio_from_image(screenshot)
-                    st.session_state["sgi_uploader_nonce"] = _uploader_nonce + 1
-                    if extracted:
-                        st.success(f"{len(extracted)} position(s) détectée(s)")
-                        _render_extracted_positions(extracted, load_tickers())
-                    else:
-                        st.warning("Aucune position détectée. Saisie manuelle :")
-                        _render_batch_input(load_tickers())
-            if st.button("Fermer", key="pf_import_close"):
-                st.session_state["pf_import_open"] = False
-                st.rerun()
-            st.markdown("</div>", unsafe_allow_html=True)
-        else:
-            st.info(
-                "L'import par capture d'écran demande le moteur de "
-                "reconnaissance **tesseract**, absent de cette instance. "
-                "Les positions se saisissent à la main, en haut de page.")
+        st.markdown(
+            "<div style='background:var(--bg-elev);border:1px solid "
+            "var(--border);border-radius:10px;padding:14px 16px;margin:10px 0;'>"
+            "<div style='font-size:14px;font-weight:600;margin-bottom:8px;'>"
+            "Saisir plusieurs positions</div>"
+            "<div style='font-size:12.5px;color:var(--ink-3);"
+            "margin-bottom:10px;'>Reprenez les lignes de votre relevé SGI : "
+            "titre, quantité, prix de revient.</div>",
+            unsafe_allow_html=True,
+        )
+        _render_batch_input(load_tickers())
+        if st.button("Fermer", key="pf_import_close"):
+            st.session_state["pf_import_open"] = False
+            st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
 
     if portfolio.empty:
         st.info("Aucune position en portefeuille. Cliquez sur **Ajouter position** en haut.")
@@ -1515,13 +1495,6 @@ def _render_info_box():
         )
 
 
-@st.cache_resource
-def _get_ocr_reader():
-    """Cache le reader easyocr pour éviter de recharger le modèle à chaque appel."""
-    import easyocr
-    return easyocr.Reader(["fr", "en"], gpu=False, verbose=False)
-
-
 KNOWN_STOCKS = {
     "ECOBANK": "ECOC.ci", "ECOBANK CI": "ECOC.ci",
     "SONATEL": "SNTS.sn", "SONATEL SN": "SNTS.sn",
@@ -1559,129 +1532,6 @@ def _match_stock_name(text: str) -> tuple:
     return None, None
 
 
-def _extract_portfolio_from_image(uploaded_file) -> list:
-    """
-    Extrait les positions d'un screenshot de portefeuille SGI via OCR.
-    Essaie easyocr d'abord, puis pytesseract en fallback.
-    Retourne une liste de dicts: [{titre, qte, cmp, cours}, ...].
-
-    Si aucune librairie OCR n'est installée sur le déploiement (ex. Streamlit
-    Cloud free tier, où easyocr+torch est trop lourd), on retourne [] sans
-    spammer la sidebar d'erreurs d'imports. Un seul message propre est
-    affiché par l'appelant (_render_add_position_form).
-    """
-    import io
-    from PIL import Image
-
-    image_bytes = uploaded_file.getvalue()
-    image = Image.open(io.BytesIO(image_bytes))
-
-    # Method 1 : easyocr (best, with positions)
-    try:
-        reader = _get_ocr_reader()
-    except ImportError:
-        reader = None
-    except Exception:
-        reader = None
-
-    if reader is not None:
-        try:
-            ocr_results = reader.readtext(image_bytes, paragraph=False)
-            if ocr_results:
-                positions = _parse_ocr_results(ocr_results)
-                if positions:
-                    return positions
-        except Exception:
-            pass
-
-    # Method 2 : pytesseract (text only)
-    try:
-        import pytesseract
-    except ImportError:
-        pytesseract = None
-
-    if pytesseract is not None:
-        try:
-            gray = image.convert("L")
-            w, h = gray.size
-            if w < 1500:
-                scale = 1500 / w
-                gray = gray.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
-            raw_text = pytesseract.image_to_string(gray, lang="fra+eng", config="--psm 6")
-            if raw_text and raw_text.strip():
-                parsed = _parse_text_lines(raw_text)
-                if parsed:
-                    return parsed
-        except Exception:
-            pass
-
-    return []
-
-
-def _ocr_available() -> bool:
-    """True si l'OCR peut REELLEMENT tourner, pas seulement s'importer.
-
-    Le test portait sur la seule presence de la bibliotheque Python. Or
-    `pytesseract` n'est qu'un pont vers le binaire `tesseract`, installe
-    separement au niveau du systeme : la bibliotheque s'importe parfaitement
-    sans lui. La fonction repondait donc « disponible », l'application offrait
-    l'import par capture d'ecran, et il echouait au moment de s'en servir.
-
-    On appelle donc le binaire. C'est ce que fait deja le lecteur de PDF, avec
-    `get_tesseract_version()` ; les deux repondent desormais pareil.
-    """
-    try:
-        import easyocr  # noqa: F401
-        return True
-    except ImportError:
-        pass
-    try:
-        import pytesseract
-        pytesseract.get_tesseract_version()
-        return True
-    except Exception:                                           # noqa: BLE001
-        return False
-
-
-def _parse_ocr_results(results: list) -> list:
-    """Parse easyocr results (with bounding box positions) into portfolio positions."""
-    import re
-
-    # Sort by vertical position, then horizontal
-    results.sort(key=lambda r: (r[0][0][1], r[0][0][0]))
-    texts = [(r[1].strip(), r[0][0][0], r[0][0][1]) for r in results if r[1].strip()]
-
-    # Group into rows by Y position
-    rows = []
-    current_row = []
-    last_y = -100
-    for text, x, y in texts:
-        if abs(y - last_y) > 15:
-            if current_row:
-                rows.append(current_row)
-            current_row = [(text, x)]
-            last_y = y
-        else:
-            current_row.append((text, x))
-    if current_row:
-        rows.append(current_row)
-
-    positions = []
-    for row in rows:
-        row.sort(key=lambda r: r[1])
-        row_text = " ".join([t for t, _ in row])
-        row_texts = [t for t, _ in row]
-
-        ticker, matched_name = _match_stock_name(row_text)
-        if not ticker:
-            continue
-
-        numbers = _extract_numbers(row_texts)
-        pos = _classify_numbers(numbers, matched_name, ticker)
-        if pos:
-            positions.append(pos)
-
-    return positions
 
 
 def _parse_text_lines(raw_text: str) -> list:
@@ -1756,55 +1606,6 @@ def _classify_numbers(numbers: list, matched_name: str, ticker: str) -> dict:
         }
     return None
 
-
-def _render_extracted_positions(extracted: list, tickers_data: list):
-    """Affiche les positions extraites et permet de les valider/corriger avant import."""
-    ticker_options = {f"{t['ticker']} - {t['name']}": t["ticker"] for t in tickers_data}
-    option_list = list(ticker_options.keys())
-
-    st.markdown("**Vérifiez et corrigez les positions détectées :**")
-
-    with st.form("validate_ocr_import"):
-        validated = []
-        for i, pos in enumerate(extracted):
-            col1, col2, col3, col4 = st.columns([3, 1, 1.5, 1.5])
-
-            # Find matching option
-            default_idx = 0
-            for j, opt in enumerate(option_list):
-                if pos["ticker"] in opt:
-                    default_idx = j
-                    break
-
-            ticker_sel = col1.selectbox(
-                f"Titre {i+1}", option_list, index=default_idx,
-                key=f"ocr_ticker_{i}",
-            )
-            qte = col2.number_input(
-                "Qté", min_value=0, value=pos["qte"],
-                key=f"ocr_qty_{i}",
-            )
-            cmp = col3.number_input(
-                "PRU (CMP)", min_value=0.0, value=float(pos["cmp"]),
-                step=0.01, format="%.2f", key=f"ocr_cmp_{i}",
-            )
-            cours = col4.number_input(
-                "Cours actuel", min_value=0, value=pos["cours"],
-                key=f"ocr_cours_{i}",
-            )
-            if qte > 0 and cmp > 0:
-                validated.append((ticker_sel, qte, cmp))
-
-        if st.form_submit_button("✅ Valider et importer"):
-            if validated:
-                for sel, qty, pru in validated:
-                    ticker = sel.split(" - ")[0]
-                    name = sel.split(" - ")[1] if " - " in sel else ""
-                    save_position(ticker, name, qty, pru)
-                st.success(f"✅ {len(validated)} position(s) importée(s) !")
-                st.rerun()
-            else:
-                st.warning("Aucune position valide à importer")
 
 
 def _render_batch_input(tickers_data):
