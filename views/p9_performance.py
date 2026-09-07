@@ -400,7 +400,105 @@ def render():
         ticker_quick_picker(picker_options, key="perf_goto",
                              label="Ouvrir l'analyse d'un titre")
 
+    _render_rendement_rapporte_au_risque()
     _render_comparaison_secteurs()
+
+
+def _render_rendement_rapporte_au_risque():
+    """Le classement que la performance brute ne donne pas.
+
+    Les classements par periode disent QUI a le plus monte. Ils ne disent pas
+    a quel prix : un titre peut gagner cinquante pour cent en faisant vivre a
+    son porteur deux chutes de trente. Ni s'il etait seulement possible d'en
+    sortir.
+
+    Cette section repond aux deux questions. Elle porte sur CINQ ANS et sur le
+    rendement TOTAL, dividendes compris — ce qui la rend volontairement
+    differente des colonnes de periode au-dessus, qui sont des performances de
+    cours a court terme. Melanger les deux horizons dans un meme tableau
+    donnerait des lignes qui ne se comparent pas.
+    """
+    from utils.ui_helpers import section_heading
+    try:
+        from analysis.risque import toutes_les_mesures, formater
+        mesures = toutes_les_mesures()
+    except Exception as err:                                    # noqa: BLE001
+        st.caption(f"Mesures de risque indisponibles : {err}")
+        return
+    if not mesures:
+        return
+
+    noms = {}
+    try:
+        from data.db import read_sql_df
+        table = read_sql_df("SELECT ticker, company_name, sector FROM market_data")
+        noms = {r["ticker"]: (r["company_name"], r["sector"])
+                for _, r in table.iterrows()}
+    except Exception:                                           # noqa: BLE001
+        pass
+
+    section_heading("Rendement rapporté au risque · 5 ans", spacing="loose")
+    st.caption(
+        "Classement par **ratio de Sharpe** : le gain au-delà du taux sans "
+        "risque, divisé par l'agitation qu'il a fallu supporter. Rendement "
+        "**total, dividendes compris**, sur soixante mois — donc sans rapport "
+        "avec les performances de période ci-dessus, qui sont des cours à "
+        "court terme. La colonne **Échangé** rappelle qu'un bon classement ne "
+        "sert à rien si l'on ne peut pas entrer ni sortir."
+    )
+
+    lignes = sorted(
+        ((v.get("sharpe"), t, v) for t, v in mesures.items()
+         if v.get("sharpe") is not None), reverse=True)
+
+    entete = ("font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;"
+              "color:var(--ink-3);font-weight:500;padding:9px 10px;"
+              "border-bottom:1px solid var(--border);background:var(--bg-sunken);")
+    cell = "padding:8px 10px;font-size:13px;border-bottom:1px solid var(--border);"
+    nb = cell + "text-align:right;font-variant-numeric:tabular-nums;"
+
+    html = (f"<tr><th style='{entete};text-align:left;'>#</th>"
+            f"<th style='{entete};text-align:left;'>Titre</th>"
+            f"<th style='{entete};text-align:right;'>Sharpe</th>"
+            f"<th style='{entete};text-align:right;'>Rendement</th>"
+            f"<th style='{entete};text-align:right;'>Volatilité</th>"
+            f"<th style='{entete};text-align:right;'>Pire chute</th>"
+            f"<th style='{entete};text-align:right;'>Échangé/mois</th></tr>")
+    for rang, (sharpe, ticker, v) in enumerate(lignes, 1):
+        nom, _secteur = noms.get(ticker, (ticker, ""))
+        teinte = ("var(--up)" if sharpe >= 1 else
+                  "var(--down)" if sharpe < 0 else "var(--ink)")
+        # Un titre qu'on ne peut pas vendre merite d'etre signale la ou on le
+        # classe, pas seulement sur sa fiche.
+        alerte = (" <span class='tag ocre' style='text-transform:none;"
+                  "font-size:10px;'>peu liquide</span>"
+                  if v.get("peu_liquide") else "")
+        html += (
+            f"<tr><td style='{cell};color:var(--ink-3);'>{rang}</td>"
+            f"<td style='{cell}'><span class='ticker'>{ticker}</span> "
+            f"<span style='color:var(--ink-2);'>{nom}</span>{alerte}</td>"
+            f"<td style='{nb};font-weight:600;color:{teinte};'>{sharpe:.2f}</td>"
+            f"<td style='{nb}'>"
+            f"{formater('rendement_annualise', v.get('rendement_annualise'))}</td>"
+            f"<td style='{nb}'>{formater('volatilite', v.get('volatilite'))}</td>"
+            f"<td style='{nb}'>"
+            f"{formater('perte_maximale', v.get('perte_maximale'))}</td>"
+            f"<td style='{nb}'>"
+            f"{formater('montant_echange', v.get('montant_echange'))}</td></tr>")
+
+    st.markdown(
+        f"<div style='border:1px solid var(--border);border-radius:10px;"
+        f"overflow:hidden;background:var(--bg-elev);'>"
+        f"<table style='width:100%;border-collapse:collapse;'>{html}</table>"
+        f"</div>", unsafe_allow_html=True)
+
+    manquants = 47 - len(lignes)
+    if manquants > 0:
+        st.caption(
+            f"{manquants} titre(s) n'apparaissent pas : moins de deux ans de "
+            f"cotation, donc aucune mesure fiable. Une introduction récente "
+            f"n'est pas un mauvais titre, elle est seulement trop jeune pour "
+            f"être jugée ici.")
 
 
 def _render_comparaison_secteurs():
