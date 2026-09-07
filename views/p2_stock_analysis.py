@@ -1962,8 +1962,9 @@ def _render_risque(ticker, fundamentals):
     le sens, et la mediane ET la moyenne qui disent si le groupe est homogene.
     """
     from utils.ui_helpers import section_heading
-    from analysis.risque import (profil_de_risque, MESURES, EXPLICATIONS,
-                             RESUMES, TAUX_SANS_RISQUE)
+    from analysis.risque import (profil_de_risque, formater, MESURES,
+                                 MESURES_RISQUE, MESURES_LIQUIDITE,
+                                 EXPLICATIONS, RESUMES, TAUX_SANS_RISQUE)
 
     try:
         profil = profil_de_risque(ticker, fundamentals.get("sector"))
