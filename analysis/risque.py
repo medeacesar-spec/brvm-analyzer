@@ -149,6 +149,60 @@ MESURES = (
     ("rendement_annualise", "Rendement annualisé", False),
 )
 
+# Chaque mesure se dit DEUX fois. « En clair » pour qui veut comprendre ce que
+# le chiffre change pour lui ; « techniquement » pour qui veut verifier le
+# calcul ou le refaire. Les deux registres cohabitent parce qu'ils ne
+# s'adressent pas au meme lecteur, et qu'aucun des deux ne remplace l'autre :
+# une definition seule n'aide personne a decider, une paraphrase seule ne se
+# verifie pas.
+EXPLICATIONS = {
+    "volatilite": (
+        "De combien le cours bouge d'un mois sur l'autre, hausses et baisses "
+        "confondues. Un titre à 15 % remue deux fois moins qu'un titre à 30 %. "
+        "Elle ne dit rien du sens : un titre très volatil peut n'avoir fait que "
+        "monter.",
+        "Écart-type des rendements mensuels totaux — dividendes compris — "
+        "annualisé en multipliant par la racine de douze.",
+    ),
+    "semi_volatilite": (
+        "La même chose, mais en ne comptant que les mois où le titre a fait "
+        "moins bien qu'un placement sans risque. Un investisseur ne craint pas "
+        "la hausse. Comparée à la volatilité, elle dit si l'agitation joue "
+        "pour ou contre lui.",
+        "Racine de la moyenne des carrés des écarts NÉGATIFS au seuil — le "
+        "taux sans risque ramené au mois — annualisée par la racine de douze. "
+        "C'est le dénominateur du ratio de Sortino.",
+    ),
+    "perte_maximale": (
+        "La pire chute vécue sur la période, du plus haut au plus bas : ce "
+        "qu'aurait perdu quelqu'un entré au plus mauvais moment. La durée de "
+        "récupération dit combien de mois il a fallu pour effacer cette perte "
+        "— et parfois qu'elle ne l'a jamais été.",
+        "Maximum drawdown : minimum de (valeur ÷ sommet courant − 1) le long "
+        "de la trajectoire cumulée des rendements totaux. La récupération "
+        "compte les mois entre le creux et le retour au sommet qui le "
+        "précédait.",
+    ),
+    "sharpe": (
+        "Combien de rendement le titre paie pour chaque unité d'agitation "
+        "qu'il fait subir. Au-dessus de 1, il paie bien ; en dessous de zéro, "
+        "il a rapporté moins qu'un placement sans risque tout en faisant "
+        "courir un risque.",
+        "Ratio de Sharpe : moyenne des rendements en excès du taux sans "
+        "risque, divisée par leur écart-type, annualisée par la racine de "
+        "douze. Le ratio de Sortino fait le même calcul en remplaçant "
+        "l'écart-type par la semi-volatilité.",
+    ),
+    "rendement_annualise": (
+        "Ce que le titre a rapporté par an en moyenne sur la période, "
+        "dividendes compris. C'est le gain ; tout le reste de ce tableau en "
+        "est le prix.",
+        "Taux de croissance géométrique entre le premier et le dernier cours "
+        "de la période. Un taux géométrique, non arithmétique : il tient "
+        "compte de la composition d'une année sur l'autre.",
+    ),
+}
+
 
 def _situer(valeur, population: dict, champ: str, moindre_est_mieux: bool):
     """Ou se place ce titre parmi les autres : rang, mediane et moyenne.
