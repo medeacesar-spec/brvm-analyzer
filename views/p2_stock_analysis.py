@@ -2268,10 +2268,19 @@ def _render_recommendation(result, fundamentals):
                 for intitule, texte in (("Profil", _s.get("risque")),
                                         ("Sortie", _s.get("liquidite")))
                 if texte)
-        _alerte = ("<br><b>Ce titre ne cote pas "
-                   f"{_m['part_mois_immobiles'] * 100:.0f} % du temps</b> : ces "
-                   "mesures le font paraître plus calme qu'il n'est."
-                   if _m["peu_liquide"] else "")
+        # Deux avertissements distincts, parce que ce sont deux problemes :
+        # un marche etroit, ou un cours qui ne peut pas bouger finement.
+        if _m.get("peu_liquide"):
+            _alerte = ("<br><b>Marché étroit</b> : ce titre est dans le quart "
+                       "le moins échangé de la cote. Une position s'y bâtit "
+                       "comme elle se dénoue, lentement.")
+        elif _m.get("immobile"):
+            _alerte = (f"<br>Son cours n'a pas bougé "
+                       f"{_m['part_mois_immobiles'] * 100:.0f} % des mois — sur "
+                       f"un titre à faible nominal, le pas de cotation suffit "
+                       f"à l'expliquer.")
+        else:
+            _alerte = ""
         st.markdown(
             f"<div style='background:var(--bg-elev);border:1px solid "
             f"var(--border);border-radius:10px;padding:16px 18px;"
