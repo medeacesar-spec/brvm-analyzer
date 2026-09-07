@@ -282,7 +282,10 @@ def render():
                 st.rerun()
             st.markdown("</div>", unsafe_allow_html=True)
         else:
-            st.info("OCR non disponible sur cette instance.")
+            st.info(
+                "L'import par capture d'écran demande le moteur de "
+                "reconnaissance **tesseract**, absent de cette instance. "
+                "Les positions se saisissent à la main, en haut de page.")
 
     if portfolio.empty:
         st.info("Aucune position en portefeuille. Cliquez sur **Ajouter position** en haut.")
@@ -1616,18 +1619,28 @@ def _extract_portfolio_from_image(uploaded_file) -> list:
 
 
 def _ocr_available() -> bool:
-    """True si au moins une librairie OCR est installée."""
+    """True si l'OCR peut REELLEMENT tourner, pas seulement s'importer.
+
+    Le test portait sur la seule presence de la bibliotheque Python. Or
+    `pytesseract` n'est qu'un pont vers le binaire `tesseract`, installe
+    separement au niveau du systeme : la bibliotheque s'importe parfaitement
+    sans lui. La fonction repondait donc « disponible », l'application offrait
+    l'import par capture d'ecran, et il echouait au moment de s'en servir.
+
+    On appelle donc le binaire. C'est ce que fait deja le lecteur de PDF, avec
+    `get_tesseract_version()` ; les deux repondent desormais pareil.
+    """
     try:
         import easyocr  # noqa: F401
         return True
     except ImportError:
         pass
     try:
-        import pytesseract  # noqa: F401
+        import pytesseract
+        pytesseract.get_tesseract_version()
         return True
-    except ImportError:
-        pass
-    return False
+    except Exception:                                           # noqa: BLE001
+        return False
 
 
 def _parse_ocr_results(results: list) -> list:

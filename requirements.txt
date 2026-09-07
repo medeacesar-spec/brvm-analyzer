@@ -28,7 +28,14 @@ pdfplumber>=0.11
 PyMuPDF>=1.24
 
 # OCR léger (import portefeuille depuis screenshot)
-# Nécessite aussi tesseract-ocr au niveau OS (cf packages.txt)
+# Pont vers le binaire `tesseract`, qui n'est PAS installé sur l'instance
+# Streamlit : le constructeur mélange des dépôts Debian bullseye et trixie,
+# et un fichier InRelease périmé y fait échouer tout apt-get — donc tout
+# déploiement portant un packages.txt.
+#
+# Conséquence assumée : l'import d'un portefeuille par capture d'écran est
+# indisponible dans l'application, et le dit. La lecture optique des PDF
+# n'est pas touchée — les ateliers GitHub installent tesseract eux-mêmes.
 pytesseract>=0.3.10
 Pillow>=10.0
 
