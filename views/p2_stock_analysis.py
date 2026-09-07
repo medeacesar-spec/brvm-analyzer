@@ -2151,6 +2151,20 @@ def _render_recommendation(result, fundamentals):
     tech_pct = tech_s / total * 100
     miss_pct = missing / total * 100
 
+    # La conviction ne mesure rien de neuf : elle traduit le score hybride en
+    # conduite a tenir. C'est cette traduction qui sert, pas la note.
+    conviction_pts = (5 if hybrid >= 80 else 4 if hybrid >= 65
+                      else 3 if hybrid >= 50 else 2 if hybrid >= 35 else 1)
+    conviction_label = {5: "Très forte", 4: "Forte", 3: "Moyenne",
+                        2: "Faible", 1: "Très faible"}[conviction_pts]
+    conv_sub = {
+        5: "Position de conviction",
+        4: "Accumulation progressive",
+        3: "Attendre un retracement",
+        2: "Surveiller avant d'entrer",
+        1: "Éviter pour l'instant",
+    }[conviction_pts]
+
     verdict_color = {
         "up": "var(--up)", "down": "var(--down)", "ocre": "var(--ocre)",
     }.get(verdict_tone, "var(--ink-2)")
@@ -2169,6 +2183,12 @@ def _render_recommendation(result, fundamentals):
         f"<div style='font-size:12.5px;color:var(--ink-3);margin-top:6px;'>"
         f"Score hybride <b style='color:var(--ink);'>{hybrid:.0f} / 100</b> "
         f"<span class='muted'>·</span> horizon {horizon}"
+        f"</div>"
+        # La conduite a tenir, en trois mots, sous le verdict : c'est ce que le
+        # lecteur vient chercher, et cela vaut mieux qu'une note sur cinq.
+        f"<div style='font-size:13px;color:var(--ink-2);margin-top:8px;'>"
+        f"<b>{conv_sub}</b> "
+        f"<span class='muted'>· conviction {conviction_label.lower()}</span>"
         f"</div>"
         f"</div>"
         # Colonne droite : composition
@@ -2466,172 +2486,25 @@ def _render_recommendation(result, fundamentals):
             unsafe_allow_html=True,
         )
 
-    # ═══════════════════════════════════════════════════════════════════
-    # 3 cards : Score fondamental · Score technique · Conviction modèle
-    # ═══════════════════════════════════════════════════════════════════
-    bd = (fundamentals.get("fundamental_breakdown")
-          or result.get("ratios", {}).get("fundamental_breakdown") or {})
-    # fallback : utilise le quality/profile si présent
-    fund_profile = bd.get("profile") or f"Score brut {fund_s:.0f}/50"
-    # Profil technique
-    if tech_s >= 35:
-        tech_label, tech_sub, tech_arrow = "Fort", "Tendance haussière", "up"
-    elif tech_s >= 25:
-        tech_label, tech_sub, tech_arrow = "Correct", "Momentum modéré", "up"
-    elif tech_s >= 15:
-        tech_label, tech_sub, tech_arrow = "Neutre", "Pas de signal fort", "neutral"
-    else:
-        tech_label, tech_sub, tech_arrow = "Faible", "Tendance baissière", "down"
-    tech_profile = f"{tech_label} — {tech_sub}"
-    # Conviction : 5 dots selon hybrid_score
-    conviction_pts = 5 if hybrid >= 80 else 4 if hybrid >= 65 else 3 if hybrid >= 50 else 2 if hybrid >= 35 else 1
-    conviction_label = {
-        5: "Très forte", 4: "Forte", 3: "Moyenne", 2: "Faible", 1: "Très faible",
-    }[conviction_pts]
-    conv_sub = {
-        5: "Position de conviction",
-        4: "Accumulation progressive",
-        3: "Attendre un retracement",
-        2: "Surveiller avant d'entrer",
-        1: "Éviter pour l'instant",
-    }[conviction_pts]
 
-    def _score_card(label, value, max_value, profile, arrow_tone, show_dots=False):
-        if show_dots:
-            dots = "".join(
-                f'<span class="dot {"up" if i < value else "neutral"}" '
-                f'style="width:9px;height:9px;margin-right:3px;"></span>'
-                for i in range(max_value)
-            )
-            value_html = dots
-        else:
-            value_html = (
-                f"<span style='font-size:24px;font-weight:600;letter-spacing:-0.02em;"
-                f"color:var(--ink);font-variant-numeric:tabular-nums;'>"
-                f"{value:.0f}</span>"
-                f"<span style='color:var(--ink-3);font-size:14px;font-weight:400;'> / {max_value}</span>"
-            )
-        arrow = {"up": "▲", "down": "▼"}.get(arrow_tone, "")
-        sub_color = {"up": "var(--up)", "down": "var(--down)"}.get(arrow_tone, "var(--ink-3)")
-        return (
-            f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
-            f"border-radius:10px;padding:14px 16px;height:100%;'>"
-            f"<div class='label-xs' style='margin-bottom:6px;'>{label}</div>"
-            f"<div>{value_html}</div>"
-            f"<div style='font-size:12px;color:{sub_color};margin-top:6px;font-weight:500;'>"
-            f"{arrow + ' ' if arrow else ''}{profile}</div>"
-            f"</div>"
-        )
+    # Les trois tuiles de score ont ete retirees. La carte du verdict, en tete
+    # de page, montre DEJA la composition du score hybride dans sa barre
+    # empilee : les repeter trois blocs plus bas, separees par le prix cible,
+    # coupait le raisonnement pour ne rien apprendre. Le detail se lit dans les
+    # onglets Fondamentale, Technique et Risque — cette page-ci sert a DECIDER.
+    #
+    # La tuile « Conviction » etait entierement derivee du score hybride (5 si
+    # >= 80, 4 si >= 65, et ainsi de suite) : une troisieme expression du meme
+    # nombre, sur une echelle sur cinq a cote de deux echelles sur cinquante.
+    # Seule sa PHRASE disait quelque chose — « Accumulation progressive »,
+    # « Attendre un retracement » — et elle a rejoint la carte du verdict, ou
+    # elle appartient : elle enonce une action.
+    # ── Ce qui suit sert a DECIDER, et passe donc avant ────────────────
+    # Cette page repond a « que faire », pas a « comment ce titre est-il
+    # fait » — les onglets Fondamentale, Technique et Risque s'en chargent.
+    # Le plan d'action remonte donc avant les points forts et la lecture
+    # sectorielle, qui l'eclairent sans le decider.
 
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        fund_tone = "up" if fund_s >= 35 else "down" if fund_s <= 15 else "neutral"
-        st.markdown(
-            _score_card("Score fondamental", fund_s, 50, fund_profile, fund_tone),
-            unsafe_allow_html=True,
-        )
-    with c2:
-        st.markdown(
-            _score_card("Score technique", tech_s, 50, tech_profile, tech_arrow),
-            unsafe_allow_html=True,
-        )
-    with c3:
-        st.markdown(
-            _score_card("Conviction modèle", conviction_pts, 5, conv_sub,
-                        "up" if conviction_pts >= 4 else "neutral", show_dots=True),
-            unsafe_allow_html=True,
-        )
-
-    # ═══════════════════════════════════════════════════════════════════
-    # Points forts / Points de vigilance — en tables éditoriales
-    # ═══════════════════════════════════════════════════════════════════
-    def _pts_card(label, items, tone):
-        """Card avec titre dot + items. Chaque item = label principal
-        + détail à droite (si ' — ' dans la string)."""
-        rows = ""
-        if items:
-            for item in items:
-                # Tente de splitter "Label — détail" / "Label (valeur)"
-                main, side = item, ""
-                if " — " in item:
-                    main, side = item.split(" — ", 1)
-                elif " (" in item and item.endswith(")"):
-                    idx = item.rindex(" (")
-                    main, side = item[:idx], item[idx + 2 : -1]
-                rows += (
-                    f"<div style='display:flex;justify-content:space-between;"
-                    f"gap:12px;padding:8px 0;border-bottom:1px solid var(--border);'>"
-                    f"<span style='color:var(--ink);font-size:13px;'>{main}</span>"
-                    f"<span style='color:var(--ink-3);font-size:12.5px;text-align:right;"
-                    f"font-variant-numeric:tabular-nums;'>{side}</span>"
-                    f"</div>"
-                )
-        else:
-            rows = "<div style='padding:10px 0;color:var(--ink-3);font-size:13px;'>Aucun élément</div>"
-        return (
-            f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
-            f"border-radius:10px;padding:14px 16px;'>"
-            f"<div style='font-size:14px;font-weight:600;color:var(--ink);"
-            f"margin-bottom:6px;'><span class='dot {tone}'></span>{label}</div>"
-            f"{rows}"
-            f"</div>"
-        )
-
-    col_s, col_w = st.columns(2)
-    with col_s:
-        st.markdown(
-            _pts_card("Points forts", reco.get("strengths", []), "up"),
-            unsafe_allow_html=True,
-        )
-    with col_w:
-        st.markdown(
-            _pts_card("Points de vigilance", reco.get("warnings", []), "warn"),
-            unsafe_allow_html=True,
-        )
-
-    # ── Lecture sectorielle : ce que le score ne dit pas ──
-    # Le score fondamental garde sa methode et son historique : il n'est PAS
-    # touche. Ce bloc attire l'attention sur ce que la grille du metier
-    # signale et qu'un score global, forcement generaliste, ne peut pas dire —
-    # un coefficient d'exploitation tenable dans l'absolu mais superieur d'un
-    # tiers a celui des concurrents, par exemple.
-    try:
-        from analysis.sectors import comparaison_pairs, alertes_sectorielles
-        from analysis.fundamental import CHANGEMENT_METHODE
-        _secteur = fundamentals.get("sector")
-        _ratios_grille = result.get("ratios") or {}
-        _alertes = alertes_sectorielles(_ratios_grille, _secteur,
-                                        comparaison_pairs(_secteur))
-    except Exception:
-        _alertes = []
-
-    if _alertes:
-        section_heading("Lecture sectorielle", spacing="loose")
-        _blocs = ""
-        for _a in _alertes:
-            _couleur = ("var(--down)" if _a["niveau"] == "Risque"
-                        else "var(--ocre)")
-            _details = " · ".join(x for x in (_a.get("standard"),
-                                              _a.get("pairs")) if x)
-            _blocs += (
-                f"<div style='border-left:2px solid {_couleur};"
-                f"padding:6px 0 6px 12px;margin:8px 0;'>"
-                f"<span style='font-size:12.5px;font-weight:600;'>"
-                f"{_a['libelle']}</span>"
-                f"<span style='font-size:13px;font-weight:600;color:{_couleur};"
-                f"margin-left:8px;'>{_a['valeur']}</span>"
-                f"<div style='font-size:11.5px;color:var(--ink-3);margin-top:2px;'>"
-                f"{_details}</div></div>")
-        st.markdown(_blocs, unsafe_allow_html=True)
-        st.caption(
-            "Ces points viennent de la grille propre au secteur, croisée avec "
-            "la position du titre face à ses pairs. Depuis le "
-            f"{CHANGEMENT_METHODE}, ils **entrent dans le score "
-            "fondamental**, à hauteur de ±3 points sur 50 : un score global ne "
-            "peut pas ignorer qu'un niveau tenable dans l'absolu est en retrait "
-            "de ce que font les concurrents. Les scores antérieurs restent "
-            "affichés selon la méthode qui les a produits."
-        )
 
     # ═══════════════════════════════════════════════════════════════════
     # Plan d'action — Zones de prix avec conviction
@@ -2729,6 +2602,98 @@ def _render_recommendation(result, fundamentals):
         f"{synth}</div>",
         unsafe_allow_html=True,
     )
+
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Points forts / Points de vigilance — en tables éditoriales
+    # ═══════════════════════════════════════════════════════════════════
+    def _pts_card(label, items, tone):
+        """Card avec titre dot + items. Chaque item = label principal
+        + détail à droite (si ' — ' dans la string)."""
+        rows = ""
+        if items:
+            for item in items:
+                # Tente de splitter "Label — détail" / "Label (valeur)"
+                main, side = item, ""
+                if " — " in item:
+                    main, side = item.split(" — ", 1)
+                elif " (" in item and item.endswith(")"):
+                    idx = item.rindex(" (")
+                    main, side = item[:idx], item[idx + 2 : -1]
+                rows += (
+                    f"<div style='display:flex;justify-content:space-between;"
+                    f"gap:12px;padding:8px 0;border-bottom:1px solid var(--border);'>"
+                    f"<span style='color:var(--ink);font-size:13px;'>{main}</span>"
+                    f"<span style='color:var(--ink-3);font-size:12.5px;text-align:right;"
+                    f"font-variant-numeric:tabular-nums;'>{side}</span>"
+                    f"</div>"
+                )
+        else:
+            rows = "<div style='padding:10px 0;color:var(--ink-3);font-size:13px;'>Aucun élément</div>"
+        return (
+            f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
+            f"border-radius:10px;padding:14px 16px;'>"
+            f"<div style='font-size:14px;font-weight:600;color:var(--ink);"
+            f"margin-bottom:6px;'><span class='dot {tone}'></span>{label}</div>"
+            f"{rows}"
+            f"</div>"
+        )
+
+    col_s, col_w = st.columns(2)
+    with col_s:
+        st.markdown(
+            _pts_card("Points forts", reco.get("strengths", []), "up"),
+            unsafe_allow_html=True,
+        )
+    with col_w:
+        st.markdown(
+            _pts_card("Points de vigilance", reco.get("warnings", []), "warn"),
+            unsafe_allow_html=True,
+        )
+
+    # ── Lecture sectorielle : ce que le score ne dit pas ──
+    # Le score fondamental garde sa methode et son historique : il n'est PAS
+    # touche. Ce bloc attire l'attention sur ce que la grille du metier
+    # signale et qu'un score global, forcement generaliste, ne peut pas dire —
+    # un coefficient d'exploitation tenable dans l'absolu mais superieur d'un
+    # tiers a celui des concurrents, par exemple.
+    try:
+        from analysis.sectors import comparaison_pairs, alertes_sectorielles
+        from analysis.fundamental import CHANGEMENT_METHODE
+        _secteur = fundamentals.get("sector")
+        _ratios_grille = result.get("ratios") or {}
+        _alertes = alertes_sectorielles(_ratios_grille, _secteur,
+                                        comparaison_pairs(_secteur))
+    except Exception:
+        _alertes = []
+
+    if _alertes:
+        section_heading("Lecture sectorielle", spacing="loose")
+        _blocs = ""
+        for _a in _alertes:
+            _couleur = ("var(--down)" if _a["niveau"] == "Risque"
+                        else "var(--ocre)")
+            _details = " · ".join(x for x in (_a.get("standard"),
+                                              _a.get("pairs")) if x)
+            _blocs += (
+                f"<div style='border-left:2px solid {_couleur};"
+                f"padding:6px 0 6px 12px;margin:8px 0;'>"
+                f"<span style='font-size:12.5px;font-weight:600;'>"
+                f"{_a['libelle']}</span>"
+                f"<span style='font-size:13px;font-weight:600;color:{_couleur};"
+                f"margin-left:8px;'>{_a['valeur']}</span>"
+                f"<div style='font-size:11.5px;color:var(--ink-3);margin-top:2px;'>"
+                f"{_details}</div></div>")
+        st.markdown(_blocs, unsafe_allow_html=True)
+        st.caption(
+            "Ces points viennent de la grille propre au secteur, croisée avec "
+            "la position du titre face à ses pairs. Depuis le "
+            f"{CHANGEMENT_METHODE}, ils **entrent dans le score "
+            "fondamental**, à hauteur de ±3 points sur 50 : un score global ne "
+            "peut pas ignorer qu'un niveau tenable dans l'absolu est en retrait "
+            "de ce que font les concurrents. Les scores antérieurs restent "
+            "affichés selon la méthode qui les a produits."
+        )
 
 
 def _render_input_form(ticker, tickers_data):
