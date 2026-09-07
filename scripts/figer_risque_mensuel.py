@@ -45,6 +45,8 @@ CREATE TABLE IF NOT EXISTS risque_mensuel (
     sortino              DOUBLE PRECISION,
     rendement_annualise  DOUBLE PRECISION,
     part_mois_immobiles  DOUBLE PRECISION,
+    montant_echange      DOUBLE PRECISION,
+    impact_transaction   DOUBLE PRECISION,
     observations         INTEGER,
     rang_volatilite      INTEGER,
     rang_rendement       INTEGER,
@@ -57,7 +59,8 @@ CREATE TABLE IF NOT EXISTS risque_mensuel (
 
 CHAMPS = ("volatilite", "semi_volatilite", "asymetrie", "perte_maximale",
           "mois_recuperation", "sharpe", "sortino", "rendement_annualise",
-          "part_mois_immobiles", "observations")
+          "part_mois_immobiles", "montant_echange", "impact_transaction",
+          "observations")
 
 
 def main() -> int:
