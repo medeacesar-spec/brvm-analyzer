@@ -1771,7 +1771,12 @@ def _render_optimisation(portfolio, cash):
             plan = None
         if plan and plan.get("lignes"):
             section_heading("Répartition suggérée du cash", spacing="loose")
-            avant, apres = plan["avant"], plan["apres"]
+            st.caption(
+                f"Le modèle a essayé **{plan['nb_essais']} combinaisons** "
+                f"d'une, deux et trois lignes parmi {plan['eligibles']} "
+                f"candidats, et retenu celle qui donne le meilleur rendement "
+                f"par unité de risque. **Trois lignes ne valent pas mieux que "
+                f"deux si la troisième ne fait que diluer.**")
             html = (f"<tr><th style='{entete};text-align:left;'>Titre</th>"
                     f"<th style='{entete};text-align:right;'>Montant</th>"
                     f"<th style='{entete};text-align:left;'>Avis du modèle</th>"
@@ -1794,18 +1799,66 @@ def _render_optimisation(portfolio, cash):
                 f"border-radius:10px;overflow:hidden;background:var(--bg-elev);'>"
                 f"<table style='width:100%;border-collapse:collapse;'>{html}"
                 f"</table></div>", unsafe_allow_html=True)
-            if avant and apres and avant.get("volatilite") and apres.get("volatilite"):
-                sens = ("baisse" if apres["volatilite"] < avant["volatilite"]
-                        else "monte")
+
+            # L'effet, avant et apres : une recommandation qui ne montre pas
+            # son effet ne se verifie pas.
+            if plan.get("volatilite_avant") and plan.get("volatilite_apres"):
+                cols = st.columns(3)
+                for col, (intitule, avant, apres, fmt) in zip(cols, (
+                        ("Volatilité", plan["volatilite_avant"],
+                         plan["volatilite_apres"], "pct"),
+                        ("Rendement annuel", plan["rendement_avant"],
+                         plan["rendement_apres"], "pct"),
+                        ("Rendement par unité de risque",
+                         plan["sharpe_avant"], plan["sharpe_apres"], "dec"))):
+                    if avant is None or apres is None:
+                        continue
+                    ecrire = (lambda v: f"{v:.1%}") if fmt == "pct" else (
+                        lambda v: f"{v:.2f}")
+                    mieux = (apres < avant) if intitule == "Volatilité" else (
+                        apres > avant)
+                    teinte = "var(--up)" if mieux else "var(--down)"
+                    with col:
+                        st.markdown(
+                            f"<div style='background:var(--bg-elev);border:1px "
+                            f"solid var(--border);border-radius:10px;"
+                            f"padding:12px 14px;'>"
+                            f"<div class='label-xs'>{intitule}</div>"
+                            f"<div style='font-size:18px;font-weight:600;"
+                            f"margin-top:4px;'>{ecrire(avant)} "
+                            f"<span style='color:var(--ink-3);'>→</span> "
+                            f"<span style='color:{teinte};'>{ecrire(apres)}"
+                            f"</span></div></div>", unsafe_allow_html=True)
+
+            if plan.get("ex_aequo", 0) > 1:
                 st.caption(
-                    f"En plaçant **{plan['place']:,.0f} FCFA** ainsi, la "
-                    f"volatilité du portefeuille **{sens} de "
-                    f"{avant['volatilite']:.1%} à {apres['volatilite']:.1%}**, "
-                    f"et la part du risque annulée par la diversification "
-                    f"passe de {avant['gain_diversification']:.0%} à "
-                    f"{apres['gain_diversification']:.0%}. "
-                    f"**C'est une simulation, pas une consigne** : elle montre "
-                    f"l'effet mécanique de ces achats sur le passé mesuré.")
+                    f"**{plan['ex_aequo']} combinaisons se tiennent à moins "
+                    f"d'un pour cent** l'une de l'autre. Les départager serait "
+                    f"arbitraire : à égalité, la plus simple est retenue — "
+                    f"moins de lignes, moins de frais, moins à surveiller.")
+
+            with st.expander("Les combinaisons essayées, du meilleur au moins bon"):
+                h = (f"<tr><th style='{entete};text-align:left;'>Combinaison</th>"
+                     f"<th style='{entete};text-align:right;'>Rdt/risque</th>"
+                     f"<th style='{entete};text-align:right;'>Volatilité</th>"
+                     f"<th style='{entete};text-align:right;'>Rendement</th>"
+                     f"</tr>")
+                for e in plan["essais"]:
+                    retenue = (e["tickers"] == [l["ticker"] for l in plan["lignes"]])
+                    fond = ("background:var(--bg-sunken);" if retenue else "")
+                    h += (f"<tr style='{fond}'><td style='{cell}'>"
+                          f"{' + '.join(e['tickers'])}"
+                          + ("  <span class='muted' style='font-size:11px;'>"
+                             "retenue</span>" if retenue else "")
+                          + f"</td><td style='{nb};font-weight:600;'>"
+                            f"{e['sharpe']:.3f}</td>"
+                            f"<td style='{nb}'>{e['volatilite']:.1%}</td>"
+                            f"<td style='{nb}'>{e['rendement']:.1%}</td></tr>")
+                st.markdown(
+                    f"<div style='border:1px solid var(--border);"
+                    f"border-radius:10px;overflow:hidden;'>"
+                    f"<table style='width:100%;border-collapse:collapse;'>{h}"
+                    f"</table></div>", unsafe_allow_html=True)
 
     if degradent:
         with st.expander(f"Les {len(degradent)} autres, qui dégraderaient "
