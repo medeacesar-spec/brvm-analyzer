@@ -1963,7 +1963,7 @@ def _render_risque(ticker, fundamentals):
     """
     from utils.ui_helpers import section_heading
     from analysis.risque import (profil_de_risque, MESURES, EXPLICATIONS,
-                             TAUX_SANS_RISQUE)
+                             RESUMES, TAUX_SANS_RISQUE)
 
     try:
         profil = profil_de_risque(ticker, fundamentals.get("sector"))
@@ -2034,8 +2034,15 @@ def _render_risque(ticker, fundamentals):
     )
     for champ, libelle, _ in MESURES:
         situations = profil["situations"][champ]
+        # Le libelle, et sous lui ce que la mesure calcule. Sans cette ligne,
+        # le lecteur doit ouvrir l'explication longue pour se rappeler ce
+        # qu'il regarde — et il ne l'ouvre pas.
+        intitule = (
+            f"<div style='font-weight:500;'>{libelle}</div>"
+            f"<div style='font-size:11px;color:var(--ink-3);line-height:1.4;"
+            f"margin-top:2px;'>{RESUMES.get(champ, '')}</div>")
         lignes += (
-            f"<tr><td style='{cell};font-weight:500;'>{libelle}</td>"
+            f"<tr><td style='{cell};'>{intitule}</td>"
             f"<td style='{nb}'>{_fmt(champ, m.get(champ))}</td>"
             f"<td style='{cell}'>{_position(situations['secteur'], champ)}</td>"
             f"<td style='{cell}'>{_position(situations['marché'], champ)}</td></tr>"
