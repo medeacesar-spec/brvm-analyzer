@@ -1962,7 +1962,8 @@ def _render_risque(ticker, fundamentals):
     le sens, et la mediane ET la moyenne qui disent si le groupe est homogene.
     """
     from utils.ui_helpers import section_heading
-    from analysis.risque import profil_de_risque, MESURES, TAUX_SANS_RISQUE
+    from analysis.risque import (profil_de_risque, MESURES, EXPLICATIONS,
+                             TAUX_SANS_RISQUE)
 
     try:
         profil = profil_de_risque(ticker, fundamentals.get("sector"))
@@ -2044,6 +2045,47 @@ def _render_risque(ticker, fundamentals):
         f"overflow:hidden;background:var(--bg-elev);margin-top:14px;'>"
         f"<table style='width:100%;border-collapse:collapse;'>{lignes}</table>"
         f"</div>", unsafe_allow_html=True)
+
+    # ── Ce que chaque mesure veut dire, sur demande ───────────────────────
+    # Deux registres, jamais un seul : « en clair » pour qui veut comprendre ce
+    # que le chiffre change pour lui, « techniquement » pour qui veut verifier
+    # le calcul. Repliee, la section n'alourdit pas la page ; ouverte, elle
+    # evite d'avoir a chercher ailleurs.
+    with st.expander("Que mesure exactement chaque indicateur ?"):
+        for champ, libelle, moindre in MESURES:
+            clair, technique = EXPLICATIONS[champ]
+            sens = ("Plus la valeur est <b>basse</b>, mieux c'est."
+                    if moindre else
+                    "Plus la valeur est <b>haute</b>, mieux c'est.")
+            if champ == "perte_maximale":
+                sens = ("Elle est toujours négative. Plus elle est "
+                        "<b>proche de zéro</b>, mieux c'est.")
+            st.markdown(
+                f"<div style='margin-bottom:16px;'>"
+                f"<div style='font-size:13.5px;font-weight:600;"
+                f"margin-bottom:4px;'>{libelle}</div>"
+                f"<div style='font-size:13px;line-height:1.6;"
+                f"color:var(--ink-2);'>{clair}</div>"
+                f"<div style='font-size:12px;line-height:1.55;"
+                f"color:var(--ink-3);margin-top:5px;'>"
+                f"<b>Techniquement</b> — {technique}</div>"
+                f"<div style='font-size:11.5px;color:var(--ink-3);"
+                f"margin-top:4px;'>{sens}</div></div>",
+                unsafe_allow_html=True)
+        st.markdown(
+            "<div style='border-top:1px solid var(--border);padding-top:12px;'>"
+            "<div style='font-size:13.5px;font-weight:600;margin-bottom:4px;'>"
+            "Le rang, la médiane et la moyenne</div>"
+            "<div style='font-size:13px;line-height:1.6;color:var(--ink-2);'>"
+            "Le <b>rang</b> se lit toujours du meilleur au moins bon : 1 désigne "
+            "le titre le plus calme, ou le plus rentable. Il vaut mieux qu'une "
+            "valeur absolue, que personne ne sait situer.<br>"
+            "La <b>médiane</b> partage le groupe en deux moitiés ; la "
+            "<b>moyenne</b> se laisse tirer par les extrêmes. Leur écart est "
+            "donc une information à lui seul : sur la volatilité de la cote, "
+            "la médiane vaut 36 % et la moyenne 41 % — la différence, ce sont "
+            "les quelques lignes peu échangées qui montent à 80 et 106 %."
+            "</div></div>", unsafe_allow_html=True)
 
     recup = m["mois_recuperation"]
     st.caption(
