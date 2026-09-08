@@ -2,7 +2,7 @@
 
 Registre de travail. Référence : `design/BRVM Analyzer - Redesign v4.dc.html`.
 
-**Trente-quatre écarts.** Les deux qui étaient à arbitrer — D1 et S3 — l'ont
+**Quarante écarts.** Les deux qui étaient à arbitrer — D1 et S3 — l'ont
 été le 08/09, et un troisième a été refusé sur le fond (A8). Le document a longtemps annoncé
 « 25 » : le chiffre était faux dès la première rédaction — le décompte onglet
 par onglet, lui, a toujours été juste. Recompté le 08/09.
@@ -128,9 +128,16 @@ Légende : **à faire** · *en cours* · fait (vu au rendu)
 |---|---|---|
 | C1 | Profil comparatif en barres groupées ; le canevas emploie des **axes parallèles**, où le croisement des lignes montre où le choix se joue | **fait** — vu au rendu le 08/09. Les croisements sont **calculés** et nommés, avec une lecture qui change selon qu'ils sont rares, majoritaires ou absents |
 
-### Performance des Titres — 4 onglets
+### Performance des Titres — Classement · Par secteur · Graphique · Tableau multi-périodes
 
-Conforme sur les quatre onglets.
+Déclarée conforme le 08/09 sur une lecture d'ensemble. Relue bloc par bloc le
+même soir, elle porte trois écarts.
+
+| # | Onglet | Écart | État |
+|---|---|---|---|
+| F1 | Classement | **Les barres ignorent le signe.** La largeur vaut `abs(valeur) / max`, et la couleur est fixée par la liste, pas par la valeur. Sur le classement 1 an, **cinq des huit « pires performers » sont positifs** : SITAB (+13,5 %) reçoit une barre rouge de 24 % de largeur, plus longue que celle de la Loterie du Bénin (−5,1 %, 9 %). La barre lue comme une baisse n'en est pas une. La **barre signée** existe déjà dans l'application, sous « Toutes les cotations » | à faire |
+| F2 | Par secteur | « Performance sectorielle » rendue en **graphique de la moyenne** ; le canevas met un **tableau à six colonnes** : Titres, Moyenne, **Médiane**, Position (barre signée), **Étendue**. La médiane et l'étendue disent si la moyenne est représentative ou tirée par un titre — l'application tient déjà ce raisonnement dans l'onglet Risque | à faire |
+| F3 | — | Quatre blocs hors canevas : le **curseur** du nombre de titres, le **sélecteur de secteur** en descente, « Rendement rapporté au risque · 5 ans » et « Comparaison secteurs ». Le sélecteur de période offre par ailleurs 3M/6M/1A/2A/3A/Max là où le canevas propose 1 mois/3 mois/1 an/3 ans/5 ans | à arbitrer (ajouts de l'app) |
 
 ### Portefeuille — Performance · Recommandations · Risque et optimisation
 
@@ -142,10 +149,18 @@ Conforme sur les quatre onglets.
 | P4 | Recommandations | Diagnostic en tableau ; le canevas en fait des **cartes** à filet et pastille | **fait** — vu au rendu le 08/09. Composant partagé `cartes_constats`, en grille repliable |
 | P5 | Risque | Manque les **4 cartes de risque** : volatilité du portefeuille, **bêta agrégé**, perte maximale simulée, rendement par unité de risque | **fait** — vu au rendu le 08/09. Trois des quatre mesures n'existaient pas : elles sont calculées sur la série du portefeuille reconstituée aux poids d'aujourd'hui |
 
-### Signaux — Synthèse · Contradictions
+### Signaux — Synthèse par titre · Contradictions
 
-Conforme. Les cartes de contradiction sont plus riches que le canevas
-(ticker, verdict retenu, signaux de chaque côté) — écart assumé.
+Déclarée conforme le 08/09 sur une lecture d'ensemble. Les cartes de
+contradiction sont bien plus riches que le canevas (ticker, verdict retenu,
+signaux de chaque côté) — écart assumé. La relecture bloc par bloc en trouve
+trois autres.
+
+| # | Écart | État |
+|---|---|---|
+| G1 | **Le titre « Assistant Signaux » s'affiche deux fois** : `section_heading` puis `st.subheader`, l'un sous l'autre. Même défaut qu'A10 | à faire |
+| G2 | « Aucun désaccord : le bilan et le cours disent la même chose » passe par `st.info` — **la boîte bleue d'alerte que `note()` a précisément été écrit pour remplacer**. Un état normal se lit comme un avertissement | à faire |
+| G3 | Le bloc **Assistant Signaux** n'est pas au canevas. Le titre de page est « Signaux d'achat / vente » là où le canevas dit « Signaux » | à arbitrer (ajouts de l'app) |
 
 ### Trajectoires Recommandations — 3 onglets
 
@@ -187,7 +202,7 @@ de pondération, et avec chaque score rapporté à son propre maximum — 38/50 
 
 ## Causes récurrentes
 
-Les trente-quatre écarts se ramènent à cinq causes. Corriger la cause vaut mieux
+Les quarante écarts se ramènent à cinq causes. Corriger la cause vaut mieux
 que corriger les symptômes un à un.
 
 1. **Rangées de KPI manquantes** — 7 cartes (P5 ×4, P3, A7 ×2). Le canevas
@@ -201,7 +216,7 @@ que corriger les symptômes un à un.
    le composant était annoncé par la passation mais n'avait jamais été
    écrit ; il l'est depuis le 08/09, et les trois rangées corrigées
    ci-dessus passent par lui.
-5. **Blocs rendus autrement** — tableau au lieu de cartes (P4, A15), barre empilée
+5. **Blocs rendus autrement** — tableau au lieu de cartes (P4, A15), graphique au lieu de tableau (F2), barre empilée
    au lieu de barres pondérées (A8), barres au lieu d'axes parallèles (C1),
    champs nus au lieu de tableaux pédagogiques (S1, S2).
 
@@ -221,9 +236,22 @@ comparant bloc par bloc au canevas plutôt qu'en survolant sa forme générale :
 
 La leçon rejoint celle de la méthode : **un onglet ne se juge pas à sa
 silhouette.** Il se compare bloc par bloc, comme les pages se comparent onglet
-par onglet. Les autres onglets méritent la même relecture avant d'être
-déclarés conformes — « Performance des Titres » et « Signaux » ont été
-déclarés conformes sur une lecture d'ensemble.
+par onglet.
+
+**La relecture a confirmé la leçon.** « Performance des Titres » et
+« Signaux », déclarées conformes sur une lecture d'ensemble, portent six
+écarts de plus (F1 à F3, G1 à G3), dont un défaut de lecture réel : une barre
+rouge de vingt-quatre pour cent pour un titre qui a **gagné** treize pour
+cent. Aucune page n'est donc conforme pour avoir été regardée : elle l'est
+quand ses blocs ont été comparés un par un.
+
+**Un piège de la relecture elle-même.** Le tableau multi-périodes a d'abord
+paru vide, puis a paru porter des performances impossibles — « −118,8 % »,
+« −922,0 % ». Les deux étaient faux : la première fois le tableau n'avait pas
+fini de se rendre, la seconde le signe « + » se lisait comme un « − » à
+l'échelle de la capture. Vérification faite en rejouant le formateur sur les
+valeurs de la base, tout était juste. **Une capture d'écran ne tranche pas un
+signe** : le calcul, lui, tranche.
 
 ## Ordre de correction proposé
 
@@ -232,5 +260,5 @@ déclarés conformes sur une lecture d'ensemble.
 3. Les contrôles segmentés (A2, A5, A6) — ~~I1 fait le 08/09~~.
 4. ~~Les tableaux pédagogiques de Screening (S1, S2)~~ — **fait le 08/09**.
 5. ~~Les blocs à re-rendre : P4 et C1~~ — **fait le 08/09** ; ~~A8 refusé~~.
-6. La barre signée des positions (P1).
+6. La barre signée : les positions du portefeuille (P1) **et le classement de Performance des Titres (F1)** — le même composant répond aux deux.
 7. Les détails : T1, T2, H1, H2, D2, D3, A9-A13, P2 — ~~I2 fait le 08/09~~.
