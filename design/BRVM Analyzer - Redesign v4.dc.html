@@ -1,0 +1,2037 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="a1be482b-f6b3-4bf7-8cf0-1750d9a328f8"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<style>/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("d89984b5-5f6b-4d0d-82b5-9613f6d1e2d4") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("9f0bf142-4ef5-4675-a4c4-85efeb24b65f") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("9e442435-f3e4-49f2-bc58-3b8d49ce55ce") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("ba1fff3e-e8b3-4453-9cb7-409e3d42fc1e") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("f1ebe929-2568-4ff4-ab7a-05ae2a6b46af") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("9d4aa028-6e55-4a26-a996-229b2f5b49f3") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("55172913-0595-456c-9ba5-29effd0c0e4b") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("5d767b91-a95c-4adc-ae4d-f0ed6c7ea5d9") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("3c104104-b591-476b-bf5c-dabd8e576c29") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("6e814ff0-ac41-4d21-98db-7145bd2b723c") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("131466ea-f856-4309-bca3-2168c97b2543") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("c36a3783-0e4c-4baf-bbc2-b1d0deef9456") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("a3796df3-c56d-42b1-91b5-30d5adae6a26") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("31f53ecd-eb69-4683-8090-3187c88552f8") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("8c71987f-cdd6-4919-a7e5-af8b9189b493") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Instrument Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("00cb8937-7956-4f18-b413-75bba03d3884") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Instrument Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("379e83d9-d9ed-4348-9bcc-6edc62ebb0f2") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Instrument Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("00cb8937-7956-4f18-b413-75bba03d3884") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Instrument Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("379e83d9-d9ed-4348-9bcc-6edc62ebb0f2") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Instrument Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("00cb8937-7956-4f18-b413-75bba03d3884") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Instrument Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("379e83d9-d9ed-4348-9bcc-6edc62ebb0f2") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Instrument Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("00cb8937-7956-4f18-b413-75bba03d3884") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Instrument Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("379e83d9-d9ed-4348-9bcc-6edc62ebb0f2") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+</style>
+<style>
+  html, body { margin: 0; padding: 0; background: #F2F3F5; }
+  body { font-family: "Instrument Sans", ui-sans-serif, system-ui, sans-serif; color: #14171C; -webkit-font-smoothing: antialiased; }
+  a { color: #1B3A6B; text-decoration: none; border-bottom: 1px solid rgba(27,58,107,0.3); }
+  a:hover { color: #12294B; border-bottom-color: #12294B; }
+  table { width: 100%; border-collapse: collapse; }
+</style>
+</helmet>
+
+<div style="display:flex; align-items:stretch; min-height:100vh; background:#F2F3F5;">
+
+  <aside style="width:238px; flex:0 0 238px; background:#12294B; padding:18px 14px 22px; display:flex; flex-direction:column; gap:20px; position:sticky; top:0; align-self:flex-start; height:100vh; overflow-y:auto;">
+    <div style="display:flex; align-items:center; gap:10px;">
+      <div style="width:30px; height:30px; border-radius:8px; background:#F2F3F5; color:#12294B; font-weight:700; font-size:15px; display:flex; align-items:center; justify-content:center; letter-spacing:-0.03em; flex-shrink:0;">B</div>
+      <div style="display:flex; flex-direction:column; line-height:1.15;">
+        <span style="font-size:14px; font-weight:600; color:#FFFFFF; letter-spacing:-0.01em;">BRVM Analyzer</span>
+        <span style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#A9BEDC; letter-spacing:0.05em;">48 titres · clôture 15:00</span>
+      </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:16px;">
+      <sc-for list="{{ navSections }}" as="sec" hint-placeholder-count="3">
+        <div style="display:flex; flex-direction:column; gap:2px;">
+          <div style="font-size:10px; font-weight:600; color:#7E9AC2; letter-spacing:0.12em; text-transform:uppercase; padding:0 8px 6px;">{{ sec.title }}</div>
+          <sc-for list="{{ sec.items }}" as="it" hint-placeholder-count="2">
+            <div sc-camel-on-click="{{ it.onClick }}" style="display:flex; align-items:center; gap:9px; padding:8px 10px; border-radius:7px; cursor:pointer; background:{{ it.bg }}; box-shadow:{{ it.shadow }};" style-hover="background:#1B3A6B">
+              <span style="width:5px; height:5px; border-radius:50%; flex-shrink:0; background:{{ it.dot }};"></span>
+              <span style="font-size:13px; line-height:1.3; color:{{ it.color }}; font-weight:{{ it.weight }};">{{ it.label }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-for>
+    </div>
+
+    <sc-if value="{{ admin }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex; flex-direction:column; gap:10px; padding-top:16px; border-top:1px solid rgba(255,255,255,0.12);">
+        <div style="font-size:10px; font-weight:600; color:#7E9AC2; letter-spacing:0.12em; text-transform:uppercase;">Administration</div>
+        <div style="padding:9px 11px; border-radius:8px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.16); font-size:12.5px; color:#E8EEF7; text-align:center; cursor:pointer;" style-hover="background:rgba(255,255,255,0.16)">Regénérer snapshots</div>
+        <div style="padding:10px 11px; border-radius:8px; background:rgba(168,196,234,0.14); border:1px solid rgba(168,196,234,0.34);">
+          <div style="display:flex; align-items:center; gap:7px; margin-bottom:3px;">
+            <span style="font-size:12.5px; font-weight:600; color:#FFFFFF;">Medea Degbe</span>
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:9px; font-weight:600; letter-spacing:0.08em; padding:2px 5px; border-radius:4px; background:#A8C4EA; color:#12294B;">ADMIN</span>
+          </div>
+          <span style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#A9BEDC;">medeacesar@gmail.com</span>
+        </div>
+        <div style="padding:9px 11px; border-radius:8px; border:1px solid rgba(255,255,255,0.16); font-size:12.5px; color:#C9D6E8; text-align:center; cursor:pointer;" style-hover="background:rgba(255,255,255,0.10)">Se déconnecter</div>
+      </div>
+    </sc-if>
+
+    <div style="margin-top:auto; padding-top:16px; border-top:1px solid rgba(255,255,255,0.12); display:flex; flex-direction:column; gap:5px;">
+      <div style="display:flex; align-items:center; gap:7px;">
+        <span style="width:6px; height:6px; border-radius:50%; background:#4ADE80;"></span>
+        <span style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#A9BEDC;">Postgres cloud</span>
+      </div>
+      <span style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#6E8BB5;">v1.0 · données BRVM</span>
+    </div>
+  </aside>
+
+  <main style="flex:1; min-width:0; padding:22px 30px 70px; max-width:1480px;">
+
+    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; padding-bottom:14px; border-bottom:1px solid #DCDFE4;">
+      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <span style="display:inline-flex; align-items:center; gap:7px; padding:4px 9px; border-radius:5px; background:#EFF1F4; color:#495060; font-family:'IBM Plex Mono',monospace; font-size:11px; font-weight:600; letter-spacing:0.04em;">
+          <span style="width:6px; height:6px; border-radius:50%; background:#495060;"></span>CLÔTURE
+        </span>
+        <span style="font-size:13px; color:#495060;">Séance du vendredi 4 septembre 2026 · 15:00 GMT</span>
+      </div>
+      <span style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#6E7581;">MAJ 15:12 · 48/48 titres</span>
+    </div>
+
+    <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; margin:20px 0 0;">
+      <div style="min-width:0; flex:1;">
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <h1 style="font-size:31px; font-weight:600; letter-spacing:-0.025em; margin:0;">{{ pageTitle }}</h1>
+          <span style="display:{{ badgeDisp }}; font-family:'IBM Plex Mono',monospace; font-size:9.5px; font-weight:600; letter-spacing:0.08em; padding:3px 6px; border-radius:4px; background:#E6ECF5; color:#12294B;">ADMIN</span>
+        </div>
+        <p style="font-size:14px; color:#495060; margin:6px 0 0; max-width:70ch; text-wrap:pretty;">{{ pageIntro }}</p>
+        <p style="display:{{ metaDisp }}; font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#6E7581; margin:6px 0 0;">{{ pageMeta }}</p>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <sc-for list="{{ pageActions }}" as="a" hint-placeholder-count="0">
+          <span style="padding:7px 13px; border-radius:8px; font-size:12.5px; cursor:pointer; border:1px solid {{ a.border }}; background:{{ a.bg }}; color:{{ a.color }}; font-weight:{{ a.weight }};" style-hover="border-color:#1B3A6B">{{ a.label }}</span>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="display:flex; align-items:flex-end; gap:20px; flex-wrap:wrap; margin-top:20px;">
+      <sc-for list="{{ toolbar }}" as="g" hint-placeholder-count="0">
+        <div style="display:flex; flex-direction:column; gap:6px; min-width:0;">
+          <span style="display:{{ g.labelDisp }}; font-size:10.5px; font-weight:600; color:#6E7581; letter-spacing:0.09em; text-transform:uppercase;">{{ g.label }}</span>
+          <div style="display:inline-flex; gap:3px; padding:{{ g.pad }}; background:{{ g.wrapBg }}; border:1px solid #DCDFE4; border-radius:9px; flex-wrap:wrap;">
+            <sc-for list="{{ g.options }}" as="o" hint-placeholder-count="3">
+              <span style="padding:5px 12px; border-radius:6px; font-size:12.5px; cursor:pointer; background:{{ o.bg }}; color:{{ o.color }}; font-weight:{{ o.weight }}; box-shadow:{{ o.shadow }};">{{ o.label }}</span>
+            </sc-for>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:14px; margin-top:20px;">
+      <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="4">
+        <div style="border-radius:12px; padding:15px 17px; display:flex; flex-direction:column; gap:5px; min-width:0; background:{{ k.bg }}; border:{{ k.border }}; border-top:{{ k.borderTop }};">
+          <span style="font-size:10.5px; font-weight:600; letter-spacing:0.09em; text-transform:uppercase; color:{{ k.labelColor }};">{{ k.label }}</span>
+          <span style="font-family:{{ k.font }}; font-variant-numeric:tabular-nums; font-size:{{ k.size }}; font-weight:{{ k.weight }}; letter-spacing:-0.015em; line-height:1.05; color:{{ k.valueColor }};">{{ k.value }}</span>
+          <span style="font-size:11.5px; font-weight:{{ k.subWeight }}; color:{{ k.subColor }};">{{ k.sub }}</span>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display:flex; gap:28px; border-bottom:1px solid #DCDFE4; margin-top:30px; flex-wrap:wrap;">
+      <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="3">
+        <div sc-camel-on-click="{{ t.onClick }}" style="display:flex; flex-direction:column; gap:3px; padding:8px 0 10px; cursor:pointer; box-shadow:{{ t.shadow }};">
+          <span style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.1em; color:{{ t.idxColor }};">{{ t.idx }}</span>
+          <span style="font-size:13.5px; line-height:1.2; color:{{ t.color }}; font-weight:{{ t.weight }};">{{ t.label }}</span>
+        </div>
+      </sc-for>
+    </div>
+
+    <sc-for list="{{ blocks }}" as="b" hint-placeholder-count="2">
+      <div style="margin-top:26px; min-width:0;">
+        <div style="display:{{ b.headDisp }}; align-items:baseline; gap:10px; margin-bottom:12px;">
+          <h2 style="font-size:17px; font-weight:600; margin:0; letter-spacing:-0.015em;"><span style="color:{{ b.arrowColor }};">{{ b.arrow }}</span>{{ b.title }}</h2>
+          <span style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#6E7581;">{{ b.count }}</span>
+        </div>
+        <p style="display:{{ b.introDisp }}; font-size:12.5px; color:#6E7581; margin:-6px 0 12px; max-width:74ch; text-wrap:pretty;">{{ b.intro }}</p>
+
+        <div style="display:{{ b.tableDisp }}; background:#FFFFFF; border:1px solid #DCDFE4; border-radius:12px; overflow:hidden;">
+          <div style="overflow-x:auto;">
+            <sc-raw-table style="min-width:{{ b.minWidth }};">
+              <sc-raw-tr>
+                <sc-for list="{{ b.cols }}" as="c" hint-placeholder-count="0">
+                  <sc-raw-th style="padding:9px 12px; background:#EFF1F4; border-bottom:1px solid #DCDFE4; font-size:10px; font-weight:600; color:#6E7581; letter-spacing:0.09em; text-transform:uppercase; text-align:{{ c.align }}; white-space:nowrap;">{{ c.label }}</sc-raw-th>
+                </sc-for>
+              </sc-raw-tr>
+              <sc-for list="{{ b.rows }}" as="r" hint-placeholder-count="0">
+                <sc-raw-tr>
+                  <sc-for list="{{ r.cells }}" as="c" hint-placeholder-count="0">
+                    <sc-raw-td style="padding:10px 12px; border-bottom:1px solid #E9EBEF; text-align:{{ c.align }}; vertical-align:middle;">
+                      <span style="display:{{ c.dotDisp }}; width:8px; height:8px; border-radius:50%; margin-right:7px; vertical-align:middle; background:{{ c.dotColor }};"></span>
+                      <span style="display:{{ c.tagDisp }}; align-items:center; padding:2px 8px; border-radius:5px; font-size:10.5px; font-weight:600; letter-spacing:0.04em; background:{{ c.tagBg }}; color:{{ c.color }};">{{ c.v }}</span>
+                      <span style="display:{{ c.textDisp }}; font-family:{{ c.font }}; font-size:{{ c.size }}; font-weight:{{ c.weight }}; color:{{ c.color }};">{{ c.v }}</span>
+                      <span style="display:{{ c.barDisp }}; position:relative; width:100%; min-width:80px; height:8px; background:#EFF1F4; border-radius:999px; overflow:hidden; vertical-align:middle;">
+                        <span style="position:absolute; top:0; left:{{ c.barOff }}; width:{{ c.barW }}; height:100%; border-radius:999px; background:{{ c.barColor }};"></span>
+                        <span style="display:{{ c.medDisp }}; position:absolute; top:0; left:{{ c.medPos }}; width:2px; height:8px; background:#6E7581;"></span>
+                      </span>
+                      <div style="display:{{ c.subDisp }}; font-size:11px; color:#6E7581; margin-top:2px; font-weight:400;">{{ c.sub }}</div>
+                    </sc-raw-td>
+                  </sc-for>
+                </sc-raw-tr>
+              </sc-for>
+            </sc-raw-table>
+          </div>
+          <div style="display:{{ b.footDisp }}; padding:10px 12px; background:#F7F8F9; font-size:11.5px; color:#6E7581;">{{ b.footer }}</div>
+        </div>
+
+        <div style="display:{{ b.listsDisp }}; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:20px;">
+          <sc-for list="{{ b.lists }}" as="l" hint-placeholder-count="2">
+            <div style="min-width:0;">
+              <div style="display:flex; align-items:baseline; gap:10px; margin-bottom:10px;">
+                <h2 style="font-size:16px; font-weight:600; margin:0; letter-spacing:-0.015em;"><span style="color:{{ l.color }};">{{ l.arrow }}</span> {{ l.title }}</h2>
+                <span style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#6E7581;">{{ l.count }}</span>
+              </div>
+              <div style="background:#FFFFFF; border:1px solid #DCDFE4; border-radius:12px; overflow:hidden;">
+                <sc-for list="{{ l.rows }}" as="r" hint-placeholder-count="5">
+                  <div style="display:flex; align-items:center; gap:12px; padding:11px 16px; border-bottom:1px solid #E9EBEF;">
+                    <span style="display:{{ r.rankDisp }}; font-family:'IBM Plex Mono',monospace; font-size:11px; color:#AEB4BE; width:14px; flex:0 0 auto;">{{ r.rank }}</span>
+                    <div style="min-width:0; flex:1;">
+                      <div style="font-size:14px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ r.name }}</div>
+                      <div style="display:{{ r.metaDisp }}; font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#6E7581; margin-top:2px; letter-spacing:0.03em;">{{ r.meta }}</div>
+                    </div>
+                    <div style="display:{{ r.barDisp }}; flex:1; min-width:60px; height:10px; background:#EFF1F4; border-radius:3px; overflow:hidden;">
+                      <div style="width:{{ r.barW }}; height:100%; border-radius:3px; background:{{ l.color }};"></div>
+                    </div>
+                    <div style="text-align:right; flex:0 0 auto;">
+                      <div style="display:{{ r.priceDisp }}; font-family:'IBM Plex Mono',monospace; font-size:15px; font-weight:500;">{{ r.price }}</div>
+                      <div style="font-family:'IBM Plex Mono',monospace; font-size:12.5px; font-weight:600; margin-top:2px; color:{{ l.color }};">{{ r.var }}</div>
+                    </div>
+                  </div>
+                </sc-for>
+                <div sc-camel-on-click="{{ goAnalyse }}" style="display:{{ l.linkDisp }}; padding:10px 16px; background:#F7F8F9; cursor:pointer;">
+                  <span style="font-size:12.5px; color:#1B3A6B; font-weight:600;">Ouvrir l'analyse d'un titre →</span>
+                </div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display:{{ b.cardsDisp }}; flex-direction:column; gap:12px;">
+          <sc-for list="{{ b.cards }}" as="c" hint-placeholder-count="2">
+            <div style="background:#FFFFFF; border:1px solid #DCDFE4; border-left:2px solid {{ c.accent }}; border-radius:0 12px 12px 0; padding:14px 18px;">
+              <div style="display:{{ c.headDisp }}; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+                <span style="display:{{ c.chipDisp }}; font-family:'IBM Plex Mono',monospace; font-size:10.5px; font-weight:600; padding:2px 6px; border-radius:4px; background:#EFF1F4; color:#495060;">{{ c.chip }}</span>
+                <span style="font-size:12px; color:#6E7581;">{{ c.source }}</span>
+                <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#AEB4BE;">{{ c.date }}</span>
+                <span style="font-size:11.5px; font-weight:600; color:#8A5A00;">{{ c.star }}</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:9px; margin-bottom:6px;">
+                <span style="display:{{ c.dotDisp }}; width:8px; height:8px; border-radius:50%; flex-shrink:0; background:{{ c.accent }};"></span>
+                <span style="font-size:14.5px; font-weight:600; text-wrap:pretty;">{{ c.titre }}</span>
+              </div>
+              <div style="font-size:13px; color:#495060; line-height:1.55; max-width:76ch; text-wrap:pretty;">{{ c.texte }}</div>
+              <div style="display:{{ c.figsDisp }}; gap:22px; margin-top:10px; padding-top:10px; border-top:1px solid #E9EBEF; flex-wrap:wrap;">
+                <sc-for list="{{ c.figs }}" as="f" hint-placeholder-count="2">
+                  <div style="display:flex; flex-direction:column; gap:1px;">
+                    <span style="font-size:10px; font-weight:600; color:#6E7581; letter-spacing:0.08em; text-transform:uppercase;">{{ f.k }}</span>
+                    <span style="font-family:'IBM Plex Mono',monospace; font-size:14px; font-weight:600; color:{{ f.color }};">{{ f.v }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display:{{ b.barsDisp }}; background:#FFFFFF; border:1px solid #DCDFE4; border-radius:12px; padding:18px 20px; flex-direction:column; gap:16px;">
+          <sc-for list="{{ b.bars }}" as="p" hint-placeholder-count="5">
+            <div>
+              <div style="display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:6px;">
+                <span style="font-size:12.5px; font-weight:600; color:#14171C;">{{ p.label }}</span>
+                <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6E7581;">{{ p.note }}</span>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:4px;">
+                <sc-for list="{{ p.series }}" as="s" hint-placeholder-count="3">
+                  <div style="display:flex; align-items:center; gap:8px;">
+                    <div style="flex:1; height:11px; background:#EFF1F4; border-radius:3px; overflow:hidden;"><div style="width:{{ s.w }}; height:100%; background:{{ s.color }};"></div></div>
+                    <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; width:42px; text-align:right; color:#495060;">{{ s.v }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display:{{ b.chartDisp }}; background:#FFFFFF; border:1px solid #DCDFE4; border-radius:12px; padding:18px 20px; flex-direction:column;">
+          <div style="display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
+            <div style="display:flex; align-items:flex-end; gap:12px;">
+              <span style="font-variant-numeric:tabular-nums; font-size:34px; font-weight:600; letter-spacing:-0.025em; line-height:1;">{{ b.chartBig }}</span>
+              <span style="font-variant-numeric:tabular-nums; font-size:14px; font-weight:600; padding-bottom:3px; color:{{ b.chartDeltaColor }};">{{ b.chartDelta }}</span>
+            </div>
+            <div style="display:flex; gap:16px; flex-wrap:wrap;">
+              <sc-for list="{{ b.legend }}" as="l" hint-placeholder-count="1">
+                <span style="display:inline-flex; align-items:center; gap:6px; font-size:12px; color:#495060;">
+                  <span style="width:14px; height:2px; display:inline-block; background:{{ l.color }};"></span>{{ l.label }}
+                </span>
+              </sc-for>
+            </div>
+          </div>
+          <svg sc-camel-view-box="0 0 600 200" sc-camel-preserve-aspect-ratio="none" style="width:100%; height:210px; display:block;">
+            <line x1="0" y1="50" x2="600" y2="50" stroke="#EFF1F4" stroke-width="1"></line>
+            <line x1="0" y1="100" x2="600" y2="100" stroke="#EFF1F4" stroke-width="1"></line>
+            <line x1="0" y1="150" x2="600" y2="150" stroke="#EFF1F4" stroke-width="1"></line>
+            <sc-for list="{{ b.series }}" as="s" hint-placeholder-count="1">
+              <polyline points="{{ s.points }}" fill="{{ s.fill }}" stroke="{{ s.stroke }}" stroke-width="2" stroke-linejoin="round" stroke-dasharray="{{ s.dash }}"></polyline>
+            </sc-for>
+          </svg>
+          <div style="display:flex; justify-content:space-between; font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#AEB4BE; margin-top:6px;">
+            <sc-for list="{{ b.xLabels }}" as="x" hint-placeholder-count="4">
+              <span>{{ x.label }}</span>
+            </sc-for>
+          </div>
+          <div style="display:{{ b.chartNoteDisp }}; font-size:11.5px; color:#6E7581; margin-top:10px;">{{ b.chartNote }}</div>
+        </div>
+
+        <div style="display:{{ b.kpisDisp }}; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:14px;">
+          <sc-for list="{{ b.kpis }}" as="k" hint-placeholder-count="4">
+            <div style="border-radius:12px; padding:15px 17px; display:flex; flex-direction:column; gap:5px; min-width:0; background:{{ k.bg }}; border:{{ k.border }}; border-top:{{ k.borderTop }};">
+              <span style="font-size:10.5px; font-weight:600; letter-spacing:0.09em; text-transform:uppercase; color:{{ k.labelColor }};">{{ k.label }}</span>
+              <span style="font-family:{{ k.font }}; font-variant-numeric:tabular-nums; font-size:{{ k.size }}; font-weight:{{ k.weight }}; letter-spacing:-0.015em; line-height:1.05; color:{{ k.valueColor }};">{{ k.value }}</span>
+              <div style="display:{{ k.barDisp }}; height:4px; background:{{ k.trackBg }}; border-radius:999px; overflow:hidden; margin:3px 0 1px;">
+                <div style="width:{{ k.barW }}; height:100%; border-radius:999px; background:{{ k.barColor }};"></div>
+              </div>
+              <span style="font-size:11.5px; font-weight:{{ k.subWeight }}; color:{{ k.subColor }};">{{ k.sub }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display:{{ b.breadthDisp }}; background:#FFFFFF; border:1px solid #DCDFE4; border-radius:12px; padding:14px 18px; align-items:center; gap:18px; flex-wrap:wrap;">
+          <span style="font-size:10.5px; font-weight:600; color:#6E7581; letter-spacing:0.09em; text-transform:uppercase; flex:0 0 auto;">Largeur du marché</span>
+          <div style="flex:1; min-width:200px; display:flex; height:9px; border-radius:999px; overflow:hidden; background:#E9EBEF;">
+            <sc-for list="{{ b.breadth }}" as="s" hint-placeholder-count="3">
+              <div style="width:{{ s.w }}; background:{{ s.color }};"></div>
+            </sc-for>
+          </div>
+          <div style="display:flex; gap:16px; font-family:'IBM Plex Mono',monospace; font-size:12px; flex:0 0 auto;">
+            <sc-for list="{{ b.breadth }}" as="s" hint-placeholder-count="3">
+              <span style="font-weight:600; color:{{ s.color }};">{{ s.label }}</span>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="display:{{ b.donutDisp }}; background:#FFFFFF; border:1px solid #DCDFE4; border-radius:12px; padding:20px 22px; align-items:center; gap:30px; flex-wrap:wrap;">
+          <div style="position:relative; width:180px; height:180px; flex:0 0 auto;">
+            <svg sc-camel-view-box="0 0 180 180" style="width:180px; height:180px; transform:rotate(-90deg);">
+              <sc-for list="{{ b.donut }}" as="s" hint-placeholder-count="0">
+                <circle cx="90" cy="90" r="66" fill="none" stroke="{{ s.color }}" stroke-width="26" stroke-dasharray="{{ s.dash }}" stroke-dashoffset="{{ s.off }}"></circle>
+              </sc-for>
+            </svg>
+            <div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;">
+              <span style="font-size:22px; font-weight:600; letter-spacing:-0.02em; font-variant-numeric:tabular-nums;">{{ b.donutBig }}</span>
+              <span style="font-size:10.5px; font-weight:600; color:#6E7581; letter-spacing:0.08em; text-transform:uppercase;">{{ b.donutSub }}</span>
+            </div>
+          </div>
+          <div style="flex:1; min-width:220px; display:flex; flex-direction:column; gap:8px;">
+            <sc-for list="{{ b.donut }}" as="s" hint-placeholder-count="0">
+              <div style="display:flex; align-items:center; gap:10px; padding-bottom:7px; border-bottom:1px solid #E9EBEF;">
+                <span style="width:10px; height:10px; border-radius:3px; flex-shrink:0; background:{{ s.color }};"></span>
+                <span style="font-size:13px; flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ s.label }}</span>
+                <span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#6E7581;">{{ s.montant }}</span>
+                <span style="font-size:12.5px; font-weight:600; font-variant-numeric:tabular-nums; width:52px; text-align:right;">{{ s.pct }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="display:{{ b.scatterDisp }}; background:#FFFFFF; border:1px solid #DCDFE4; border-radius:12px; padding:18px 22px 14px; flex-direction:column;">
+          <div style="display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:6px;">
+            <span style="font-size:10.5px; font-weight:600; color:#6E7581; letter-spacing:0.09em; text-transform:uppercase;">{{ b.scatterY }}</span>
+            <span style="font-size:11.5px; color:#6E7581;">{{ b.scatterHint }}</span>
+          </div>
+          <svg sc-camel-view-box="0 0 620 300" style="width:100%; height:300px; display:block;">
+            <line x1="40" y1="10" x2="40" y2="260" stroke="#DCDFE4" stroke-width="1"></line>
+            <line x1="40" y1="260" x2="610" y2="260" stroke="#DCDFE4" stroke-width="1"></line>
+            <sc-for list="{{ b.gridLines }}" as="g" hint-placeholder-count="0">
+              <line x1="{{ g.x1 }}" y1="{{ g.y1 }}" x2="{{ g.x2 }}" y2="{{ g.y2 }}" stroke="#C4C9D1" stroke-width="1" stroke-dasharray="4 4"></line>
+            </sc-for>
+            <sc-for list="{{ b.dots }}" as="d" hint-placeholder-count="0">
+              <circle cx="{{ d.cx }}" cy="{{ d.cy }}" r="{{ d.r }}" fill="{{ d.fill }}" fill-opacity="0.85" stroke="#FFFFFF" stroke-width="1.5"></circle>
+            </sc-for>
+            <sc-for list="{{ b.dotLabels }}" as="l" hint-placeholder-count="0">
+              <text x="{{ l.x }}" y="{{ l.y }}" font-size="11" font-family="Instrument Sans, sans-serif" font-weight="500" fill="{{ l.fill }}" text-anchor="{{ l.anchor }}">{{ l.label }}</text>
+            </sc-for>
+            <sc-for list="{{ b.axisLabels }}" as="a" hint-placeholder-count="0">
+              <text x="{{ a.x }}" y="{{ a.y }}" font-size="10" font-family="IBM Plex Mono, monospace" fill="#AEB4BE" text-anchor="{{ a.anchor }}">{{ a.label }}</text>
+            </sc-for>
+          </svg>
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-top:2px;">
+            <span style="font-size:10.5px; font-weight:600; color:#6E7581; letter-spacing:0.09em; text-transform:uppercase;">{{ b.scatterX }}</span>
+            <span style="font-size:11.5px; color:#6E7581;">{{ b.scatterNote }}</span>
+          </div>
+        </div>
+
+        <div style="display:{{ b.heatDisp }}; background:#FFFFFF; border:1px solid #DCDFE4; border-radius:12px; overflow:hidden; flex-direction:column;">
+          <div style="overflow-x:auto;">
+            <div style="display:grid; grid-template-columns:{{ b.heatCols }}; min-width:{{ b.heatMin }};">
+              <sc-for list="{{ b.heatHead }}" as="h" hint-placeholder-count="0">
+                <div style="padding:9px 10px; background:#EFF1F4; border-bottom:1px solid #DCDFE4; font-size:10px; font-weight:600; color:#6E7581; letter-spacing:0.09em; text-transform:uppercase; text-align:{{ h.align }}; white-space:nowrap;">{{ h.label }}</div>
+              </sc-for>
+              <sc-for list="{{ b.heatCells }}" as="c" hint-placeholder-count="0">
+                <div style="padding:9px 10px; border-bottom:1px solid #FFFFFF; border-right:1px solid #FFFFFF; text-align:{{ c.align }}; background:{{ c.bg }};">
+                  <span style="font-family:{{ c.font }}; font-size:{{ c.size }}; font-weight:{{ c.weight }}; color:{{ c.color }}; white-space:nowrap;">{{ c.v }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="display:{{ b.heatFootDisp }}; padding:10px 12px; background:#F7F8F9; font-size:11.5px; color:#6E7581;">{{ b.heatFoot }}</div>
+        </div>
+
+        <div style="display:{{ b.stepsDisp }}; flex-direction:column; gap:12px;">
+          <sc-for list="{{ b.steps }}" as="s" hint-placeholder-count="0">
+            <div style="background:#FFFFFF; border:1px solid #DCDFE4; border-left:4px solid {{ s.accent }}; border-radius:0 12px 12px 0; display:flex; align-items:stretch; flex-wrap:wrap;">
+              <div style="flex:0 0 66px; background:{{ s.rankBg }}; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; padding:16px 0;">
+                <span style="font-family:'IBM Plex Mono',monospace; font-size:22px; font-weight:600; color:{{ s.rankColor }}; line-height:1;">{{ s.rank }}</span>
+                <span style="font-size:9px; font-weight:600; color:{{ s.rankColor }}; letter-spacing:0.08em; text-transform:uppercase;">{{ s.rankLabel }}</span>
+              </div>
+              <div style="flex:1; min-width:240px; padding:14px 18px; display:flex; flex-direction:column; gap:7px;">
+                <div style="display:flex; align-items:center; gap:9px; flex-wrap:wrap;">
+                  <span style="font-size:15.5px; font-weight:600; letter-spacing:-0.015em;">{{ s.action }}</span>
+                  <span style="display:inline-flex; align-items:center; padding:2px 8px; border-radius:5px; font-size:10.5px; font-weight:600; letter-spacing:0.04em; background:{{ s.tagBg }}; color:{{ s.accent }};">{{ s.tag }}</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                  <sc-for list="{{ s.lignes }}" as="l" hint-placeholder-count="0">
+                    <span style="display:inline-flex; align-items:center; gap:6px; padding:3px 8px; border-radius:6px; background:#EFF1F4;">
+                      <span style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; font-weight:600; color:#495060;">{{ l.ticker }}</span>
+                      <span style="font-size:12px; color:#14171C;">{{ l.name }}</span>
+                      <span style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; font-weight:600; color:{{ l.color }};">{{ l.qty }}</span>
+                    </span>
+                  </sc-for>
+                </div>
+                <div style="font-size:13px; color:#495060; line-height:1.5; max-width:74ch; text-wrap:pretty;">{{ s.motif }}</div>
+              </div>
+              <div style="flex:0 0 176px; padding:14px 18px; border-left:1px solid #E9EBEF; display:flex; flex-direction:column; gap:4px; justify-content:center;">
+                <span style="font-size:10px; font-weight:600; color:#6E7581; letter-spacing:0.08em; text-transform:uppercase;">{{ s.impactLabel }}</span>
+                <span style="font-size:19px; font-weight:600; font-variant-numeric:tabular-nums; letter-spacing:-0.02em; color:{{ s.impactColor }};">{{ s.impact }}</span>
+                <div style="height:5px; background:#EFF1F4; border-radius:999px; overflow:hidden; margin-top:3px;">
+                  <div style="width:{{ s.impactW }}; height:100%; border-radius:999px; background:{{ s.accent }};"></div>
+                </div>
+                <span style="font-size:11px; color:#6E7581;">{{ s.impactSub }}</span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-for>
+
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{&quot;admin&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Rôle&quot;}}">
+const MONO = "'IBM Plex Mono',monospace";
+const SANS = "'Instrument Sans',sans-serif";
+const NAVY = "#1B3A6B", NAVY_D = "#12294B", NAVY_S = "#A8C4EA", NAVY_BG = "#E6ECF5";
+const DIM = "#5A7CA8", INK_W = "#C9D6E8";
+const INK = "#14171C", INK2 = "#495060", INK3 = "#6E7581", INK4 = "#AEB4BE";
+const UP = "#0E7A54", DOWN = "#C0392B", WARN = "#8A5A00";
+const UP_BG = "#E4EDE7", DOWN_BG = "#F7E5E2", WARN_BG = "#F6EEDC", NEU_BG = "#EFF1F4";
+const NONE = "none";
+
+/* ---------- fabriques de cellules ---------- */
+const base = {
+  align: "left", color: INK, weight: 400, font: SANS, size: "13px",
+  dotDisp: NONE, dotColor: INK3, tagDisp: NONE, tagBg: "transparent",
+  textDisp: "inline", barDisp: NONE, barW: "0%", barOff: "0%", barColor: NAVY,
+  medDisp: NONE, medPos: "50%", subDisp: NONE, sub: "", v: "",
+};
+const T = (v, o) => ({ ...base, v, ...(o || {}) });                      // texte
+const N = (v, o) => T(v, { align: "right", font: MONO, size: "12.5px", ...(o || {}) });
+const B = (v, o) => T(v, { weight: 500, ...(o || {}) });                  // texte gras
+const K = (v) => T(v, { font: MONO, size: "11.5px", weight: 600, color: INK2 });
+const TAG = (v, bg, color) => ({ ...base, v, textDisp: NONE, tagDisp: "inline-flex", tagBg: bg, color });
+const DOT = (v, color) => T(v, { dotDisp: "inline-block", dotColor: color, color: INK2, size: "12.5px" });
+const BAR = (w, color, med) => ({
+  ...base, textDisp: NONE, barDisp: "inline-block", barW: w, barColor: color,
+  medDisp: med ? "inline-block" : NONE, medPos: med || "50%",
+});
+const SBAR = (w, off, color) => ({ ...base, textDisp: NONE, barDisp: "inline-block", barW: w, barOff: off, barColor: color });
+const SUB = (v, sub) => T(v, { weight: 500, subDisp: "block", sub });
+
+const cols = (...defs) => defs.map((d) => (typeof d === "string" ? { label: d, align: "left" } : { label: d[0], align: d[1] }));
+const rows = (arr) => arr.map((cells) => ({ cells }));
+
+/* ---------- fabriques de blocs ---------- */
+const blank = {
+  title: "", count: "", arrow: "", arrowColor: INK3, headDisp: NONE,
+  intro: "", introDisp: NONE, footer: "", footDisp: NONE,
+  tableDisp: NONE, cols: [], rows: [], minWidth: "100%",
+  listsDisp: NONE, lists: [], cardsDisp: NONE, cards: [],
+  barsDisp: NONE, bars: [], chartDisp: NONE, series: [], legend: [], xLabels: [],
+  chartBig: "", chartDelta: "", chartDeltaColor: UP, chartNote: "", chartNoteDisp: NONE,
+  kpisDisp: NONE, kpis: [], breadthDisp: NONE, breadth: [],
+  donutDisp: NONE, donut: [], donutBig: "", donutSub: "",
+  scatterDisp: NONE, dots: [], dotLabels: [], gridLines: [], axisLabels: [],
+  scatterY: "", scatterX: "", scatterHint: "", scatterNote: "",
+  heatDisp: NONE, heatHead: [], heatCells: [], heatCols: "1fr", heatMin: "100%",
+  heatFoot: "", heatFootDisp: NONE,
+  stepsDisp: NONE, steps: [],
+};
+const head = (title, count, arrow, arrowColor) => ({
+  headDisp: "flex", title: arrow ? " " + title : title, count: count || "",
+  arrow: arrow || "", arrowColor: arrowColor || INK3,
+});
+const bTable = (title, c, r, o) => ({
+  ...blank, ...head(title, (o || {}).count), tableDisp: "block", cols: c, rows: r,
+  minWidth: (o || {}).minWidth || "760px",
+  intro: (o || {}).intro || "", introDisp: (o || {}).intro ? "block" : NONE,
+  footer: (o || {}).footer || "", footDisp: (o || {}).footer ? "block" : NONE,
+});
+const bLists = (lists) => ({ ...blank, listsDisp: "grid", lists });
+const bCards = (title, count, cards) => ({ ...blank, ...head(title, count), cardsDisp: "flex", cards });
+const bBars = (title, bars) => ({ ...blank, ...head(title), barsDisp: "flex", bars });
+const bKpis = (title, kpis) => ({ ...blank, ...(title ? head(title) : {}), kpisDisp: "grid", kpis });
+const bChart = (title, o) => ({
+  ...blank, ...(title ? head(title) : {}), chartDisp: "flex",
+  chartBig: o.big || "", chartDelta: o.delta || "", chartDeltaColor: o.deltaColor || UP,
+  series: o.series, legend: o.legend || [], xLabels: (o.x || []).map((label) => ({ label })),
+  chartNote: o.note || "", chartNoteDisp: o.note ? "block" : NONE,
+});
+const bExp = (label, hint) => ({
+  ...blank, cardsDisp: "flex",
+  cards: [{ accent: "#DCDFE4", headDisp: NONE, chipDisp: NONE, chip: "", source: "", date: "", star: "",
+    dotDisp: NONE, titre: label + "   ▾", texte: hint, figsDisp: NONE, figs: [] }],
+});
+const chips = (label, items) => ({
+  label: label || "", labelDisp: label ? "block" : NONE, pad: "3px", wrapBg: NEU_BG,
+  options: items.map(([l, on]) => ({
+    label: (on ? "✓  " : "") + l,
+    bg: on ? "#FFFFFF" : "transparent", color: on ? INK : INK2,
+    weight: on ? 600 : 400, shadow: on ? "0 1px 2px rgba(20,23,28,0.08)" : NONE,
+  })),
+});
+// Variation début → fin de la série, rendue en barre signée autour d'un axe
+// central. Un vrai trace de sparkline demanderait un <svg> dans la cellule
+// partagee : son style ne se resout pas la, et sa largeur fixe ecrasait les
+// proportions de toutes les colonnes.
+const spark = (vals, color) => {
+  const pct = (vals[vals.length - 1] - vals[0]) / vals[0] * 100;
+  const w = Math.min(50, Math.abs(pct) / 40 * 50);
+  return SBAR(w.toFixed(0) + "%", pct >= 0 ? "50%" : (50 - w).toFixed(0) + "%", color);
+};
+const CIRC = 2 * Math.PI * 66;
+const bDonut = (title, big, sub, segs) => {
+  let acc = 0;
+  return {
+    ...blank, ...head(title), donutDisp: "flex", donutBig: big, donutSub: sub,
+    donut: segs.map((s) => {
+      const len = CIRC * s.pctNum / 100;
+      const off = -CIRC * acc / 100;
+      acc += s.pctNum;
+      return { ...s, dash: len.toFixed(1) + " " + (CIRC - len).toFixed(1), off: off.toFixed(1) };
+    }),
+  };
+};
+const bScatter = (title, o) => {
+  const X = (v) => 40 + (v - o.xMin) / (o.xMax - o.xMin) * 560;
+  const Y = (v) => 260 - (v - o.yMin) / (o.yMax - o.yMin) * 240;
+  const dots = o.dots.map((d) => ({ cx: X(d.x).toFixed(1), cy: Y(d.y).toFixed(1), r: d.r || 7, fill: d.color || NAVY }));
+  const dotLabels = o.dots.filter((d) => d.label).map((d) => ({
+    label: d.label, x: (X(d.x) + (d.r || 7) + 5).toFixed(1), y: (Y(d.y) + 4).toFixed(1),
+    fill: d.labelColor || INK2, anchor: "start",
+  }));
+  const gridLines = (o.guides || []).map((g) => (g.h !== undefined
+    ? { x1: "40", y1: Y(g.h).toFixed(1), x2: "610", y2: Y(g.h).toFixed(1) }
+    : { x1: X(g.v).toFixed(1), y1: "10", x2: X(g.v).toFixed(1), y2: "260" }));
+  const axisLabels = [];
+  (o.xTicks || []).forEach((t) => axisLabels.push({ label: t.label, x: X(t.at).toFixed(1), y: "278", anchor: "middle" }));
+  (o.yTicks || []).forEach((t) => axisLabels.push({ label: t.label, x: "34", y: (Y(t.at) + 4).toFixed(1), anchor: "end" }));
+  return {
+    ...blank, ...head(title), scatterDisp: "flex",
+    scatterY: o.yLabel, scatterX: o.xLabel, scatterHint: o.hint || "", scatterNote: o.note || "",
+    dots, dotLabels, gridLines, axisLabels,
+  };
+};
+const heatColor = (v, max) => {
+  const t = Math.min(1, Math.abs(v) / max);
+  if (v > 0) return "rgba(14,122,84," + (0.10 + t * 0.62).toFixed(2) + ")";
+  if (v < 0) return "rgba(192,57,43," + (0.10 + t * 0.62).toFixed(2) + ")";
+  return NEU_BG;
+};
+const bHeat = (title, headers, lines, o) => {
+  const opt = o || {};
+  const max = opt.max || 30;
+  const cells = [];
+  lines.forEach((l) => {
+    cells.push({ v: l.label, align: "left", bg: "#FFFFFF", color: INK, weight: 500, font: SANS, size: "13px" });
+    l.values.forEach((v) => cells.push({
+      v: (v > 0 ? "+" : "") + String(v).replace(".", ",") + " %", align: "right",
+      bg: heatColor(v, max), color: Math.abs(v) / max > 0.55 ? "#FFFFFF" : INK,
+      weight: 600, font: MONO, size: "12px",
+    }));
+  });
+  return {
+    ...blank, ...head(title, opt.count), heatDisp: "flex",
+    heatCols: "minmax(150px,1.4fr) repeat(" + (headers.length - 1) + ",minmax(74px,1fr))",
+    heatMin: opt.minWidth || "700px",
+    heatHead: headers.map((h, i) => ({ label: h, align: i === 0 ? "left" : "right" })),
+    heatCells: cells,
+    heatFoot: opt.footer || "", heatFootDisp: opt.footer ? "block" : NONE,
+  };
+};
+const bSteps = (title, count, steps) => ({
+  ...blank, ...head(title, count), stepsDisp: "flex",
+  steps: steps.map((s, i) => {
+    const soft = s.accent === DOWN ? DOWN_BG : s.accent === WARN ? WARN_BG : s.accent === UP ? UP_BG : NAVY_BG;
+    return {
+      rank: String(i + 1).padStart(2, "0"), rankLabel: s.rankLabel || "étape",
+      rankBg: soft, rankColor: s.accent === NAVY ? NAVY_D : s.accent,
+      accent: s.accent, tag: s.tag, tagBg: soft,
+      action: s.action, motif: s.motif, lignes: s.lignes || [],
+      impactLabel: s.impactLabel || "Impact", impact: s.impact, impactColor: s.impactColor || INK,
+      impactW: s.impactW || "50%", impactSub: s.impactSub || "",
+    };
+  }),
+});
+const bNote = (titre, texte, accent) => ({
+  ...blank, cardsDisp: "flex",
+  cards: [{ accent: accent || NAVY, headDisp: NONE, chipDisp: NONE, chip: "", source: "", date: "", star: "",
+    dotDisp: "inline-block", titre, texte, figsDisp: NONE, figs: [] }],
+});
+
+const kpi = (label, value, sub, accent, o) => {
+  const opt = o || {};
+  return {
+    label, value, sub: sub || "",
+    bg: "#FFFFFF", border: "1px solid #DCDFE4", borderTop: "2px solid " + (accent || INK4),
+    labelColor: INK3, valueColor: opt.valueColor || INK, subColor: opt.subColor || INK3,
+    subWeight: opt.subColor ? 600 : 400, font: opt.font || SANS,
+    size: opt.size || "27px", weight: opt.weight || 600,
+    barDisp: opt.barW ? "block" : NONE, barW: opt.barW || "0%",
+    barColor: accent || NAVY, trackBg: NEU_BG,
+  };
+};
+const kpiDark = (label, value, sub, o) => {
+  const opt = o || {};
+  return {
+    label, value, sub: sub || "",
+    bg: NAVY_D, border: "1px solid " + NAVY_D, borderTop: "1px solid " + NAVY_D,
+    labelColor: "#A9BEDC", valueColor: "#FFFFFF", subColor: INK_W, subWeight: 400,
+    font: opt.font || SANS, size: opt.size || "29px", weight: 600,
+    barDisp: opt.barW ? "block" : NONE, barW: opt.barW || "0%",
+    barColor: NAVY_S, trackBg: "rgba(255,255,255,0.18)",
+  };
+};
+const kpiText = (label, value, sub, accent, subColor) =>
+  kpi(label, value, sub, accent, { font: SANS, size: "19px", weight: 600, subColor });
+
+const seg = (label, options, activeIdx) => ({
+  label: label || "", labelDisp: label ? "block" : NONE, pad: "3px", wrapBg: NEU_BG,
+  options: options.map((o, i) => ({
+    label: o,
+    bg: i === activeIdx ? "#FFFFFF" : "transparent",
+    color: i === activeIdx ? INK : INK2,
+    weight: i === activeIdx ? 600 : 400,
+    shadow: i === activeIdx ? "0 1px 2px rgba(20,23,28,0.08)" : NONE,
+  })),
+});
+const sel = (label, value) => ({
+  label: label || "", labelDisp: label ? "block" : NONE, pad: "3px 11px", wrapBg: "#FFFFFF",
+  options: [{ label: value + "  ▾", bg: "transparent", color: INK, weight: 400, shadow: NONE }],
+});
+const btn = (label, primary) => ({
+  label, bg: primary ? NAVY : "#FFFFFF", color: primary ? "#FFFFFF" : INK,
+  border: primary ? NAVY : "#C4C9D1", weight: primary ? 600 : 500,
+});
+
+/* ---------- données ---------- */
+const HAUSSES = [
+  ["SODECI", "SDCC.ci · Services publics", "7 140", "+7,37 %"],
+  ["Bank of Africa Niger", "BOAN.ne · Banque", "3 200", "+6,84 %"],
+  ["Filtisac", "FTSC.ci · Industrie", "2 985", "+5,12 %"],
+  ["Total Sénégal", "TTLS.sn · Distribution", "2 430", "+4,08 %"],
+  ["NSIA Banque CI", "NSBC.ci · Banque", "6 550", "+3,47 %"],
+  ["Coris Bank Int.", "CBIBF.bf · Banque", "9 800", "+2,61 %"],
+  ["Bernabé CI", "BNBC.ci · Distribution", "1 615", "+2,22 %"],
+  ["Air Liquide CI", "SIVC.ci · Industrie", "985", "+1,86 %"],
+];
+const BAISSES = [
+  ["Sonatel", "SNTS.sn · Télécoms", "22 100", "−4,32 %"],
+  ["Oragroup", "ORGT.tg · Banque", "1 940", "−3,96 %"],
+  ["Palmci", "PALC.ci · Agriculture", "4 275", "−3,11 %"],
+  ["Sucrivoire", "SCRC.ci · Agriculture", "1 060", "−2,75 %"],
+  ["Ecobank CI", "ECOC.ci · Banque", "8 490", "−2,18 %"],
+  ["SAFCA", "SAFC.ci · Finance", "1 350", "−1,82 %"],
+  ["Servair Abidjan", "ABJC.ci · Transport", "2 240", "−1,54 %"],
+  ["Onatel", "ONTBF.bf · Télécoms", "3 105", "−1,20 %"],
+];
+const vStyle = (v) => {
+  const u = v.toUpperCase();
+  if (u.indexOf("ACHAT") >= 0) return [UP_BG, UP];
+  if (u.indexOf("VENTE") >= 0 || u.indexOf("EVITER") >= 0 || u.indexOf("ÉVITER") >= 0) return [DOWN_BG, DOWN];
+  return [WARN_BG, WARN];
+};
+const VTAG = (v) => { const [bg, c] = vStyle(v); return TAG(v, bg, c); };
+const signed = (v) => (String(v).indexOf("−") === 0 ? DOWN : UP);
+
+class Component extends DCLogic {
+  state = { page: "Dashboard", tab: 0 };
+
+  go = (p) => () => this.setState({ page: p, tab: p === "Analyse d'un Titre" ? 1 : 0 });
+  goTab = (i) => () => this.setState({ tab: i });
+
+  /* --- description de chaque page --- */
+  pages() {
+    return {
+      "Dashboard": {
+        title: "Marché BRVM",
+        intro: "Variations calculées entre la dernière clôture et la précédente, à partir du cache de cotations.",
+        kpis: [
+          kpi("Hausses", "17", "+2 vs veille", UP, { subColor: UP }),
+          kpi("Baisses", "24", "+3 vs veille", DOWN, { subColor: DOWN }),
+          kpi("Stables", "7", "dont 4 sans échange", INK4),
+          kpi("Capitalisation", "18 391", "Mds FCFA", NAVY),
+        ],
+        tabs: ["Jour", "Semaine", "Mois"],
+        panels: [this.dashPanel(0), this.dashPanel(1), this.dashPanel(2)],
+      },
+
+      "Infos Marché": {
+        title: "Infos Marché",
+        intro: "Chaque dépêche croise un chiffre calculé par l'app et une citation textuelle de la source. Rien n'est reformulé.",
+        tabs: ["Revue de presse", "Fil d'actualités"],
+        toolbar: [seg("Période", ["7 j", "15 j", "30 j"], 1)],
+        panels: [
+          [
+            bCards("Résultats et publications", "4 dépêches", [
+              this.depeche("SNTS.sn", "Sikafinance", "02/09", "★ en portefeuille",
+                "Sonatel publie un résultat net semestriel de 118,4 Mds FCFA",
+                "Le groupe confirme sa trajectoire malgré la pression tarifaire au Mali",
+                [["Var. vs S1 2025", "+6,2 %", UP], ["Marge nette", "24,8 %", INK]]),
+              this.depeche("ORGT.tg", "BOC n°248", "29/08", "",
+                "Oragroup : perte nette de 8,04 Mds sur l'exercice 2025",
+                "Les provisions sur créances douteuses expliquent l'essentiel de l'écart",
+                [["P/E", "n.s.", DOWN], ["Fonds propres", "94,1 Mds", INK]]),
+            ]),
+            bCards("Dividendes et opérations", "3 dépêches", [
+              this.depeche("SDCC.ci", "BOC n°247", "27/08", "★ en portefeuille",
+                "SODECI met en paiement un dividende brut de 420 FCFA",
+                "Détachement le 15 septembre, paiement à partir du 30 septembre",
+                [["Yield sur cours", "5,88 %", UP], ["Retenue", "15 %", INK]]),
+            ]),
+            bCards("Gouvernance", "2 dépêches", [
+              this.depeche("ECOC.ci", "BRVM", "25/08", "",
+                "Ecobank CI nomme un nouveau directeur général",
+                "Prise de fonction effective au 1er octobre 2026",
+                [["Cours depuis l'annonce", "−2,18 %", DOWN], ["Volume", "×2,4", INK]]),
+            ]),
+          ],
+          [
+            bTable("Fil brut", cols("Date", "Ticker", ["Type", "left"], "Titre", ["Source", "right"]), rows([
+              [K("02/09"), K("SNTS.sn"), TAG("Résultats", UP_BG, UP), T("Communiqué de résultats semestriels 2026"), N("Sikafinance", { font: SANS })],
+              [K("29/08"), K("ORGT.tg"), TAG("Annuel", NEU_BG, INK2), T("États financiers annuels 2025 — annule et remplace"), N("BOC n°248", { font: SANS })],
+              [K("27/08"), K("SDCC.ci"), TAG("Dividende", WARN_BG, WARN), T("Avis de mise en paiement du dividende 2025"), N("BOC n°247", { font: SANS })],
+              [K("25/08"), K("ECOC.ci"), TAG("Gouvernance", NEU_BG, INK2), T("Nomination du directeur général"), N("BRVM", { font: SANS })],
+              [K("21/08"), K("CBIBF.bf"), TAG("Trimestriel", UP_BG, UP), T("Indicateurs du 2e trimestre 2026"), N("Sikafinance", { font: SANS })],
+              [K("18/08"), K("PALC.ci"), TAG("Autre", NEU_BG, INK2), T("Assemblée générale extraordinaire — convocation"), N("BOC n°246", { font: SANS })],
+            ]), { intro: "Le fil brut, sans croisement : il sert à vérifier qu'aucune publication officielle n'est passée à la trappe.", footer: "Collecte quotidienne à 16h UTC, jours ouvrés.", minWidth: "820px" }),
+          ],
+        ],
+      },
+
+      "Analyse d'un Titre": {
+        title: "Sonatel",
+        intro: "SNTS.sn · Télécoms · Sénégal · Exercice 2025",
+        meta: "SCORE HYBRIDE 78/100 · VERDICT ACHAT · CONFIANCE 0,86",
+        kpis: [
+          kpi("Prix", "22 100", "FCFA · clôture 04/09", INK4),
+          kpi("Capitalisation", "2 210,0 Md", "1re capitalisation de la cote", INK4),
+          kpi("P/E", "11,4", "▼ Secteur 14,2", UP, { subColor: UP }),
+          kpi("Dividend Yield", "7,33 %", "▲ Secteur 5,10 %", UP, { subColor: UP }),
+        ],
+        tabs: ["Cours", "Fondamentale", "Technique", "Risque", "Recommandation", "Profil"],
+        toolbars: [
+          [sel("Titre", "SNTS.sn — Sonatel"), sel("Exercice", "2025"), seg("Période affichée", ["1M", "3M", "6M", "1A", "2A", "3A", "5A", "Max"], 6)],
+          [sel("Titre", "SNTS.sn — Sonatel"), sel("Exercice", "2025")],
+          [sel("Titre", "SNTS.sn — Sonatel"), seg("Périodicité", ["Journalière", "Mensuelle"], 1), seg("Période", ["3M", "6M", "1A", "2A", "3A", "Max"], 4), chips("Surcouches", [["Bollinger", false], ["RSI", true], ["MACD", true]])],
+          [sel("Titre", "SNTS.sn — Sonatel")],
+          [sel("Titre", "SNTS.sn — Sonatel"), sel("Exercice", "2025")],
+          [sel("Titre", "SNTS.sn — Sonatel")],
+        ],
+        panels: [
+          [
+            bKpis("", [
+              kpi("1 J", "−4,32 %", "vs veille", DOWN, { valueColor: DOWN, size: "22px" }),
+              kpi("1 S", "−2,10 %", "7 jours", DOWN, { valueColor: DOWN, size: "22px" }),
+              kpi("1 M", "+3,40 %", "30 jours", UP, { valueColor: UP, size: "22px" }),
+              kpi("3 M", "+2,10 %", "90 jours", UP, { valueColor: UP, size: "22px" }),
+              kpi("6 M", "+8,60 %", "180 jours", UP, { valueColor: UP, size: "22px" }),
+              kpi("1 A", "+21,10 %", "365 jours", UP, { valueColor: UP, size: "22px" }),
+              kpi("YTD", "+14,21 %", "depuis le 1er janv.", UP, { valueColor: UP, size: "22px" }),
+            ]),
+            bChart("", { big: "22 100", delta: "−4,32 %", deltaColor: DOWN,
+              series: [
+                { points: "0,150 40,142 80,148 120,128 160,132 200,112 240,118 280,96 320,88 360,72 400,80 440,58 480,64 520,44 560,52 600,70 600,200 0,200", fill: "rgba(27,58,107,0.07)", stroke: "none", dash: "" },
+                { points: "0,150 40,142 80,148 120,128 160,132 200,112 240,118 280,96 320,88 360,72 400,80 440,58 480,64 520,44 560,52 600,70", fill: "none", stroke: NAVY, dash: "" },
+                { points: "0,118 600,110", fill: "none", stroke: WARN, dash: "4 4" },
+              ],
+              legend: [{ label: "Cours de clôture", color: NAVY }, { label: "SMA 200 · 19 480", color: WARN }],
+              x: ["sept. 2021", "sept. 2022", "sept. 2023", "sept. 2024", "sept. 2026"],
+              note: "Périodicité mensuelle — 04/09/2021 au 04/09/2026 (61 points mensuels). Cours ajustés des détachements de dividende.",
+            }),
+          ],
+          [
+            bKpis("", [
+              kpiDark("Score fondamental", "38 / 50", "Profil Rente solide", { barW: "76%" }),
+              kpi("Rentabilité", "13 / 15", "ROE 28,4 %", UP, { barW: "87%", size: "22px" }),
+              kpi("Endettement", "8 / 10", "D/E 0,42×", UP, { barW: "80%", size: "22px" }),
+              kpi("Valorisation", "9 / 15", "P/E 11,4 · P/B 2,8", WARN, { barW: "60%", size: "22px" }),
+              kpi("Dividendes", "8 / 10", "Payout 84 %", UP, { barW: "80%", size: "22px" }),
+            ]),
+            bTable("Ratios calculés",
+              cols("Indicateur", ["Valeur", "right"], "Seuil", "Position · vs pairs", "Statut · vs seuil", "Écart"),
+              rows([
+                [B("Marge nette"), N("24,8 %", { weight: 500 }), T("≥ 10%", { color: INK3, size: "12.5px" }), BAR("76%", UP, "52%"), DOT("Bon", UP), T("+6,1 pts vs méd.", { weight: 500, color: UP, size: "12.5px" })],
+                [B("Dette/Equity"), N("0,42×", { weight: 500 }), T("≤ 1.5×", { color: INK3, size: "12.5px" }), BAR("28%", UP, "56%"), DOT("Bon", UP), T("−0,31× vs méd.", { weight: 500, color: UP, size: "12.5px" })],
+                [B("Dividend Yield"), N("7,33 %", { weight: 500 }), T("≥ 6%", { color: INK3, size: "12.5px" }), BAR("88%", UP, "44%"), DOT("Bon", UP), T("+2,2 pts vs méd.", { weight: 500, color: UP, size: "12.5px" })],
+                [B("PER"), N("11,4", { weight: 500 }), T("≤ 15", { color: INK3, size: "12.5px" }), BAR("34%", UP, "58%"), DOT("Bon", UP), T("−2,8 vs méd.", { weight: 500, color: UP, size: "12.5px" })],
+                [B("Payout ratio"), N("84 %", { weight: 500 }), T("≤ 70%", { color: INK3, size: "12.5px" }), BAR("71%", WARN, "50%"), DOT("Vigilance", WARN), T("+12,0 pts vs méd.", { weight: 500, color: WARN, size: "12.5px" })],
+                [B("EPS"), N("3 980", { weight: 500 }), T("—", { color: INK3, size: "12.5px" }), T("—", { color: INK3 }), DOT("Bon", UP), T("—", { color: INK3 })],
+                [B("DPS"), N("1 620", { weight: 500 }), T("—", { color: INK3, size: "12.5px" }), T("—", { color: INK3 }), DOT("Bon", UP), T("—", { color: INK3 })],
+                [B("ROE"), N("28,4 %", { weight: 500 }), T("≥ 15%", { color: INK3, size: "12.5px" }), BAR("82%", UP, "48%"), DOT("Bon", UP), T("+9,7 pts vs méd.", { weight: 500, color: UP, size: "12.5px" })],
+                [B("FCF Margin"), N("10,9 %", { weight: 500 }), T("≥ 5%", { color: INK3, size: "12.5px" }), BAR("64%", UP, "50%"), DOT("Bon", UP), T("+2,4 pts vs méd.", { weight: 500, color: UP, size: "12.5px" })],
+              ]),
+              { footer: "Statut juge la valeur face au seuil. Position et Écart la situent face aux pairs — le trait vertical est leur médiane. Tenir le seuil tout en restant sous la médiane du secteur n'est pas une contradiction : les deux colonnes ne répondent pas à la même question.", minWidth: "880px" }),
+            bTable("Trajectoire financière · 4 ans",
+              cols("Exercice", ["2022", "right"], ["2023", "right"], ["2024", "right"], ["2025", "right"]),
+              rows([
+                [B("CA (Md)"), N("1 342,0"), N("1 428,0"), N("1 511,0"), N("1 604,0", { weight: 600 })],
+                [B("Rés. net (Md)"), N("312,0"), N("341,0"), N("368,0"), N("398,0", { weight: 600 })],
+                [B("BNPA"), N("3 120"), N("3 410"), N("3 680"), N("3 980", { weight: 600 })],
+                [B("DPS"), N("1 420"), N("1 500"), N("1 560"), N("1 620", { weight: 600 })],
+                [B("Yield"), N("6,4 %"), N("6,8 %"), N("7,1 %"), N("7,3 %", { weight: 600 })],
+              ]),
+              { footer: "Le yield historique est calculé sur le cours actuel : c'est l'approximation que fait la vue, faute de cours de clôture par exercice.", minWidth: "620px" }),
+            bTable("Structure du bilan",
+              cols("Poste", ["Valeur", "right"]),
+              rows([
+                [T("Capitaux propres", { color: INK2 }), N("1 401,0 Md", { weight: 500 })],
+                [T("Dette financière", { color: INK2 }), N("589,0 Md", { weight: 500 })],
+                [T("Nb titres", { color: INK2 }), N("100,0 M", { weight: 500 })],
+                [T("Flottant", { color: INK2 }), N("17,0 %", { weight: 500 })],
+              ]),
+              { minWidth: "340px" }),
+            bNote("Lecture synthétique",
+              "Une société qui croît de 6 % par an en chiffre d'affaires et de 8,5 % en résultat, sans recourir à la dette : les fonds propres progressent plus vite que l'endettement. Le point de vigilance est ailleurs — le free cash-flow recule depuis deux exercices alors que le dividende monte, ce qui ramène la couverture cash à 1,08×. Rien d'alarmant à ce niveau, mais la marge de manœuvre sur la prochaine hausse du dividende est mince.", NAVY),
+            bTable("Quatre derniers trimestres",
+              cols("Période", ["Chiffre d'affaires", "right"], ["Résultat net", "right"], ["Marge nette", "right"]),
+              rows([
+                [B("T2 2026"), N("428 Mds"), N("108 Mds"), N("25,2 %")],
+                [B("T1 2026"), N("411 Mds"), N("102 Mds"), N("24,8 %")],
+                [B("T4 2025"), N("419 Mds"), N("104 Mds"), N("24,8 %")],
+                [B("T3 2025"), N("398 Mds"), N("96 Mds"), N("24,1 %")],
+              ]),
+              { footer: "Les publications cumulées sont désagrégées par différence — un écart d'arrondi de ±1 Md est normal.", minWidth: "620px" }),
+            bTable("Position dans le secteur",
+              cols("Indicateur", ["Sonatel", "right"], ["Médiane secteur", "right"], ["Moyenne secteur", "right"], "Position", ["Rang", "right"]),
+              rows([
+                [B("ROE"), N("28,4 %", { weight: 600 }), N("18,7 %", { color: INK2 }), N("21,2 %", { color: INK2 }), BAR("82%", UP, "48%"), N("1/4", { weight: 600, color: UP })],
+                [B("Marge nette"), N("24,8 %", { weight: 600 }), N("18,7 %", { color: INK2 }), N("19,9 %", { color: INK2 }), BAR("76%", UP, "52%"), N("1/4", { weight: 600, color: UP })],
+                [B("PER"), N("11,4", { weight: 600 }), N("14,2", { color: INK2 }), N("13,1", { color: INK2 }), BAR("34%", UP, "58%"), N("2/4", { weight: 600, color: INK2 })],
+                [B("Dividend Yield"), N("7,33 %", { weight: 600 }), N("5,10 %", { color: INK2 }), N("5,44 %", { color: INK2 }), BAR("88%", UP, "44%"), N("1/4", { weight: 600, color: UP })],
+                [B("Payout ratio"), N("84 %", { weight: 600 }), N("62 %", { color: INK2 }), N("64 %", { color: INK2 }), BAR("71%", WARN, "50%"), N("4/4", { weight: 600, color: WARN })],
+                [B("Dette/Equity"), N("0,42×", { weight: 600 }), N("0,73×", { color: INK2 }), N("0,81×", { color: INK2 }), BAR("28%", UP, "56%"), N("1/4", { weight: 600, color: UP })],
+              ]),
+              { count: "4 PAIRS TÉLÉCOMS", footer: "Médiane et moyenne sont données ensemble : elles divergent quand un pair est atypique, et c'est cette divergence qui informe. Le rang situe le titre parmi les pairs ayant la donnée ; faute de trois pairs, le repère bascule sur toute la cote et la vue l'indique.", minWidth: "900px" }),
+          ],
+          [
+            bKpis("", [
+              kpiDark("Score technique", "20 / 25", "Tendance haussière confirmée", { barW: "80%" }),
+              kpi("Tendance CT", "Haussière", "▲ au-dessus des SMA 20 et 50", UP, { font: SANS, size: "19px", weight: 600, subColor: UP }),
+              kpi("RSI (14)", "41,2", "Neutre", INK4, { size: "22px" }),
+              kpi("MACD", "+184,6", "▲ Hist. positif", UP, { size: "22px", subColor: UP }),
+              kpi("Volatilité 30j", "14,8 %", "Médiane 12-20 %", INK4, { size: "22px" }),
+            ]),
+            bChart("", { big: "22 100", delta: "−4,32 %", deltaColor: DOWN,
+              series: [
+                { points: "0,150 40,142 80,148 120,128 160,132 200,112 240,118 280,96 320,88 360,72 400,80 440,58 480,64 520,44 560,52 600,70", fill: "none", stroke: NAVY, dash: "" },
+                { points: "0,156 40,150 80,146 120,140 160,134 200,128 240,122 280,114 320,106 360,98 400,92 440,84 480,76 520,68 560,62 600,58", fill: "none", stroke: "#4A6FA5", dash: "" },
+                { points: "0,168 40,164 80,160 120,156 160,152 200,148 240,142 280,136 320,130 360,124 400,118 440,112 480,106 520,100 560,94 600,90", fill: "none", stroke: WARN, dash: "4 4" },
+              ],
+              legend: [{ label: "Cours", color: NAVY }, { label: "SMA 50 · 21 250", color: "#4A6FA5" }, { label: "SMA 200 · 19 480", color: WARN }],
+              x: ["sept. 2022", "sept. 2023", "sept. 2024", "sept. 2025", "sept. 2026"],
+              note: "Périodicité mensuelle — 61 points. RSI et MACD affichés sous le graphique dans l'app ; Bandes de Bollinger désactivées.",
+            }),
+            bTable("Niveaux clés", cols("Niveau", ["Prix", "right"], ["Écart au cours", "right"], "Nature"), rows([
+              [T("Résistance 2"), N("24 900", { weight: 500 }), N("+12,7 %", { weight: 600, color: INK3 }), T("plus haut 52 semaines", { color: INK2, size: "12.5px" })],
+              [T("Résistance 1"), N("23 400", { weight: 500 }), N("+5,9 %", { weight: 600, color: INK3 }), T("sommet de juin 2026", { color: INK2, size: "12.5px" })],
+              [B("Cours"), N("22 100", { weight: 600 }), N("—", { color: INK3 }), T("clôture du 04/09/2026", { color: INK2, size: "12.5px" })],
+              [T("SMA 50"), N("21 250", { weight: 500 }), N("−3,8 %", { weight: 600, color: UP }), T("moyenne 50 séances", { color: INK2, size: "12.5px" })],
+              [T("SMA 200"), N("19 480", { weight: 500 }), N("−11,9 %", { weight: 600, color: UP }), T("moyenne 200 séances", { color: INK2, size: "12.5px" })],
+              [T("Support 1"), N("18 900", { weight: 500 }), N("−14,5 %", { weight: 600, color: DOWN }), T("plancher de mars 2026", { color: INK2, size: "12.5px" })],
+              [T("Support 2"), N("17 200", { weight: 500 }), N("−22,2 %", { weight: 600, color: DOWN }), T("plus bas 52 semaines", { color: INK2, size: "12.5px" })],
+            ]), { footer: "Supports et résistances extraits des extrêmes locaux de la série affichée.", minWidth: "680px" }),
+            bCards("Signaux techniques", "4 actifs", [
+              this.sigCard("RSI 41 — zone neutre", "Sorti de la survente le 12 août, sans excès à l'achat. Un RSI neutre ne dit rien du sens : il dit seulement qu'aucun extrême n'est atteint.", INK3, "Info"),
+              this.sigCard("MACD haussier", "Croisement de la ligne de signal le 28 août, histogramme positif depuis 6 séances.", UP, "Achat"),
+              this.sigCard("SMA 50 franchie", "Le cours tient au-dessus de la moyenne 50 jours depuis 9 séances.", UP, "Achat"),
+              this.sigCard("Volume en repli", "−18 % sur 20 séances : la hausse se fait sur des échanges plus minces qu'en juin.", WARN, "Vigilance"),
+            ]),
+            bExp("En savoir plus · RSI, MACD, Moyennes mobiles, Bandes de Bollinger", "Quatre explications en deux registres : en clair, puis le calcul exact."),
+          ],
+          [
+            bNote("Ce que les mesures disent",
+              "· La volatilité de 18 % place le titre dans le premier tiers le plus calme de la cote : détenir Sonatel fait moins souffrir que la moyenne. · La perte maximale historique de −22 % s'est produite en octobre 2025 et a été effacée en sept mois. · Le rendement par unité de risque (0,79) est le meilleur du secteur Télécoms : le titre paie bien ce qu'il fait subir. · Côté liquidité, 1,4 Md échangé par mois et aucun mois immobile sur cinq ans : la position se construit et se défait sans peser sur le carnet.", WARN),
+            bKpis("", [
+              kpi("Volatilité annuelle", "18,0 %", "1er tiers de la cote", UP),
+              kpi("Perte maximale", "−22,4 %", "octobre 2025, effacée en 7 mois", INK4, { valueColor: DOWN }),
+              kpi("Rendement par unité de risque", "0,79", "1er du secteur", UP, { size: "22px" }),
+              kpi("Rendement annualisé", "+14,2 %", "dividendes compris, 5 ans", UP, { valueColor: UP }),
+            ]),
+            bScatter("Sonatel face à la cote", {
+              xLabel: "Volatilité annuelle →", yLabel: "↑ Rendement annualisé",
+              xMin: 8, xMax: 50, yMin: -25, yMax: 40,
+              xTicks: [{ at: 15, label: "15 %" }, { at: 25, label: "25 %" }, { at: 35, label: "35 %" }, { at: 45, label: "45 %" }],
+              yTicks: [{ at: 35, label: "+35 %" }, { at: 15, label: "+15 %" }, { at: 0, label: "0" }, { at: -20, label: "−20 %" }],
+              guides: [{ h: 0 }, { v: 27 }],
+              hint: "Gris : les 44 titres de la cote · bleu foncé : Sonatel · bleu clair : pairs Télécoms",
+              note: "Sonatel est le point le plus à gauche du haut du nuage : peu de volatilité pour un rendement élevé — c'est ce que résume le 0,79 de rendement par unité de risque.",
+              dots: [
+                { x: 31, y: 24.1, r: 6, color: "#C4C9D1" }, { x: 24, y: 18.7, r: 6, color: "#C4C9D1" },
+                { x: 29, y: 6.2, r: 6, color: "#C4C9D1" }, { x: 34, y: -4.1, r: 6, color: "#C4C9D1" },
+                { x: 41, y: -12.4, r: 6, color: "#C4C9D1" }, { x: 45, y: -18.2, r: 6, color: "#C4C9D1" },
+                { x: 21, y: 3.4, r: 6, color: "#C4C9D1" }, { x: 37, y: 8.1, r: 6, color: "#C4C9D1" },
+                { x: 28, y: 15.4, r: 6, color: "#C4C9D1" }, { x: 33, y: 21.2, r: 6, color: "#C4C9D1" },
+                { x: 19, y: -2.1, r: 6, color: "#C4C9D1" }, { x: 43, y: 4.2, r: 6, color: "#C4C9D1" },
+                { x: 36, y: -8.4, r: 6, color: "#C4C9D1" }, { x: 30, y: 1.8, r: 6, color: "#C4C9D1" },
+                { x: 23, y: 9.4, r: 8, color: NAVY_S, label: "Onatel" },
+                { x: 26, y: 11.1, r: 8, color: NAVY_S, label: "Orange CI" },
+                { x: 18, y: 14.2, r: 12, color: NAVY_D, label: "Sonatel" },
+              ],
+            }),
+            bTable("Risque et rendement",
+              cols("Mesure", ["Valeur", "right"], "Rang · secteur", "Rang · toute la cote"),
+              rows([
+                [SUB("Volatilité", "de combien le cours s'écarte de sa moyenne"), N("18,0 %", { weight: 600 }), T("1/4  méd. 24,1 % · moy. 25,8 %", { color: UP, size: "12.5px", weight: 600 }), T("6/44  méd. 27,0 % · moy. 29,4 %", { color: UP, size: "12.5px", weight: 600 })],
+                [SUB("Semi-volatilité", "la même chose, mais des seules baisses"), N("11,4 %", { weight: 600 }), T("1/4  méd. 16,2 % · moy. 17,1 %", { color: UP, size: "12.5px", weight: 600 }), T("4/44  méd. 18,4 % · moy. 19,8 %", { color: UP, size: "12.5px", weight: 600 })],
+                [SUB("Perte maximale", "la pire baisse subie de sommet à creux"), N("−22,4 %", { weight: 600 }), T("2/4  méd. −28,1 % · moy. −30,4 %", { color: INK2, size: "12.5px" }), T("11/44  méd. −34,2 % · moy. −36,1 %", { color: UP, size: "12.5px", weight: 600 })],
+                [SUB("Rendement par unité de risque", "ce que rapporte chaque point de volatilité"), N("0,79", { weight: 600 }), T("1/4  méd. 0,41 · moy. 0,44", { color: UP, size: "12.5px", weight: 600 }), T("3/44  méd. 0,32 · moy. 0,35", { color: UP, size: "12.5px", weight: 600 })],
+                [SUB("Rendement annualisé", "dividendes réinvestis, sur la fenêtre"), N("+14,2 %", { weight: 600 }), T("2/4  méd. +9,8 % · moy. +10,4 %", { color: INK2, size: "12.5px" }), T("9/44  méd. +7,1 % · moy. +8,2 %", { color: UP, size: "12.5px", weight: 600 })],
+              ]),
+              { intro: "Mesuré sur 61 mois, dividendes compris. Le score du modèle ne tient pas compte du risque : ces mesures s'ajoutent au verdict, elles ne le corrigent pas. Taux sans risque retenu 5 %, une hypothèse.",
+                footer: "Ce que détenir le titre fait subir, et ce qu'il rapporte en échange.", minWidth: "820px" }),
+            bTable("Liquidité",
+              cols("Mesure", ["Valeur", "right"], "Rang · secteur", "Rang · toute la cote"),
+              rows([
+                [SUB("Montant échangé par mois", "ce qui change de mains en un mois"), N("1,4 Md", { weight: 600 }), T("1/4  méd. 212 M · moy. 486 M", { color: UP, size: "12.5px", weight: 600 }), T("1/44  méd. 38 M · moy. 164 M", { color: UP, size: "12.5px", weight: 600 })],
+                [SUB("Impact d'une transaction", "ce que coûte de bouger le cours pour passer"), N("0,08 %", { weight: 600 }), T("1/4  méd. 0,41 % · moy. 0,52 %", { color: UP, size: "12.5px", weight: 600 }), T("2/44  méd. 1,24 % · moy. 1,61 %", { color: UP, size: "12.5px", weight: 600 })],
+                [SUB("Mois sans variation de cours", "les mois où le titre n'a pas coté"), N("0 %", { weight: 600 }), T("1/4  méd. 3,3 % · moy. 4,1 %", { color: UP, size: "12.5px", weight: 600 }), T("1/44  méd. 11,5 % · moy. 16,2 %", { color: UP, size: "12.5px", weight: 600 })],
+              ]),
+              { footer: "Ce qu'il en coûte d'entrer ou de sortir. Ce n'est pas un risque de plus : la volatilité coûte pendant qu'on détient, l'illiquidité seulement au moment de vendre. Un excellent titre illiquide reste excellent — il est simplement difficile à quitter, et c'est la taille de la position qui s'en trouve limitée.", minWidth: "820px" }),
+            bExp("Que mesure exactement chaque indicateur ?", "Huit mesures, deux registres chacune : « en clair » et « techniquement »."),
+          ],
+          [
+            bKpis("", [
+              kpiDark("Verdict du modèle", "Achat", "Horizon 12 mois · confiance 0,86", { font: SANS, size: "27px" }),
+              kpi("Score hybride", "78 / 100", "★★★★☆", NAVY),
+              kpi("Prix actuel", "22 100", "FCFA", INK4),
+              kpi("Prix cible (modèle)", "24 800", "+12,2 % vs cours", UP, { subColor: UP }),
+            ]),
+            bBars("Composition du score hybride", [
+              { label: "Fondamental", note: "38 / 50 · pondéré 60 %", series: [{ w: "76%", color: NAVY_D, v: "38" }] },
+              { label: "Technique", note: "20 / 25 · pondéré 40 %", series: [{ w: "80%", color: "#4A6FA5", v: "20" }] },
+              { label: "Score hybride", note: "78 / 100", series: [{ w: "78%", color: NAVY, v: "78" }] },
+            ]),
+            bNote("Ce que le score ne dit pas",
+              "Le score hybride mêle bilan et cours ; il ne contient ni le risque ni la liquidité, traités dans l'onglet voisin. Il ignore aussi ce qui ne se chiffre pas : le renouvellement de licence au Mali, la concurrence tarifaire sur le mobile money, l'actionnariat de l'État sénégalais. Un 78/100 n'est pas une prévision, c'est un résumé de ce que les données savent.", NAVY),
+            bNote("Seconde lecture · valorisation croisée",
+              "Une seconde méthode donne une fourchette de 23 900 à 25 400 FCFA, avec une confiance de 0,72. Quand les méthodes divergent trop, la vue ne retient aucune cible unique et le dit : « méthodes divergentes — pas de cible unique fiable ». Ici elles convergent au-dessus du cours.", NAVY),
+            bBars("Plan d'action · zones de prix", [
+              { label: "Renforcer · conviction forte", note: "18 900 – 20 800", series: [{ w: "36%", color: UP, v: "−6 %" }] },
+              { label: "Conserver", note: "20 800 – 23 400", series: [{ w: "52%", color: WARN, v: "+6 %" }] },
+              { label: "Alléger", note: "au-delà de 24 900", series: [{ w: "22%", color: DOWN, v: "+13 %" }] },
+            ]),
+            bTable("Checklist Valeur & Dividendes", cols("Critère", ["Valeur", "right"], ["Statut", "left"]), rows([
+              [T("Dividend Yield ≥ 6 %"), N("7,33 %", { weight: 600, color: UP }), DOT("Rempli", UP)],
+              [T("Payout ratio ≤ 70 %"), N("84 %", { weight: 600, color: WARN }), DOT("Non rempli", WARN)],
+              [T("ROE ≥ 15 %"), N("28,4 %", { weight: 600, color: UP }), DOT("Rempli", UP)],
+              [T("PER ≤ 15"), N("11,4", { weight: 600, color: UP }), DOT("Rempli", UP)],
+              [T("Dette / Equity ≤ 1,5"), N("0,42×", { weight: 600, color: UP }), DOT("Rempli", UP)],
+              [T("Couverture dividende ≥ 1,2×"), N("1,08×", { weight: 600, color: WARN }), DOT("Juste", WARN)],
+            ]), { count: "5 / 6", minWidth: "520px" }),
+            bCards("Lecture sectorielle", "2 alertes", [
+              this.diag("Le secteur Télécoms se paie plus cher que Sonatel", "P/E médian du secteur : 14,2 contre 11,4 pour le titre. Soit le marché escompte un risque propre — licence, régulation tarifaire — soit l'écart est une opportunité. Le modèle retient la seconde lecture, sans certitude.", NAVY),
+              this.diag("Payout supérieur à la médiane du secteur", "84 % contre 62 % pour les pairs. Le dividende est plus généreux, mais la marge de manœuvre en cas d'exercice difficile est plus faible : c'est le même chiffre lu deux fois.", WARN),
+            ]),
+            bChart("Évolution du score · 90 jours", {
+              series: [
+                { points: "0,60 60,58 120,54 180,50 240,46 300,44 360,40 420,38 480,34 540,32 600,28", fill: "none", stroke: NAVY, dash: "" },
+                { points: "0,96 60,94 120,92 180,88 240,84 300,86 360,80 420,78 480,74 540,72 600,70", fill: "none", stroke: "#4A6FA5", dash: "" },
+              ],
+              legend: [{ label: "Score hybride", color: NAVY }, { label: "Cours (base 100)", color: "#4A6FA5" }],
+              x: ["07/06", "27/06", "17/07", "06/08", "04/09"],
+              note: "Le score progresse plus vite que le cours : la revalorisation vient des comptes, pas du marché.",
+            }),
+            bTable("Changements de verdict",
+              cols("Date", "Verdict", ["Score", "right"], ["Cours", "right"], "Déclencheur"),
+              rows([
+                [K("11/08/26"), VTAG("ACHAT"), N("74", { weight: 600 }), N("21 400"), T("SMA 50 franchie + yield > 6 %", { color: INK2, size: "12.5px" })],
+                [K("02/07/26"), VTAG("CONSERVER"), N("66", { weight: 600 }), N("22 800"), T("RSI en surachat à 72", { color: INK2, size: "12.5px" })],
+                [K("14/05/26"), VTAG("ACHAT"), N("71", { weight: 600 }), N("20 600"), T("publication T1 au-dessus des attentes", { color: INK2, size: "12.5px" })],
+              ]),
+              { count: "3 SUR 90 J", minWidth: "700px" }),
+          ],
+          [
+            bNote("Présentation",
+              "Opérateur historique de télécommunications du Sénégal, présent également au Mali, en Guinée, en Guinée-Bissau et en Sierra Leone. Première capitalisation de la BRVM, compartiment Prestige. Le mobile money représente une part croissante du chiffre d'affaires du groupe, dont l'État sénégalais détient 27 % et Orange 42 %.", NAVY),
+            bKpis("", [
+              kpi("Actions", "100 000 000", "en circulation", INK4, { size: "22px" }),
+              kpi("Secteur", "Télécoms", "classification BRVM", INK4, { font: SANS, size: "19px", weight: 600 }),
+              kpi("Exercice retenu", "2025", "rapport annuel référencé", INK4, { size: "22px" }),
+            ]),
+            bTable("Historique financier",
+              cols("Exercice", ["Cours au 31/12", "right"], ["EPS", "right"], ["DPS", "right"], ["Yield", "right"], ["Payout", "right"], ["P/E", "right"]),
+              rows([
+                [B("2025"), N("21 800"), N("3 980"), N("1 620"), N("7,43 %", { color: UP }), N("84 %"), N("5,5")],
+                [B("2024"), N("19 400"), N("3 680"), N("1 560"), N("8,04 %", { color: UP }), N("42 %"), N("5,3")],
+                [B("2023"), N("17 900"), N("3 410"), N("1 500"), N("8,38 %", { color: UP }), N("44 %"), N("5,2")],
+                [B("2022"), N("16 200"), N("3 120"), N("1 420"), N("8,77 %", { color: UP }), N("46 %"), N("5,2")],
+                [B("2021"), N("15 100"), N("2 880"), N("1 340"), N("8,87 %", { color: UP }), N("47 %"), N("5,2")],
+              ]),
+              { footer: "* DPS 2025 : dividende brut avant retenue à la source de 15 %. Écart avec la fiche sikafinance — payout 2025 recalculé sur l'EPS publié.", minWidth: "780px" }),
+            bTable("Publications & actualités",
+              cols("Date", ["Type", "left"], "Titre", ["Exercice", "right"], ["Statut", "left"]),
+              rows([
+                [K("02/09/26"), TAG("Trimestriel", UP_BG, UP), T("Indicateurs du 2e trimestre 2026"), N("2026", { color: INK2 }), DOT("Intégré", UP)],
+                [K("14/05/26"), TAG("Trimestriel", UP_BG, UP), T("Indicateurs du 1er trimestre 2026"), N("2026", { color: INK2 }), DOT("Intégré", UP)],
+                [K("28/04/26"), TAG("Annuel", NAVY_BG, NAVY_D), T("États financiers annuels 2025"), N("2025", { color: INK2 }), DOT("Intégré", UP)],
+                [K("22/04/26"), TAG("Dividende", WARN_BG, WARN), T("Avis de mise en paiement du dividende 2025"), N("2025", { color: INK2 }), DOT("Intégré", UP)],
+                [K("30/03/26"), TAG("Gouvernance", NEU_BG, INK2), T("Convocation à l'assemblée générale ordinaire"), N("2025", { color: INK2 }), DOT("Information", INK3)],
+              ]),
+              { count: "0 À INTÉGRER", footer: "Cycle UEMOA : rapport annuel au plus tard fin avril, trimestriels dans les 45 jours suivant la fin de trimestre.", minWidth: "820px" }),
+            bCards("Notes d'analyse", "3 notes", [
+              this.noteAnalyse("Thèse", "04/09/26", "Rente télécom à 7,3 % de rendement, payée par un cash-flow qui couvre juste le dividende. Le pari est la stabilité du mobile money, pas la croissance."),
+              this.noteAnalyse("Risque", "14/05/26", "Renouvellement de licence au Mali attendu en 2027 : aucun montant public à ce jour. À suivre dans les publications trimestrielles."),
+              this.noteAnalyse("Suivi", "28/04/26", "FCF en repli pour le deuxième exercice consécutif. Vérifier au T4 si la hausse des investissements réseau est ponctuelle."),
+            ]),
+            bExp("Ajouter une note d'analyse", "Catégorie, date, texte libre — la note reste attachée au titre."),
+          ],
+        ],
+      },
+      "Screening": {
+        title: "Screening multi-critères",
+        intro: "Les filtres comptables et les filtres de marché sont séparés : un titre peut tenir tous les seuils du bilan et n'échanger que 900 000 francs par mois.",
+        toolbar: [sel("Secteurs", "Banque, Télécoms"), sel("Titres", "Tous · 19 disponibles")],
+        kpis: [
+          kpiDark("Univers filtré", "19", "titres sur 48"),
+          kpi("Correspondances", "7", "après filtres", NAVY),
+          kpi("Yield médian", "7,02 %", "de la sélection", UP),
+          kpi("Score médian", "36 / 50", "fondamental", INK4),
+        ],
+        tabs: ["Filtres fondamentaux", "Risque et liquidité", "Résultats"],
+        panels: [
+          [
+            bTable("Seuils comptables", cols("Critère", ["Minimum", "right"], ["Maximum", "right"], "Effet sur l'univers"), rows([
+              [B("Dividend Yield"), N("6,0 %"), N("30 %"), T("retire 22 titres", { color: INK3, size: "12.5px" })],
+              [B("PER"), N("0"), N("15"), T("retire 9 titres", { color: INK3, size: "12.5px" })],
+              [B("ROE"), N("15 %"), N("100 %"), T("retire 6 titres", { color: INK3, size: "12.5px" })],
+              [B("Payout"), N("0 %"), N("70 %"), T("retire 3 titres", { color: INK3, size: "12.5px" })],
+              [B("Dette / Equity"), N("0"), N("1,5"), T("retire 1 titre", { color: INK3, size: "12.5px" })],
+            ]), { footer: "Un titre sans donnée sur un critère n'est pas écarté : il n'a simplement pas ce ratio.", minWidth: "620px" }),
+          ],
+          [
+            bTable("Lu dans le cours, pas dans les comptes", cols("Critère", ["Minimum", "right"], ["Maximum", "right"], "Pourquoi"), rows([
+              [B("Volatilité annuelle"), N("0 %"), N("45 %"), T("écart-type des rendements mensuels, annualisé", { color: INK3, size: "12.5px" })],
+              [B("Rendement annualisé"), N("−20 %"), N("200 %"), T("sur les 5 dernières années", { color: INK3, size: "12.5px" })],
+              [B("Échangé par mois"), N("10 M"), N("—"), T("sous 10 M par mois, un titre se revend mal", { color: INK3, size: "12.5px" })],
+            ]), { minWidth: "620px" }),
+            bNote("Pourquoi ces filtres sont à part",
+              "Ils ne se lisent pas au bilan mais dans le cours. Un titre peut afficher 42/50 au fondamental et n'échanger que 900 000 francs par mois : excellent sur le papier, impossible à vendre en pratique.", WARN),
+          ],
+          [
+            bScatter("Rendement contre qualité du bilan", {
+              xLabel: "Score fondamental →", yLabel: "↑ Dividend Yield",
+              xMin: 20, xMax: 45, yMin: 3, yMax: 9.5,
+              xTicks: [{ at: 25, label: "25/50" }, { at: 30, label: "30" }, { at: 35, label: "35" }, { at: 40, label: "40" }, { at: 45, label: "45" }],
+              yTicks: [{ at: 9, label: "9 %" }, { at: 7, label: "7 %" }, { at: 5, label: "5 %" }, { at: 3, label: "3 %" }],
+              guides: [{ h: 6 }, { v: 35 }],
+              hint: "Aire du disque = montant échangé par mois",
+              note: "Le trait horizontal marque la cible de 6 % de rendement, le vertical un score de 35/50. En haut à droite : les deux à la fois.",
+              dots: [
+                { x: 42, y: 7.33, r: 18, color: UP, label: "Sonatel" },
+                { x: 39, y: 5.88, r: 11, color: NAVY, label: "SODECI" },
+                { x: 38, y: 7.14, r: 13, color: UP, label: "Coris Bank" },
+                { x: 36, y: 8.66, r: 10, color: UP, label: "BOA Bénin" },
+                { x: 31, y: 6.17, r: 9, color: WARN, label: "Total Sénégal" },
+                { x: 26, y: 3.85, r: 8, color: WARN, label: "Filtisac" },
+                { x: 24, y: 7.02, r: 7, color: WARN, label: "Palmci" },
+              ],
+            }),
+            bTable("7 titres correspondent",
+              cols("Ticker", "Nom", ["Prix", "right"], ["Yield", "right"], ["PER", "right"], ["ROE", "right"], ["Payout", "right"], ["Volat.", "right"], ["Échangé", "right"], ["Score", "right"], "Verdict"),
+              rows([
+                [K("SNTS.sn"), B("Sonatel"), N("22 100"), N("7,33 %", { weight: 600, color: UP }), N("11,4"), N("28,4 %"), N("84 %"), N("18 %", { color: INK2 }), N("1,4 Md", { color: INK2 }), N("42/50", { weight: 600 }), VTAG("ACHAT FORT")],
+                [K("SDCC.ci"), B("SODECI"), N("7 140"), N("5,88 %", { weight: 600, color: UP }), N("9,8"), N("19,2 %"), N("58 %"), N("24 %", { color: INK2 }), N("186 M", { color: INK2 }), N("39/50", { weight: 600 }), VTAG("ACHETER")],
+                [K("CBIBF.bf"), B("Coris Bank Int."), N("9 800"), N("7,14 %", { weight: 600, color: UP }), N("8,2"), N("22,7 %"), N("59 %"), N("31 %", { color: INK2 }), N("412 M", { color: INK2 }), N("38/50", { weight: 600 }), VTAG("ACHETER")],
+                [K("BOAB.bj"), B("Bank of Africa Bénin"), N("4 850"), N("8,66 %", { weight: 600, color: UP }), N("7,4"), N("21,4 %"), N("64 %"), N("27 %", { color: INK2 }), N("94 M", { color: INK2 }), N("36/50", { weight: 600 }), VTAG("ACHETER")],
+                [K("TTLS.sn"), B("Total Sénégal"), N("2 430"), N("6,17 %", { weight: 600, color: UP }), N("12,1"), N("16,8 %"), N("68 %"), N("22 %", { color: INK2 }), N("61 M", { color: INK2 }), N("31/50", { weight: 600 }), VTAG("CONSERVER")],
+                [K("FTSC.ci"), B("Filtisac"), N("2 985"), N("3,85 %", { weight: 600, color: UP }), N("14,7"), N("11,2 %"), N("57 %"), N("38 %", { color: INK2 }), N("28 M", { color: INK2 }), N("26/50", { weight: 600 }), VTAG("PRUDENCE")],
+                [K("PALC.ci"), B("Palmci"), N("4 275"), N("7,02 %", { weight: 600, color: UP }), N("6,9"), N("9,4 %"), N("48 %"), N("41 %", { color: INK2 }), N("19 M", { color: INK2 }), N("24/50", { weight: 600 }), VTAG("PRUDENCE")],
+              ]),
+              { count: "TRI PAR SCORE", footer: "Export CSV disponible sous le tableau · colonnes triables", minWidth: "1080px" }),
+          ],
+        ],
+      },
+
+      "Comparateur": {
+        title: "Comparateur",
+        intro: "Comparer les titres d'un secteur, ou une sélection libre de 2 à 5 titres.",
+        toolbar: [seg("Mode", ["Par secteur", "Sélection libre"], 0), sel("Secteur", "Banque")],
+        tabs: ["Tableau comparatif", "Profil comparatif", "Performance comparée"],
+        panels: [
+          [
+            bTable("Trois titres, même secteur",
+              cols("Indicateur", ["Coris Bank Int.", "right"], ["Bank of Africa Bénin", "right"], ["Ecobank CI", "right"]),
+              rows([
+                [T("Prix (FCFA)"), N("9 800", { weight: 600, color: INK }), N("4 850", { color: INK3 }), N("8 490", { color: INK3 })],
+                [T("ROE"), N("22,7 %", { weight: 600, color: INK }), N("21,4 %", { color: INK3 }), N("14,1 %", { color: INK3 })],
+                [T("Marge nette"), N("31,2 %", { weight: 600, color: INK }), N("28,9 %", { color: INK3 }), N("19,4 %", { color: INK3 })],
+                [T("PER"), N("8,2", { color: INK3 }), N("7,4", { weight: 600, color: INK }), N("10,8", { color: INK3 })],
+                [T("Dividend Yield"), N("7,14 %", { color: INK3 }), N("8,66 %", { weight: 600, color: INK }), N("5,42 %", { color: INK3 })],
+                [T("Payout ratio"), N("59 %", { color: INK3 }), N("64 %", { color: INK3 }), N("58 %", { weight: 600, color: INK })],
+                [T("Dette / Equity"), N("0,88", { color: INK3 }), N("0,74", { weight: 600, color: INK }), N("1,12", { color: INK3 })],
+                [T("Checklist V&D"), N("6 / 6", { weight: 600, color: INK }), N("5 / 6", { color: INK3 }), N("3 / 6", { color: INK3 })],
+                [T("Score fondamental"), N("38,0", { weight: 600, color: INK }), N("36,0", { color: INK3 }), N("27,0", { color: INK3 })],
+              ]),
+              { footer: "En gras : la meilleure valeur de la ligne.", minWidth: "660px" }),
+          ],
+          [
+            bChart("Profil comparatif · axes parallèles", {
+              series: [
+                { points: "0,61 120,40 240,69 360,90 480,81 600,61", fill: "none", stroke: NAVY_D, dash: "" },
+                { points: "0,69 120,51 240,42 360,83 480,108 600,68", fill: "none", stroke: "#4A6FA5", dash: "" },
+                { points: "0,110 120,97 240,98 360,112 480,137 600,98", fill: "none", stroke: NAVY_S, dash: "" },
+              ],
+              legend: [{ label: "Coris Bank Int.", color: NAVY_D }, { label: "BOA Bénin", color: "#4A6FA5" }, { label: "Ecobank CI", color: NAVY_S }],
+              x: ["ROE", "Marge", "Yield", "Valorisation", "Croissance", "Score"],
+              note: "Six axes, une ligne par titre : un profil se lit à sa forme. Plus la ligne est haute, meilleur est le score sur l'axe. Les deux premières lignes se croisent sur Yield et Valorisation — c'est là que le choix se joue.",
+            }),
+            bHeat("Le même profil, en intensité",
+              ["Critère", "Coris Bank", "BOA Bénin", "Ecobank CI"],
+              [
+                { label: "ROE", values: [76, 71, 47] },
+                { label: "Marge nette", values: [88, 82, 55] },
+                { label: "Dividend Yield", values: [71, 87, 54] },
+                { label: "Valorisation", values: [59, 63, 46] },
+                { label: "Croissance", values: [64, 48, 31] },
+                { label: "Score global", values: [76, 72, 54] },
+              ],
+              { max: 100, count: "SCORE 0-100", footer: "Lecture en ligne : qui gagne sur ce critère. En colonne : le profil d'ensemble d'un titre. Ecobank CI n'est premier sur aucun des six axes.", minWidth: "560px" }),
+          ],
+          [
+            bChart("Évolution comparée · base 100", {
+              series: [
+                { points: "0,100 60,94 120,86 180,74 240,62 300,48 360,40 420,28 480,22 540,16 600,10", fill: "none", stroke: NAVY_D, dash: "" },
+                { points: "0,100 60,102 120,94 180,90 240,82 300,78 360,70 420,68 480,60 540,56 600,50", fill: "none", stroke: "#4A6FA5", dash: "" },
+                { points: "0,100 60,106 120,114 180,122 240,118 300,130 360,142 420,138 480,150 540,162 600,170", fill: "none", stroke: DOWN, dash: "" },
+              ],
+              legend: [{ label: "Coris Bank", color: NAVY_D }, { label: "BOA Bénin", color: "#4A6FA5" }, { label: "Ecobank CI", color: DOWN }],
+              x: ["sept. 2025", "déc. 2025", "mars 2026", "juin 2026", "sept. 2026"],
+              note: "Base 100 au premier jour de la fenêtre : la pente compare, les niveaux absolus non.",
+            }),
+          ],
+        ],
+      },
+
+      "Performance des Titres": {
+        title: "Performance des Titres",
+        intro: "Classement sur 1 an · 44 titres avec historique suffisant.",
+        toolbar: [seg("Période", ["1 mois", "3 mois", "1 an", "3 ans", "5 ans"], 2)],
+        kpis: [
+          kpiText("Meilleure perf.", "Coris Bank Int.", "↑ +64,2 %", UP, UP),
+          kpiText("Pire perf.", "Oragroup", "↓ −38,7 %", DOWN, DOWN),
+          kpi("Perf. médiane", "+11,4 %", "44 titres", INK4),
+          kpi("Titres en hausse", "29 / 44", "↑ 66 % du marché", UP, { subColor: UP }),
+        ],
+        tabs: ["Classement", "Par secteur", "Graphique", "Tableau multi-périodes"],
+        panels: [
+          [
+            bLists([
+              { title: "Top performers", arrow: "↗", color: UP, count: "8 titres", linkDisp: NONE,
+                rows: this.perfRows([["Coris Bank Int.", 64.2], ["SODECI", 48.7], ["Bank of Africa Niger", 41.3], ["Filtisac", 36.9], ["Total Sénégal", 29.4], ["NSIA Banque CI", 24.8], ["Sonatel", 21.1], ["Bernabé CI", 18.6]], 64.2) },
+              { title: "Pires performers", arrow: "↘", color: DOWN, count: "8 titres", linkDisp: NONE,
+                rows: this.perfRows([["Oragroup", -38.7], ["Sucrivoire", -27.4], ["SAFCA", -21.8], ["Palmci", -18.2], ["Servair Abidjan", -14.6], ["Onatel", -11.3], ["Air Liquide CI", -8.4], ["BICI CI", -5.1]], 38.7) },
+            ]),
+          ],
+          [
+            bHeat("Secteurs × périodes",
+              ["Secteur", "1 mois", "3 mois", "6 mois", "1 an", "3 ans", "5 ans"],
+              [
+                { label: "Services publics", values: [4.1, 9.8, 15.2, 22.3, 41.0, 58.4] },
+                { label: "Banque", values: [2.8, 8.1, 12.4, 18.4, 34.2, 47.1] },
+                { label: "Télécoms", values: [-1.4, 2.1, 5.8, 9.1, 21.4, 33.8] },
+                { label: "Industrie", values: [1.9, 4.2, 6.1, 7.4, 12.8, 19.4] },
+                { label: "Distribution", values: [1.2, 3.4, 4.1, 4.8, 9.2, 11.7] },
+                { label: "Transport", values: [-0.8, -2.4, -4.1, -6.2, -9.4, 2.1] },
+                { label: "Agriculture", values: [-2.1, -6.8, -11.2, -14.7, -21.4, -8.2] },
+              ],
+              { max: 40, count: "MOYENNE PAR SECTEUR", footer: "Lecture en ligne : la persistance d'un secteur. En colonne : ce que la période favorise. L'agriculture est le seul secteur rouge sur toutes les fenêtres.", minWidth: "820px" }),
+            bTable("Performance sectorielle — 1 an",
+              cols("Secteur", ["Titres", "right"], ["Moyenne", "right"], ["Médiane", "right"], "Position", ["Étendue", "right"]),
+              rows([
+                [B("Banque"), N("11", { color: INK2 }), N("+18,4 %", { weight: 600, color: UP }), N("+14,1 %"), SBAR("28%", "50%", UP), N("−39 / +64", { color: INK2 })],
+                [B("Services publics"), N("4", { color: INK2 }), N("+22,3 %", { weight: 600, color: UP }), N("+19,8 %"), SBAR("34%", "50%", UP), N("+2 / +49", { color: INK2 })],
+                [B("Télécoms"), N("4", { color: INK2 }), N("+9,1 %", { weight: 600, color: UP }), N("+8,4 %"), SBAR("14%", "50%", UP), N("−11 / +21", { color: INK2 })],
+                [B("Industrie"), N("8", { color: INK2 }), N("+7,4 %", { weight: 600, color: UP }), N("+5,2 %"), SBAR("11%", "50%", UP), N("−8 / +37", { color: INK2 })],
+                [B("Distribution"), N("6", { color: INK2 }), N("+4,8 %", { weight: 600, color: UP }), N("+6,1 %"), SBAR("7%", "50%", UP), N("−6 / +29", { color: INK2 })],
+                [B("Transport"), N("3", { color: INK2 }), N("−6,2 %", { weight: 600, color: DOWN }), N("−7,1 %"), SBAR("9%", "41%", DOWN), N("−15 / +3", { color: INK2 })],
+                [B("Agriculture"), N("5", { color: INK2 }), N("−14,7 %", { weight: 600, color: DOWN }), N("−18,2 %"), SBAR("22%", "28%", DOWN), N("−27 / +1", { color: INK2 })],
+              ]),
+              { footer: "La barre situe la moyenne autour de zéro (le trait central) : à gauche pour une perte, à droite pour un gain.", minWidth: "760px" }),
+          ],
+          [
+            bChart("Évolution comparée des prix · base 100", {
+              series: [
+                { points: "0,100 60,92 120,84 180,70 240,58 300,44 360,36 420,26 480,18 540,12 600,8", fill: "none", stroke: NAVY_D, dash: "" },
+                { points: "0,100 60,98 120,94 180,88 240,84 300,80 360,74 420,70 480,66 540,62 600,58", fill: "none", stroke: "#4A6FA5", dash: "" },
+                { points: "0,100 60,104 120,112 180,124 240,132 300,146 360,158 420,164 480,172 540,180 600,188", fill: "none", stroke: DOWN, dash: "" },
+              ],
+              legend: [{ label: "Coris Bank", color: NAVY_D }, { label: "SODECI", color: "#4A6FA5" }, { label: "Oragroup", color: DOWN }],
+              x: ["sept. 2025", "déc. 2025", "mars 2026", "juin 2026", "sept. 2026"],
+            }),
+          ],
+          [
+            bTable("Toutes les périodes",
+              cols("Ticker", "Nom", ["1 m", "right"], ["3 m", "right"], ["1 an", "right"], ["3 ans", "right"], ["5 ans", "right"]),
+              rows([
+                [K("CBIBF.bf"), B("Coris Bank Int."), N("+4,1 %", { color: UP }), N("+18,2 %", { color: UP }), N("+64,2 %", { weight: 600, color: UP }), N("+112 %", { color: UP }), N("+188 %", { color: UP })],
+                [K("SDCC.ci"), B("SODECI"), N("+7,4 %", { color: UP }), N("+14,8 %", { color: UP }), N("+48,7 %", { weight: 600, color: UP }), N("+74 %", { color: UP }), N("+96 %", { color: UP })],
+                [K("BOAN.ne"), B("Bank of Africa Niger"), N("+6,8 %", { color: UP }), N("+11,2 %", { color: UP }), N("+41,3 %", { weight: 600, color: UP }), N("+68 %", { color: UP }), N("+81 %", { color: UP })],
+                [K("SNTS.sn"), B("Sonatel"), N("−4,3 %", { color: DOWN }), N("+2,1 %", { color: UP }), N("+21,1 %", { weight: 600, color: UP }), N("+38 %", { color: UP }), N("+52 %", { color: UP })],
+                [K("TTLS.sn"), B("Total Sénégal"), N("+4,1 %", { color: UP }), N("+8,4 %", { color: UP }), N("+29,4 %", { weight: 600, color: UP }), N("+41 %", { color: UP }), N("+34 %", { color: UP })],
+                [K("PALC.ci"), B("Palmci"), N("−3,1 %", { color: DOWN }), N("−9,4 %", { color: DOWN }), N("−18,2 %", { weight: 600, color: DOWN }), N("−24 %", { color: DOWN }), N("+11 %", { color: UP })],
+                [K("SCRC.ci"), B("Sucrivoire"), N("−2,8 %", { color: DOWN }), N("−12,1 %", { color: DOWN }), N("−27,4 %", { weight: 600, color: DOWN }), N("−38 %", { color: DOWN }), N("−19 %", { color: DOWN })],
+                [K("ORGT.tg"), B("Oragroup"), N("−4,0 %", { color: DOWN }), N("−18,4 %", { color: DOWN }), N("−38,7 %", { weight: 600, color: DOWN }), N("−61 %", { color: DOWN }), N("−72 %", { color: DOWN })],
+              ]),
+              { minWidth: "820px" }),
+          ],
+        ],
+      },
+
+      "Portefeuille": {
+        title: "Portefeuille",
+        intro: "7 positions · relevé au 4 septembre 2026 · frais d'achat inclus dans le coût de revient.",
+        actions: [btn("Saisir en lot"), btn("Ajouter cash"), btn("Ajouter position", true)],
+        tabs: ["Performance", "Recommandations", "Risque et optimisation"],
+        panels: [
+          [
+            bKpis("", [
+              kpiDark("Valeur totale", "14 823 450", "FCFA · dont 1,20 M de cash"),
+              kpi("Total Return", "+18,4 %", "▲ +2 312 400 · dividendes inclus", UP, { valueColor: UP, subColor: UP }),
+              kpi("Yield pondéré", "7,12 %", "▲ vs 4,1 % marché", UP, { subColor: UP }),
+              kpi("Positions", "7", "4 secteurs", INK4),
+            ]),
+            bTable("Positions",
+              cols("Ticker", "Nom", ["Qté", "right"], ["PRU", "right"], ["Cours", "right"], ["Valeur", "right"], ["P&L", "right"], ["P&L %", "right"], ["Poids", "right"], ["Var. 12 mois", "left"]),
+              rows([
+                [K("SNTS.sn"), B("Sonatel"), N("120"), N("18 400", { color: INK2 }), N("22 100"), N("2 652 000"), N("+444 000", { weight: 600, color: UP }), N("+20,1 %", { weight: 600, color: UP }), N("17,9 %", { color: INK2 }), spark([88,91,96,94,99,104,108,112,118,121,116,120], UP)],
+                [K("SDCC.ci"), B("SODECI"), N("300"), N("6 250", { color: INK2 }), N("7 140"), N("2 142 000"), N("+267 000", { weight: 600, color: UP }), N("+14,2 %", { weight: 600, color: UP }), N("14,4 %", { color: INK2 }), spark([92,94,97,101,99,104,107,110,108,112,114,114], UP)],
+                [K("CBIBF.bf"), B("Coris Bank Int."), N("220"), N("7 100", { color: INK2 }), N("9 800"), N("2 156 000"), N("+594 000", { weight: 600, color: UP }), N("+38,0 %", { weight: 600, color: UP }), N("14,5 %", { color: INK2 }), spark([80,84,88,91,96,102,108,114,121,128,134,138], UP)],
+                [K("BOAB.bj"), B("Bank of Africa Bénin"), N("400"), N("4 620", { color: INK2 }), N("4 850"), N("1 940 000"), N("+92 000", { weight: 600, color: UP }), N("+4,9 %", { weight: 600, color: UP }), N("13,1 %", { color: INK2 }), spark([98,100,99,102,101,104,103,106,104,107,106,105], UP)],
+                [K("TTLS.sn"), B("Total Sénégal"), N("700"), N("2 280", { color: INK2 }), N("2 430"), N("1 701 000"), N("+105 000", { weight: 600, color: UP }), N("+6,5 %", { weight: 600, color: UP }), N("11,5 %", { color: INK2 }), spark([96,98,97,100,102,101,104,103,105,104,107,106], UP)],
+                [K("ECOC.ci"), B("Ecobank CI"), N("180"), N("9 400", { color: INK2 }), N("8 490"), N("1 528 200"), N("−163 800", { weight: 600, color: DOWN }), N("−9,7 %", { weight: 600, color: DOWN }), N("10,3 %", { color: INK2 }), spark([104,102,101,98,99,96,94,95,92,90,91,90], DOWN)],
+                [K("PALC.ci"), B("Palmci"), N("350"), N("4 900", { color: INK2 }), N("4 275"), N("1 496 250"), N("−218 750", { weight: 600, color: DOWN }), N("−12,8 %", { weight: 600, color: DOWN }), N("10,1 %", { color: INK2 }), spark([106,104,105,101,98,96,94,92,90,89,88,87], DOWN)],
+              ]),
+              { count: "7 LIGNES", footer: "La barre signée donne la variation du cours sur 12 mois : à droite de l'axe pour une hausse, à gauche pour une baisse, échelle ±40 %. Le PRU inclut les frais d'achat (commission SGI + BRVM/DC-BR + TVA) : c'est le coût de revient réel, pas le cours d'exécution.", minWidth: "1080px" }),
+            bTable("Dividendes encaissés",
+              cols("Date", "Ticker", "Libellé", ["Brut", "right"], ["Retenue", "right"], ["Net encaissé", "right"]),
+              rows([
+                [K("28/07/26"), K("SNTS.sn"), T("Dividende 2025 · 1 620 / action"), N("194 400", { color: INK2 }), N("−29 160", { color: INK3 }), N("165 240", { weight: 600, color: UP })],
+                [K("12/07/26"), K("CBIBF.bf"), T("Dividende 2025 · 700 / action"), N("154 000", { color: INK2 }), N("−23 100", { color: INK3 }), N("130 900", { weight: 600, color: UP })],
+                [K("30/06/26"), K("BOAB.bj"), T("Dividende 2025 · 420 / action"), N("168 000", { color: INK2 }), N("−25 200", { color: INK3 }), N("142 800", { weight: 600, color: UP })],
+                [K("15/06/26"), K("SDCC.ci"), T("Dividende 2025 · 420 / action"), N("126 000", { color: INK2 }), N("−18 900", { color: INK3 }), N("107 100", { weight: 600, color: UP })],
+                [K("02/06/26"), K("TTLS.sn"), T("Dividende 2025 · 150 / action"), N("105 000", { color: INK2 }), N("−15 750", { color: INK3 }), N("89 250", { weight: 600, color: UP })],
+              ]),
+              { count: "TOTAL 2026 · 890 400 NET", footer: "Retenue à la source de 15 % appliquée aux dividendes d'actions de la zone UEMOA.", minWidth: "820px" }),
+            bTable("Frais de compte",
+              cols("Date", "Nature", ["Montant", "right"], "Note"),
+              rows([
+                [K("30/06/26"), B("Droits de garde · S1 2026"), N("42 500", { weight: 600, color: DOWN }), T("0,30 % de la valeur du portefeuille, annualisé", { color: INK2, size: "12.5px" })],
+                [K("31/12/25"), B("Droits de garde · S2 2025"), N("38 200", { weight: 600, color: DOWN }), T("prélevé sur le compte espèces", { color: INK2, size: "12.5px" })],
+                [K("15/03/26"), B("Frais de tenue de compte"), N("12 000", { weight: 600, color: DOWN }), T("forfait annuel SGI", { color: INK2, size: "12.5px" })],
+                [K("—"), B("Frais d'achat cumulés"), N("118 400", { weight: 600, color: DOWN }), T("inclus dans le PRU des positions", { color: INK2, size: "12.5px" })],
+              ]),
+              { count: "211 100 CUMULÉS", footer: "Les frais de compte (Type 2) sortent du cash et n'entrent pas dans le PRU, contrairement aux frais d'achat.", minWidth: "700px" }),
+            bBars("Allocation · par titre", [
+              { label: "Sonatel", note: "2 652 000 · 17,9 %", series: [{ w: "18%", color: NAVY_D, v: "17,9" }] },
+              { label: "Coris Bank Int.", note: "2 156 000 · 14,5 %", series: [{ w: "15%", color: "#2F5488", v: "14,5" }] },
+              { label: "SODECI", note: "2 142 000 · 14,4 %", series: [{ w: "14%", color: "#4A6FA5", v: "14,4" }] },
+              { label: "Bank of Africa Bénin", note: "1 940 000 · 13,1 %", series: [{ w: "13%", color: "#6386B5", v: "13,1" }] },
+              { label: "Total Sénégal", note: "1 701 000 · 11,5 %", series: [{ w: "12%", color: "#7E9AC2", v: "11,5" }] },
+              { label: "Ecobank CI", note: "1 528 200 · 10,3 %", series: [{ w: "10%", color: "#9AB0CF", v: "10,3" }] },
+              { label: "Palmci", note: "1 496 250 · 10,1 %", series: [{ w: "10%", color: NAVY_S, v: "10,1" }] },
+              { label: "Cash", note: "1 200 000 · 8,1 %", series: [{ w: "8%", color: "#C4C9D1", v: "8,1" }] },
+            ]),
+            bDonut("Allocation · par secteur", "14,82 M", "total", [
+              { label: "Banque", montant: "5 624 200", pct: "38,0 %", pctNum: 38.0, color: NAVY_D },
+              { label: "Télécoms", montant: "2 652 000", pct: "17,9 %", pctNum: 17.9, color: "#2F5488" },
+              { label: "Services publics", montant: "2 142 000", pct: "14,4 %", pctNum: 14.4, color: "#4A6FA5" },
+              { label: "Distribution", montant: "1 701 000", pct: "11,5 %", pctNum: 11.5, color: "#7E9AC2" },
+              { label: "Agriculture", montant: "1 496 250", pct: "10,1 %", pctNum: 10.1, color: NAVY_S },
+              { label: "Cash", montant: "1 200 000", pct: "8,1 %", pctNum: 8.1, color: "#C4C9D1" },
+            ]),
+            bHeat("Performance mensuelle des lignes",
+              ["Ligne", "oct", "nov", "déc", "janv", "févr", "mars", "avr", "mai", "juin", "juil", "août", "sept"],
+              [
+                { label: "Sonatel", values: [3.4, 5.5, -2.1, 5.3, 5.1, 3.8, 3.7, 5.4, 2.5, -4.1, 3.4, -4.3] },
+                { label: "SODECI", values: [2.2, 3.2, 4.1, -2.0, 5.1, 2.9, 2.8, -1.8, 3.7, 1.8, 7.4, 2.1] },
+                { label: "Coris Bank Int.", values: [5.0, 4.8, 3.4, 5.5, 6.3, 5.9, 5.6, 6.1, 5.8, 4.7, 4.1, 2.6] },
+                { label: "BOA Bénin", values: [2.0, -1.0, 3.0, -1.0, 3.0, -1.0, 2.9, -1.9, 2.9, -0.9, 6.8, 1.0] },
+                { label: "Total Sénégal", values: [2.1, -1.0, 3.1, 2.0, -1.0, 3.0, -1.0, 1.9, -1.0, 2.9, 4.1, 0.8] },
+                { label: "Ecobank CI", values: [-1.9, -1.0, -3.0, 1.0, -3.0, -2.1, 1.1, -3.2, -2.2, 1.1, -1.1, -2.2] },
+                { label: "Palmci", values: [-1.9, 1.0, -3.8, -3.0, -2.0, -2.1, -2.2, -2.2, -1.1, -1.1, -2.8, -3.1] },
+              ],
+              { max: 8, count: "VAR. MENSUELLE", footer: "Vert = mois positif, rouge = mois négatif ; l'intensité suit l'amplitude. Deux lignes n'ont eu aucun mois vert depuis mars.", minWidth: "900px" }),
+          ],
+          [
+            bKpis("Analyse d'équilibre", [
+              kpi("Ratio Cash", "8,1 %", "Part liquidités / total", UP),
+              kpi("Secteurs", "4", "Top · Banque 38 %", WARN, { subColor: WARN }),
+              kpi("Titres", "7", "Top · Sonatel 18 %", UP),
+              kpi("Concentration 3 lignes", "46,8 %", "seuil de vigilance 50 %", UP),
+            ]),
+            bCards("Diagnostic", "4 constats", [
+              this.diag("Le secteur bancaire pèse 38 %", "Quatre lignes sur sept sont des banques. Elles partagent le même cycle de taux et le même risque de provisions : une dégradation du crédit UEMOA toucherait 5,6 M d'un coup.", WARN),
+              this.diag("Deux lignes portent 60 % du gain", "Coris Bank et Sonatel expliquent l'essentiel du +2,31 M. Sans elles, le portefeuille ressort à +4,1 % — le résultat d'ensemble dépend de deux paris.", NAVY),
+              this.diag("Le cash dort depuis 4 mois", "1,20 M non investi depuis mai. Au yield pondéré du portefeuille (7,12 %), c'est environ 21 000 FCFA de dividendes non perçus par trimestre.", NAVY),
+              this.diag("Aucune ligne au-delà de 20 %", "La plus grosse position pèse 17,9 %. Sur ce critère, le portefeuille est correctement réparti — c'est le secteur, pas la ligne, qui concentre.", UP),
+            ]),
+            bSteps("Ce qu'il faut faire, dans cet ordre", "3 ÉTAPES · 1 URGENTE", [
+              {
+                accent: DOWN, tag: "URGENT", rankLabel: "d'abord",
+                action: "Sortir la ligne passée à VENTE",
+                lignes: [{ ticker: "ECOC.ci", name: "Ecobank CI", qty: "−180 titres", color: DOWN }],
+                motif: "Perte de la SMA 200 et ROE de 14,1 % sous la médiane sectorielle. La ligne est en perte de 9,7 % : ce n'est pas une raison de la garder, c'est la raison pour laquelle le verdict est passé à VENTE.",
+                impactLabel: "Libère", impact: "1 528 200", impactColor: DOWN, impactW: "72%", impactSub: "banque : 38 % → 28 %",
+              },
+              {
+                accent: WARN, tag: "À ARBITRER", rankLabel: "ensuite",
+                action: "Alléger la position la plus concentrée",
+                lignes: [{ ticker: "CBIBF.bf", name: "Coris Bank Int.", qty: "−60 titres", color: WARN }],
+                motif: "ACHAT FORT maintenu — la société va bien, c'est le poids qui pose question : 14,5 % du portefeuille dans un secteur déjà à 38 %. Étape optionnelle : 84 000 FCFA de frais pour 0,02 de rendement par unité de risque.",
+                impactLabel: "Libère", impact: "588 000", impactColor: WARN, impactW: "38%", impactSub: "banque : 28 % → 22 %",
+              },
+              {
+                accent: UP, tag: "ENSUITE", rankLabel: "enfin",
+                action: "Employer le cash hors secteur bancaire",
+                lignes: [
+                  { ticker: "SNTS.sn", name: "Sonatel", qty: "+30", color: UP },
+                  { ticker: "SDCC.ci", name: "SODECI", qty: "+50", color: UP },
+                  { ticker: "TTLS.sn", name: "Total Sénégal", qty: "+100", color: UP },
+                ],
+                motif: "1,20 M dorment depuis mai. Les trois titres sont hors finance, tous en ACHAT ou CONSERVER, et assez liquides pour absorber ces montants sans bouger le cours.",
+                impactLabel: "Emploie", impact: "1 042 000", impactColor: UP, impactW: "58%", impactSub: "yield porté à 7,31 %",
+              },
+            ]),
+            bKpis("Ce que les trois étapes changent", [
+              kpi("Yield pondéré", "7,12 → 7,31 %", "+0,19 pt", UP, { font: SANS, size: "20px", weight: 600, subColor: UP }),
+              kpi("Volatilité", "21,0 → 18,8 %", "−2,2 pts", UP, { font: SANS, size: "20px", weight: 600, subColor: UP }),
+              kpi("Poids Banque", "38 → 28 %", "sous le seuil de 35 %", UP, { font: SANS, size: "20px", weight: 600, subColor: UP }),
+              kpi("Frais de l'opération", "42 000", "1 vente, 3 achats", INK4, { size: "20px" }),
+            ]),
+            bTable("Ne rien faire sur ces lignes",
+              cols("Ticker", "Nom", "Verdict", ["Poids", "right"], ["P&L", "right"], "Pourquoi on n'y touche pas"),
+              rows([
+                [K("PALC.ci"), B("Palmci"), VTAG("PRUDENCE"), N("10,1 %", { color: INK2 }), N("−12,8 %", { weight: 600, color: DOWN }), T("FCF en repli 3 exercices ; moyenner à la baisse double le pari", { color: INK2, size: "12.5px" })],
+                [K("BOAB.bj"), B("Bank of Africa Bénin"), VTAG("ACHAT"), N("13,1 %", { color: INK2 }), N("+4,9 %", { weight: 600, color: UP }), T("meilleur yield du portefeuille, mais renforcer irait contre l'étape 1", { color: INK2, size: "12.5px" })],
+              ]),
+              { minWidth: "820px" }),
+            bTable("Acheter · hors portefeuille",
+              cols("Ticker", "Nom", "Secteur", ["Yield", "right"], ["Score", "right"], "Verdict", "Motif"),
+              rows([
+                [K("BOAN.ne"), B("Bank of Africa Niger"), T("Banque", { color: INK2, size: "12.5px" }), N("9,12 %", { weight: 600, color: UP }), N("35/50", { weight: 600 }), VTAG("ACHETER"), T("meilleur yield de la cote", { color: INK2, size: "12.5px" })],
+                [K("NSBC.ci"), B("NSIA Banque CI"), T("Banque", { color: INK2, size: "12.5px" }), N("6,41 %", { weight: 600, color: UP }), N("33/50", { weight: 600 }), VTAG("ACHETER"), T("PER 8,9, payout 52 %", { color: INK2, size: "12.5px" })],
+                [K("SIVC.ci"), B("Air Liquide CI"), T("Industrie", { color: INK2, size: "12.5px" }), N("5,84 %", { weight: 600, color: UP }), N("30/50", { weight: 600 }), VTAG("CONSERVER"), T("diversifie hors finance", { color: INK2, size: "12.5px" })],
+              ]),
+              { footer: "Suggestions issues du screener, filtrées sur les titres absents du portefeuille.", minWidth: "820px" }),
+            bNote("Utilisation du cash · 1,20 M",
+              "8,1 % du portefeuille en liquidités : ni trop peu pour saisir une occasion, ni assez pour que dormir soit gratuit. Le modèle propose de tout employer, en priorité hors secteur bancaire — voir la répartition détaillée dans l'onglet Risque et optimisation.", NAVY),
+            bNote("Diversification",
+              "4 secteurs pour 7 titres, avec un secteur à 38 %. Deux leviers : employer le cash hors finance (industrie, services publics, distribution), ou alléger une banque. Le premier ne coûte aucun frais de transaction sur ce qui est déjà détenu.", WARN),
+          ],
+          [
+            bNote("Risque d'ensemble",
+              "· La volatilité du portefeuille ressort à 21 %, contre 26 % si l'on additionnait celle des lignes : la diversification économise 5 points, parce que les titres ne baissent pas tous ensemble. · Le bêta agrégé de 0,94 dit un portefeuille légèrement plus calme que la cote. · La pire baisse simulée sur cinq ans est de −24 %, atteinte en octobre 2025, effacée en huit mois. · Le portefeuille reste exposé à un seul facteur : le crédit UEMOA, via 38 % de banques.", WARN),
+            bKpis("", [
+              kpi("Volatilité du portefeuille", "21,0 %", "somme des lignes : 26,3 %", UP),
+              kpi("Bêta agrégé", "0,94", "légèrement défensif", INK4),
+              kpi("Perte maximale simulée", "−24,1 %", "oct. 2025, effacée en 8 mois", INK4, { valueColor: DOWN }),
+              kpi("Rendement par unité de risque", "0,68", "médiane de la cote : 0,32", UP, { size: "22px" }),
+            ]),
+            bScatter("Chaque ligne, son risque et ce qu'il rapporte", {
+              xLabel: "Volatilité annuelle →", yLabel: "↑ Rendement annualisé",
+              xMin: 10, xMax: 45, yMin: -20, yMax: 45,
+              xTicks: [{ at: 15, label: "15 %" }, { at: 25, label: "25 %" }, { at: 35, label: "35 %" }, { at: 45, label: "45 %" }],
+              yTicks: [{ at: 40, label: "+40 %" }, { at: 20, label: "+20 %" }, { at: 0, label: "0" }, { at: -20, label: "−20 %" }],
+              guides: [{ h: 0 }, { v: 27 }],
+              hint: "Aire du disque = poids dans le portefeuille",
+              note: "Quadrant idéal en haut à gauche. Le trait vertical marque la volatilité médiane de la cote (27 %).",
+              dots: [
+                { x: 18, y: 20.1, r: 17, color: NAVY_D, label: "Sonatel" },
+                { x: 31, y: 38.0, r: 15, color: NAVY, label: "Coris Bank" },
+                { x: 24, y: 14.2, r: 15, color: "#4A6FA5", label: "SODECI" },
+                { x: 27, y: 4.9, r: 14, color: "#7E9AC2", label: "BOA Bénin" },
+                { x: 22, y: 6.5, r: 13, color: NAVY_S, label: "Total Sénégal" },
+                { x: 34, y: -9.7, r: 12, color: DOWN, label: "Ecobank CI", labelColor: DOWN },
+                { x: 41, y: -12.8, r: 12, color: DOWN, label: "Palmci", labelColor: DOWN },
+              ],
+            }),
+            bTable("Contribution au risque",
+              cols("Ticker", "Nom", ["Poids", "right"], ["Volatilité", "right"], ["Corrélation portef.", "right"], ["Contribution", "right"], "Lecture"),
+              rows([
+                [K("PALC.ci"), B("Palmci"), N("10,1 %", { color: INK2 }), N("41 %", { weight: 600, color: DOWN }), N("0,38", { color: INK2 }), N("14,8 %", { weight: 600, color: DOWN }), T("plus risquée que son poids", { color: INK2, size: "12.5px" })],
+                [K("CBIBF.bf"), B("Coris Bank Int."), N("14,5 %", { color: INK2 }), N("31 %", { color: INK2 }), N("0,71", { color: INK2 }), N("18,2 %", { weight: 600, color: WARN }), T("corrélée aux autres banques", { color: INK2, size: "12.5px" })],
+                [K("ECOC.ci"), B("Ecobank CI"), N("10,3 %", { color: INK2 }), N("34 %", { color: INK2 }), N("0,74", { color: INK2 }), N("13,9 %", { weight: 600, color: WARN }), T("idem, et verdict VENTE", { color: INK2, size: "12.5px" })],
+                [K("BOAB.bj"), B("Bank of Africa Bénin"), N("13,1 %", { color: INK2 }), N("27 %", { color: INK2 }), N("0,69", { color: INK2 }), N("12,4 %", { weight: 600 }), T("dans la moyenne", { color: INK2, size: "12.5px" })],
+                [K("TTLS.sn"), B("Total Sénégal"), N("11,5 %", { color: INK2 }), N("22 %", { color: INK2 }), N("0,41", { color: INK2 }), N("7,1 %", { weight: 600, color: UP }), T("amortit l'ensemble", { color: INK2, size: "12.5px" })],
+                [K("SDCC.ci"), B("SODECI"), N("14,4 %", { color: INK2 }), N("24 %", { color: INK2 }), N("0,33", { color: INK2 }), N("8,2 %", { weight: 600, color: UP }), T("décorrélée, utile", { color: INK2, size: "12.5px" })],
+                [K("SNTS.sn"), B("Sonatel"), N("17,9 %", { color: INK2 }), N("18 %", { weight: 600, color: UP }), N("0,29", { color: INK2 }), N("6,9 %", { weight: 600, color: UP }), T("le meilleur ratio du portefeuille", { color: INK2, size: "12.5px" })],
+              ]),
+              { footer: "Une contribution supérieure au poids signale une ligne qui apporte plus de risque que de capital.", minWidth: "1000px" }),
+            bTable("Les mêmes suggestions, ajustées",
+              cols("Ticker", "Nom", "Suggestion brute", "Après risque et liquidité", ["Écart", "right"], "Motif de l'ajustement"),
+              rows([
+                [K("SNTS.sn"), B("Sonatel"), T("+30 titres", { color: INK3, size: "12.5px" }), T("+30 titres", { weight: 500, size: "12.5px" }), N("—", { color: INK3 }), T("liquidité et volatilité excellentes", { color: INK2, size: "12.5px" })],
+                [K("BOAN.ne"), B("Bank of Africa Niger"), T("480 000", { color: INK3, size: "12.5px" }), T("240 000", { weight: 500, size: "12.5px" }), N("−50 %", { weight: 600, color: WARN }), T("94 M échangés/mois : sortie lente", { color: INK2, size: "12.5px" })],
+                [K("SIVC.ci"), B("Air Liquide CI"), T("270 000", { color: INK3, size: "12.5px" }), T("120 000", { weight: 500, size: "12.5px" }), N("−56 %", { weight: 600, color: WARN }), T("28 M/mois, 11 % de mois immobiles", { color: INK2, size: "12.5px" })],
+                [K("NSBC.ci"), B("NSIA Banque CI"), T("300 000", { color: INK3, size: "12.5px" }), T("0", { weight: 500, size: "12.5px" }), N("−100 %", { weight: 600, color: DOWN }), T("aggrave la concentration bancaire", { color: INK2, size: "12.5px" })],
+              ]),
+              { intro: "Le risque et la liquidité ne changent pas la qualité d'une société : ils changent la taille de la position qu'on peut y prendre.", minWidth: "980px" }),
+            bTable("Maximiser le retour, minimiser le risque",
+              cols("Scénario", ["Yield attendu", "right"], ["Volatilité", "right"], ["Rdt / risque", "right"], ["Banque", "right"], "Écart au portefeuille actuel"),
+              rows([
+                [B("Portefeuille actuel"), N("7,12 %"), N("21,0 %"), N("0,68"), N("38 %", { color: WARN }), T("référence", { color: INK3, size: "12.5px" })],
+                [B("Cash employé hors finance"), N("7,18 %", { color: UP }), N("20,1 %", { color: UP }), N("0,74", { weight: 600, color: UP }), N("35 %", { color: WARN }), T("aucune vente, 3 achats", { color: INK2, size: "12.5px" })],
+                [B("+ sortie d'Ecobank CI"), N("7,31 %", { color: UP }), N("18,8 %", { color: UP }), N("0,81", { weight: 600, color: UP }), N("28 %", { color: UP }), T("1 vente, 4 achats", { color: INK2, size: "12.5px" })],
+                [B("+ allègement Coris Bank"), N("7,24 %", { color: UP }), N("17,9 %", { color: UP }), N("0,83", { weight: 600, color: UP }), N("22 %", { color: UP }), T("2 ventes, 5 achats · frais 84 k", { color: INK2, size: "12.5px" })],
+              ]),
+              { footer: "Le troisième scénario gagne 0,15 de rendement par unité de risque pour 84 000 FCFA de frais : à vous de juger si l'écart le vaut.", minWidth: "980px" }),
+            bTable("Répartition suggérée du cash · 1,20 M",
+              cols("Ticker", "Nom", "Secteur", "Motif", ["Montant", "right"], ["Titres", "right"]),
+              rows([
+                [K("SNTS.sn"), B("Sonatel"), T("Télécoms", { color: INK2, size: "12.5px" }), T("meilleur rdt/risque, hors banque", { color: INK2, size: "12.5px" }), N("442 000", { weight: 600 }), N("20", { color: INK2 })],
+                [K("SDCC.ci"), B("SODECI"), T("Services publics", { color: INK2, size: "12.5px" }), T("décorrélée du reste du portefeuille", { color: INK2, size: "12.5px" }), N("357 000", { weight: 600 }), N("50", { color: INK2 })],
+                [K("TTLS.sn"), B("Total Sénégal"), T("Distribution", { color: INK2, size: "12.5px" }), T("amortit la volatilité d'ensemble", { color: INK2, size: "12.5px" }), N("243 000", { weight: 600 }), N("100", { color: INK2 })],
+                [K("BOAN.ne"), B("Bank of Africa Niger"), T("Banque", { color: INK2, size: "12.5px" }), T("yield 9,12 %, montant limité par la liquidité", { color: INK2, size: "12.5px" }), N("158 000", { weight: 600 }), N("49", { color: INK2 })],
+              ]),
+              { intro: "Le modèle a essayé 4 860 combinaisons et retenu celle qui maximise le rendement par unité de risque sous contrainte de liquidité.",
+                footer: "Total employé : 1 200 000 FCFA. Rien n'est transmis à votre SGI — c'est une suggestion calculée, pas un ordre.", minWidth: "980px" }),
+            bNote("Conseiller d'investissement",
+              "Cash disponible : 1 200 000 FCFA. Posez votre question en français — le conseiller lit vos positions, les verdicts du modèle et les mesures de risque, et répond en citant les chiffres qu'il utilise. Il ne passe aucun ordre.", NAVY),
+            bNote("Notes & informations",
+              "Espace libre pour vos observations, votre stratégie et les informations de marché que l'app ne collecte pas : conversations avec votre SGI, décisions prises et leurs raisons, échéances à surveiller.", NAVY),
+          ],
+        ],
+      },
+      "Signaux": {
+        title: "Signaux d'achat / vente",
+        intro: "Verdict consolidé par titre : recommandation fondamentale croisée avec les signaux techniques.",
+        meta: "Scores de l'instantané du 04/09/2026 à 16:04.",
+        toolbar: [seg("Analyser par", ["Secteur", "Titres", "Tout"], 0), sel("Secteur", "Banque"), sel("Verdict", "Tous")],
+        kpis: [
+          kpi("Achat", "3", "dont 1 achat fort", UP, { subColor: UP }),
+          kpi("Conserver", "1", "prudence incluse : 2", WARN),
+          kpi("Vente", "2", "dont 1 perte d'exercice", DOWN, { subColor: DOWN }),
+          kpi("Contradictions", "2", "signalées, jamais arbitrées", NAVY),
+        ],
+        tabs: ["Synthèse par titre", "Contradictions"],
+        panels: [
+          [
+            bTable("Synthèse par titre",
+              cols("Verdict", "Ticker", "Nom", ["Prix", "right"], ["Score", "right"], ["Conf.", "right"], "Tendance", "Signaux achat", "Signaux vente"),
+              rows([
+                [VTAG("ACHAT FORT"), K("CBIBF.bf"), B("Coris Bank Int."), N("9 800"), N("84/100", { weight: 600 }), N("0,91", { color: INK2 }), DOT("haussière", UP), T("RSI sortie survente, MACD +", { color: UP, size: "12px" }), T("—", { color: INK3, size: "12px" })],
+                [VTAG("ACHAT"), K("SNTS.sn"), B("Sonatel"), N("22 100"), N("78/100", { weight: 600 }), N("0,86", { color: INK2 }), DOT("haussière", UP), T("Yield > 6 %, SMA50 franchie", { color: UP, size: "12px" }), T("—", { color: INK3, size: "12px" })],
+                [VTAG("ACHAT"), K("BOAB.bj"), B("Bank of Africa Bénin"), N("4 850"), N("74/100", { weight: 600 }), N("0,79", { color: INK2 }), DOT("haussière", UP), T("Payout soutenable, PER bas", { color: UP, size: "12px" }), T("—", { color: INK3, size: "12px" })],
+                [VTAG("CONSERVER"), K("SDCC.ci"), B("SODECI"), N("7 140"), N("66/100", { weight: 600 }), N("0,72", { color: INK2 }), DOT("neutre", INK3), T("Yield 5,9 %", { color: UP, size: "12px" }), T("RSI 71 surachat", { color: DOWN, size: "12px" })],
+                [VTAG("PRUDENCE"), K("FTSC.ci"), B("Filtisac"), N("2 985"), N("48/100", { weight: 600 }), N("0,54", { color: INK2 }), DOT("haussière", UP), T("Momentum +5,1 %", { color: UP, size: "12px" }), T("PER 14,7, payout 57 % +1", { color: DOWN, size: "12px" })],
+                [VTAG("VENTE"), K("ORGT.tg"), B("Oragroup"), N("1 940"), N("22/100", { weight: 600 }), N("0,88", { color: INK2 }), DOT("baissière", DOWN), T("—", { color: INK3, size: "12px" }), T("Perte 2025, SMA200 perdue +2", { color: DOWN, size: "12px" })],
+                [VTAG("VENTE"), K("SCRC.ci"), B("Sucrivoire"), N("1 060"), N("27/100", { weight: 600 }), N("0,68", { color: INK2 }), DOT("baissière", DOWN), T("—", { color: INK3, size: "12px" }), T("FCF négatif, dividende suspendu", { color: DOWN, size: "12px" })],
+              ]),
+              { count: "11 TITRES", footer: "Tri par verdict, puis par score hybride décroissant.", minWidth: "1080px" }),
+          ],
+          [
+            bCards("Fondamental et technique en désaccord", "2 titres", [
+              this.diag("Filtisac · fondamental faible, technique haussière", "Le bilan sort à 26/50 (PER 14,7, marge en repli) quand le cours gagne 5,1 % en une séance sur un volume ×3. L'app ne tranche pas : elle affiche PRUDENCE et signale les deux lectures.", WARN),
+              this.diag("SODECI · yield attractif, RSI en surachat", "5,88 % de rendement et un payout de 58 % plaident pour conserver ; le RSI à 71 dit que le point d'entrée est mauvais aujourd'hui. Deux horizons différents, pas une contradiction du modèle.", WARN),
+            ]),
+          ],
+        ],
+      },
+
+      "Trajectoires Recommandations": {
+        title: "Trajectoires Recommandations",
+        badge: true,
+        intro: "Cohortes en cours · trajectoires Achat fort → Achat · backtest de performance par verdict. Source : verdict_daily, alimentée par le build de 16h UTC.",
+        tabs: ["Cohorte en cours", "Trajectoires", "Backtest"],
+        panels: [
+          [
+            bKpis("", [
+              kpi("Tickers en cohorte", "6", "verdict ACHAT FORT", NAVY),
+              kpi("Perf moyenne", "+12,4 %", "depuis l'entrée", UP, { valueColor: UP }),
+              kpi("Perf médiane", "+9,1 %", "6 tickers", INK4),
+              kpi("Durée moyenne", "58 j", "en cohorte", INK4),
+            ]),
+            bTable("Tickers actuellement classés ACHAT FORT",
+              cols("Ticker", "Société", "Secteur", "Entrée", ["Durée", "right"], ["Prix entrée", "right"], ["Prix actuel", "right"], ["Perf", "right"]),
+              rows([
+                [K("CBIBF.bf"), B("Coris Bank Int."), T("Banque", { color: INK2, size: "12.5px" }), K("14/05/26"), N("113 j"), N("7 860", { color: INK2 }), N("9 800"), N("+24,7 %", { weight: 600, color: UP })],
+                [K("SDCC.ci"), B("SODECI"), T("Services publics", { color: INK2, size: "12.5px" }), K("02/07/26"), N("64 j"), N("6 420", { color: INK2 }), N("7 140"), N("+11,2 %", { weight: 600, color: UP })],
+                [K("BOAN.ne"), B("Bank of Africa Niger"), T("Banque", { color: INK2, size: "12.5px" }), K("21/07/26"), N("45 j"), N("2 980", { color: INK2 }), N("3 200"), N("+7,4 %", { weight: 600, color: UP })],
+                [K("SNTS.sn"), B("Sonatel"), T("Télécoms", { color: INK2, size: "12.5px" }), K("11/08/26"), N("24 j"), N("21 400", { color: INK2 }), N("22 100"), N("+3,3 %", { weight: 600, color: UP })],
+                [K("BOAB.bj"), B("Bank of Africa Bénin"), T("Banque", { color: INK2, size: "12.5px" }), K("18/08/26"), N("17 j"), N("4 910", { color: INK2 }), N("4 850"), N("−1,2 %", { weight: 600, color: DOWN })],
+                [K("TTLS.sn"), B("Total Sénégal"), T("Distribution", { color: INK2, size: "12.5px" }), K("27/08/26"), N("8 j"), N("2 380", { color: INK2 }), N("2 430"), N("+2,1 %", { weight: 600, color: UP })],
+              ]),
+              { minWidth: "900px" }),
+          ],
+          [
+            bKpis("", [
+              kpi("Trajectoires", "34", "depuis le 12 mars 2026", NAVY),
+              kpi("En cours", "9", "durée médiane 41 j", UP),
+              kpi("Terminées", "25", "sortie au 1er verdict hors zone", INK4),
+              kpi("Gain moyen (terminées)", "+9,3 %", "médiane +6,8 %", UP, { valueColor: UP }),
+            ]),
+            bTable("Achat fort → Achat",
+              cols("Ticker", "Société", "Statut", "Début", "Fin", ["Durée", "right"], ["Gain A. FORT", "right"], ["Gain ACHAT", "right"], ["Gain total", "right"]),
+              rows([
+                [K("CBIBF.bf"), B("Coris Bank Int."), DOT("En cours", UP), K("14/05/26"), K("—"), N("113 j"), N("+18,4 %", { color: INK2 }), N("+6,2 %", { color: INK2 }), N("+24,6 %", { weight: 600, color: UP })],
+                [K("SNTS.sn"), B("Sonatel"), DOT("En cours", UP), K("02/07/26"), K("—"), N("64 j"), N("+4,1 %", { color: INK2 }), N("+2,8 %", { color: INK2 }), N("+6,9 %", { weight: 600, color: UP })],
+                [K("SDCC.ci"), B("SODECI"), DOT("Terminée", INK3), K("18/03/26"), K("26/06/26"), N("100 j"), N("+11,2 %", { color: INK2 }), N("+3,4 %", { color: INK2 }), N("+14,6 %", { weight: 600, color: UP })],
+                [K("BOAB.bj"), B("Bank of Africa Bénin"), DOT("Terminée", INK3), K("05/04/26"), K("12/07/26"), N("98 j"), N("+7,8 %", { color: INK2 }), N("+1,1 %", { color: INK2 }), N("+8,9 %", { weight: 600, color: UP })],
+                [K("TTLS.sn"), B("Total Sénégal"), DOT("Terminée", INK3), K("22/04/26"), K("30/05/26"), N("38 j"), N("+2,4 %", { color: INK2 }), N("−1,7 %", { color: INK2 }), N("+0,7 %", { weight: 600, color: UP })],
+                [K("FTSC.ci"), B("Filtisac"), DOT("Terminée", INK3), K("12/03/26"), K("18/04/26"), N("37 j"), N("−3,1 %", { color: INK2 }), N("−2,2 %", { color: INK2 }), N("−5,3 %", { weight: 600, color: DOWN })],
+              ]),
+              { footer: "Une trajectoire se termine au premier verdict sorti de l'ensemble {ACHAT FORT, ACHAT}.", minWidth: "1000px" }),
+          ],
+          [
+            bKpis("", [
+              kpi("Entrées détectées", "78", "verdict ACHAT FORT", NAVY),
+              kpi("Évaluées", "62", "horizon 30 j complet", INK4),
+              kpi("Perf moyenne", "+4,8 %", "médiane +3,1 %", UP, { valueColor: UP }),
+              kpi("Hit rate", "66 %", "gain > 0 à l'horizon", UP, { barW: "66%" }),
+            ]),
+            bNote("Lecture du backtest",
+              "Une entrée = transition d'un autre verdict vers ACHAT FORT. Sur 62 entrées évaluées à +30 jours : moyenne +4,8 %, médiane +3,1 %, hit rate 66 %. Les 16 entrées dont l'horizon n'est pas encore complet sont comptées à part plutôt que mélangées — les inclure gonflerait mécaniquement la moyenne.", NAVY),
+          ],
+        ],
+      },
+
+      "Historique Signaux": {
+        title: "Historique Signaux & Recommandations",
+        badge: true,
+        intro: "1 ligne = 1 événement unique. Un signal qui réapparaît sous 7 jours met à jour l'événement existant ; au-delà, il en ouvre un nouveau.",
+        toolbars: [
+          [sel("Ticker", "Tous"), sel("Statut", "Tous"), sel("Type", "Tous")],
+          [sel("Ticker", "Tous"), sel("Statut", "Tous"), sel("Type", "Tous"), seg("Horizon", ["1 m", "3 m", "6 m"], 1)],
+          [sel("Ticker", "Tous"), seg("Horizon", ["1 m", "3 m", "6 m"], 1)],
+          [sel("Fenêtre d'évaluation", "3 mois"), seg("Mode", ["Automatique", "Manuel"], 0), seg("Minimum d'observations", ["20", "30", "50"], 1)],
+          [sel("Ticker", "Tous"), sel("Statut", "Tous"), sel("Type", "Tous")],
+        ],
+        actionsByTab: [
+          [], [], [],
+          [btn("Réinitialiser les poids"), btn("Exporter la revue"), btn("Lancer la revue mensuelle", true)],
+          [btn("Exporter CSV")],
+        ],
+        kpis: [
+          kpi("Événements", "1 284", "12 mars → 4 sept. 2026", NAVY),
+          kpi("Signaux uniques", "948", "412 achat · 361 vente · 175 info", INK4),
+          kpi("Recommandations", "336", "48 verdicts actifs", INK4),
+          kpi("Titres suivis", "48", "BRVM · tous secteurs", INK4),
+        ],
+        tabs: ["Vue d'ensemble", "Signaux", "Recommandations", "Calibration", "Données brutes"],
+        panels: [
+          [
+            bKpis("Performance agrégée · horizon 3 mois", [
+              kpi("Signaux d'achat", "61 %", "hit rate · perf. moyenne +7,4 %", UP, { barW: "61%" }),
+              kpi("Signaux de vente", "57 %", "hit rate · perf. moyenne −5,1 %", DOWN, { barW: "57%" }),
+              kpi("Recommandations", "64 %", "hit rate · perf. moyenne +8,9 %", NAVY, { barW: "64%" }),
+            ]),
+            bTable("Détail par type de signal",
+              cols("Signal", "Type", ["n", "right"], ["Perf. 1 m", "right"], ["Perf. 3 m", "right"], ["Hit rate", "right"], ["Poids modèle", "right"]),
+              rows([
+                [B("RSI sortie de survente"), TAG("Achat", UP_BG, UP), N("104", { color: INK2 }), N("+3,8 %"), N("+9,1 %"), N("68 %", { weight: 600, color: UP }), N("1,20", { color: INK2 })],
+                [B("Croisement SMA 50/200"), TAG("Achat", UP_BG, UP), N("72", { color: INK2 }), N("+2,1 %"), N("+7,4 %"), N("63 %", { weight: 600, color: UP }), N("1,10", { color: INK2 })],
+                [B("Yield > 6 % + payout < 70 %"), TAG("Achat", UP_BG, UP), N("148", { color: INK2 }), N("+1,4 %"), N("+6,2 %"), N("59 %", { weight: 600, color: WARN }), N("1,00", { color: INK2 })],
+                [B("RSI surachat"), TAG("Vente", DOWN_BG, DOWN), N("96", { color: INK2 }), N("−1,9 %"), N("−4,8 %"), N("56 %", { weight: 600, color: WARN }), N("0,90", { color: INK2 })],
+                [B("Perte sur l'exercice"), TAG("Vente", DOWN_BG, DOWN), N("41", { color: INK2 }), N("−4,2 %"), N("−11,3 %"), N("71 %", { weight: 600, color: UP }), N("1,25", { color: INK2 })],
+                [B("Volume anormal"), TAG("Info", NEU_BG, INK2), N("175", { color: INK2 }), N("+0,4 %"), N("+1,1 %"), N("—", { color: INK3 }), N("0,40", { color: INK2 })],
+              ]),
+              { footer: "Le poids est recalculé à la revue mensuelle de calibration, à partir du hit rate observé.", minWidth: "820px" }),
+          ],
+          [
+            bTable("Événements de signaux",
+              cols("Ticker", "Signal", "Type", "1re vue", "Dern. vue", "Statut", ["Prix 1re vue", "right"], ["Perf 3 m", "right"]),
+              rows([
+                [K("CBIBF.bf"), T("RSI sortie de survente"), TAG("Achat", UP_BG, UP), K("14/05/26"), K("04/09/26"), DOT("Actif", UP), N("7 860", { color: INK2 }), N("+18,4 %", { weight: 600, color: UP })],
+                [K("SNTS.sn"), T("SMA 50 franchie"), TAG("Achat", UP_BG, UP), K("11/08/26"), K("04/09/26"), DOT("Actif", UP), N("21 400", { color: INK2 }), N("—", { color: INK3 })],
+                [K("SDCC.ci"), T("RSI surachat"), TAG("Vente", DOWN_BG, DOWN), K("28/08/26"), K("04/09/26"), DOT("Actif", UP), N("7 020", { color: INK2 }), N("—", { color: INK3 })],
+                [K("ORGT.tg"), T("Perte sur l'exercice"), TAG("Vente", DOWN_BG, DOWN), K("29/08/26"), K("04/09/26"), DOT("Actif", UP), N("2 020", { color: INK2 }), N("—", { color: INK3 })],
+                [K("FTSC.ci"), T("Volume anormal"), TAG("Info", NEU_BG, INK2), K("02/06/26"), K("19/06/26"), DOT("Inactif", INK3), N("2 640", { color: INK2 }), N("+13,1 %", { weight: 600, color: UP })],
+                [K("PALC.ci"), T("Croisement SMA 50/200"), TAG("Vente", DOWN_BG, DOWN), K("18/04/26"), K("12/05/26"), DOT("Inactif", INK3), N("5 210", { color: INK2 }), N("−17,9 %", { weight: 600, color: DOWN })],
+              ]),
+              { count: "948 ÉVÉNEMENTS", minWidth: "920px" }),
+          ],
+          [
+            bTable("Performance moyenne par verdict",
+              cols("Verdict", ["n", "right"], ["Perf 1 m", "right"], ["Perf 3 m", "right"], ["Perf 6 m", "right"], ["Hit rate", "right"]),
+              rows([
+                [VTAG("ACHAT FORT"), N("78", { color: INK2 }), N("+2,4 %"), N("+8,9 %"), N("+16,2 %"), N("66 %", { weight: 600, color: UP })],
+                [VTAG("ACHAT"), N("112", { color: INK2 }), N("+1,6 %"), N("+6,1 %"), N("+11,4 %"), N("61 %", { weight: 600, color: UP })],
+                [VTAG("CONSERVER"), N("84", { color: INK2 }), N("+0,3 %"), N("+1,8 %"), N("+3,1 %"), N("52 %", { weight: 600, color: WARN })],
+                [VTAG("PRUDENCE"), N("38", { color: INK2 }), N("−0,9 %"), N("−2,4 %"), N("−4,8 %"), N("58 %", { weight: 600, color: WARN })],
+                [VTAG("EVITER"), N("24", { color: INK2 }), N("−2,8 %"), N("−7,9 %"), N("−14,1 %"), N("71 %", { weight: 600, color: UP })],
+              ]),
+              { footer: "Hit rate d'un verdict négatif = part des cas où le titre a effectivement baissé.", minWidth: "700px" }),
+          ],
+          [
+            bKpis("Dernière revue mensuelle · 1er septembre 2026", [
+              kpi("Signaux calibrés", "6", "poids ajustés", NAVY),
+              kpi("Verdicts calibrés", "5", "poids ajustés", NAVY),
+              kpi("Plus fort poids", "1,25", "Perte sur l'exercice", UP),
+              kpi("Plus faible poids", "0,40", "Volume anormal", INK4),
+            ]),
+            bNote("Comment la calibration fonctionne",
+              "Chaque mois, le modèle confronte ses signaux et ses verdicts à ce qui s'est réellement passé sur l'horizon retenu, puis ajuste leur poids : un signal dont le hit rate se dégrade pèse moins dans le score hybride du mois suivant. Un poids ne descend jamais sous 0,20 ni ne dépasse 1,50 — sans cette borne, un signal chanceux sur 20 observations écraserait tous les autres. La revue tourne automatiquement au démarrage si elle est due ; le bouton la force.", NAVY),
+            bKpis("Prochaine revue", [
+              kpi("Dernière revue", "1er sept. 2026", "il y a 3 jours", NAVY, { font: SANS, size: "19px", weight: 600 }),
+              kpi("Prochaine revue", "1er oct. 2026", "automatique au démarrage", INK4, { font: SANS, size: "19px", weight: 600 }),
+              kpi("Observations retenues", "1 284", "minimum 30 par signal", INK4),
+              kpi("Signaux sous le minimum", "1", "Perte sur l'exercice · 41 obs.", WARN, { subColor: WARN }),
+            ]),
+            bTable("Poids par type de signal",
+              cols("Signal", ["Poids avant", "right"], ["Poids après", "right"], ["Écart", "right"], "Motif"),
+              rows([
+                [B("Perte sur l'exercice"), N("1,15", { color: INK2 }), N("1,25", { weight: 600 }), N("+0,10", { weight: 600, color: UP }), T("hit rate 71 % sur 41 cas", { color: INK2, size: "12.5px" })],
+                [B("RSI sortie de survente"), N("1,25", { color: INK2 }), N("1,20", { weight: 600 }), N("−0,05", { weight: 600, color: DOWN }), T("hit rate en repli à 68 %", { color: INK2, size: "12.5px" })],
+                [B("Volume anormal"), N("0,55", { color: INK2 }), N("0,40", { weight: 600 }), N("−0,15", { weight: 600, color: DOWN }), T("aucun pouvoir prédictif mesuré", { color: INK2, size: "12.5px" })],
+                [B("Yield > 6 % + payout < 70 %"), N("1,00", { color: INK2 }), N("1,00", { weight: 600 }), N("—", { color: INK3 }), T("stable", { color: INK2, size: "12.5px" })],
+              ]),
+              { footer: "Le poids s'applique au score technique ; la somme des poids n'est pas normalisée à 1.", minWidth: "700px" }),
+            bTable("Poids par verdict de recommandation",
+              cols("Verdict", ["Poids avant", "right"], ["Poids après", "right"], ["Écart", "right"], ["Hit rate 3 m", "right"], ["n", "right"], "Motif"),
+              rows([
+                [VTAG("ACHAT FORT"), N("1,30", { color: INK2 }), N("1,35", { weight: 600 }), N("+0,05", { weight: 600, color: UP }), N("66 %", { color: UP, weight: 600 }), N("78", { color: INK2 }), T("hit rate stable au-dessus de 65 %", { color: INK2, size: "12.5px" })],
+                [VTAG("ACHAT"), N("1,10", { color: INK2 }), N("1,10", { weight: 600 }), N("—", { color: INK3 }), N("61 %", { color: UP, weight: 600 }), N("112", { color: INK2 }), T("stable", { color: INK2, size: "12.5px" })],
+                [VTAG("CONSERVER"), N("1,00", { color: INK2 }), N("0,90", { weight: 600 }), N("−0,10", { weight: 600, color: DOWN }), N("52 %", { color: WARN, weight: 600 }), N("84", { color: INK2 }), T("proche du hasard : le verdict informe peu", { color: INK2, size: "12.5px" })],
+                [VTAG("PRUDENCE"), N("0,95", { color: INK2 }), N("1,05", { weight: 600 }), N("+0,10", { weight: 600, color: UP }), N("58 %", { color: WARN, weight: 600 }), N("38", { color: INK2 }), T("baisse effective dans 58 % des cas", { color: INK2, size: "12.5px" })],
+                [VTAG("EVITER"), N("1,20", { color: INK2 }), N("1,30", { weight: 600 }), N("+0,10", { weight: 600, color: UP }), N("71 %", { color: UP, weight: 600 }), N("24", { color: INK2 }), T("le verdict le plus fiable du modèle", { color: INK2, size: "12.5px" })],
+              ]),
+              { footer: "Un verdict négatif est jugé sur sa capacité à annoncer une baisse, pas une hausse.", minWidth: "900px" }),
+            bHeat("Hit rate par verdict et par horizon",
+              ["Verdict", "1 mois", "3 mois", "6 mois", "12 mois"],
+              [
+                { label: "ACHAT FORT", values: [58, 66, 69, 64] },
+                { label: "ACHAT", values: [54, 61, 63, 59] },
+                { label: "CONSERVER", values: [51, 52, 54, 53] },
+                { label: "PRUDENCE", values: [55, 58, 61, 57] },
+                { label: "EVITER", values: [62, 71, 74, 68] },
+              ],
+              { max: 75, count: "% DE CAS CONFORMES", footer: "L'horizon 6 mois est le plus favorable au modèle sur tous les verdicts : c'est la fenêtre sur laquelle la calibration est réglée.", minWidth: "640px" }),
+            bTable("Historique des revues",
+              cols("Date", "Déclencheur", ["Signaux calibrés", "right"], ["Verdicts calibrés", "right"], ["Observations", "right"], ["Durée", "right"], "Notes"),
+              rows([
+                [K("01/09/26"), T("Automatique (démarrage)"), N("6", { weight: 600 }), N("5", { weight: 600 }), N("1 284", { color: INK2 }), N("4,2 s", { color: INK2 }), T("Volume anormal ramené à 0,40", { color: INK2, size: "12.5px" })],
+                [K("01/08/26"), T("Automatique (démarrage)"), N("6", { weight: 600 }), N("5", { weight: 600 }), N("1 108", { color: INK2 }), N("3,9 s", { color: INK2 }), T("aucun changement supérieur à 0,05", { color: INK2, size: "12.5px" })],
+                [K("14/07/26"), T("Manuelle (admin)"), N("6", { weight: 600 }), N("5", { weight: 600 }), N("982", { color: INK2 }), N("3,6 s", { color: INK2 }), T("forcée après correction des snapshots", { color: INK2, size: "12.5px" })],
+                [K("01/07/26"), T("Automatique (démarrage)"), N("5", { weight: 600 }), N("5", { weight: 600 }), N("946", { color: INK2 }), N("3,4 s", { color: INK2 }), T("RSI sortie de survente porté à 1,25", { color: INK2, size: "12.5px" })],
+                [K("01/06/26"), T("Automatique (démarrage)"), N("5", { weight: 600 }), N("4", { weight: 600 }), N("712", { color: INK2 }), N("2,8 s", { color: INK2 }), T("première revue avec 3 mois d'historique", { color: INK2, size: "12.5px" })],
+              ]),
+              { count: "5 REVUES", footer: "Une revue ne réécrit jamais les scores passés : elle ne change que le calcul des scores à venir.", minWidth: "980px" }),
+          ],
+          [
+            bTable("Toutes les données",
+              cols("id", "Ticker", "Type", "Clé", "1re vue", "Dern. vue", ["Prix", "right"], ["perf_1m", "right"], ["perf_3m", "right"]),
+              rows([
+                [K("1284"), K("CBIBF.bf"), TAG("signal", NEU_BG, INK2), T("rsi_oversold_exit", { font: MONO, size: "12px", color: INK2 }), K("14/05/26"), K("04/09/26"), N("7 860"), N("+4,1 %"), N("+18,4 %")],
+                [K("1283"), K("SNTS.sn"), TAG("signal", NEU_BG, INK2), T("sma50_cross_up", { font: MONO, size: "12px", color: INK2 }), K("11/08/26"), K("04/09/26"), N("21 400"), N("+3,3 %"), N("—")],
+                [K("1282"), K("SNTS.sn"), TAG("reco", NAVY_BG, NAVY_D), T("verdict_achat", { font: MONO, size: "12px", color: INK2 }), K("11/08/26"), K("04/09/26"), N("21 400"), N("+3,3 %"), N("—")],
+                [K("1281"), K("SDCC.ci"), TAG("signal", NEU_BG, INK2), T("rsi_overbought", { font: MONO, size: "12px", color: INK2 }), K("28/08/26"), K("04/09/26"), N("7 020"), N("+1,7 %"), N("—")],
+                [K("1280"), K("ORGT.tg"), TAG("reco", NAVY_BG, NAVY_D), T("verdict_vente", { font: MONO, size: "12px", color: INK2 }), K("29/08/26"), K("04/09/26"), N("2 020"), N("−4,0 %"), N("—")],
+                [K("1279"), K("PALC.ci"), TAG("signal", NEU_BG, INK2), T("fcf_negative", { font: MONO, size: "12px", color: INK2 }), K("18/04/26"), K("12/05/26"), N("5 210"), N("−6,2 %"), N("−17,9 %")],
+              ]),
+              { count: "1 284 LIGNES", footer: "Export CSV disponible · les colonnes perf_* restent vides tant que l'horizon n'est pas atteint.", minWidth: "1000px" }),
+          ],
+        ],
+      },
+    };
+  }
+
+  /* --- constructeurs de contenu --- */
+  dashPanel(i) {
+    const suffix = ["du jour", "de la semaine", "du mois"][i];
+    const ranges = [
+      "Dernière clôture comparée à la précédente · 4 sept. 2026",
+      "7 derniers jours · 28 août → 4 sept. 2026",
+      "30 derniers jours · 5 août → 4 sept. 2026",
+    ];
+    const shift = [0, 1, 2][i];
+    const hz = HAUSSES.slice(shift, shift + 5);
+    const bs = BAISSES.slice(shift, shift + 5);
+    const mk = (arr) => arr.map(([name, meta, price, v], k) => ({
+      rank: String(k + 1).padStart(2, "0"), rankDisp: "block", name, meta, metaDisp: "block",
+      price, priceDisp: "block", var: v, barDisp: NONE, barW: "0%",
+    }));
+    return [
+      { ...blank, breadthDisp: "flex", breadth: [
+        { w: "35.4%", color: UP, label: "17 ↑" },
+        { w: "14.6%", color: "#C4C9D1", label: "7 =" },
+        { w: "50.0%", color: DOWN, label: "24 ↓" },
+      ] },
+      { ...blank, ...head("", ranges[i]), headDisp: "flex" },
+      bLists([
+        { title: "Hausses " + suffix, arrow: "↗", color: UP, count: "TOP 5", linkDisp: "block", rows: mk(hz) },
+        { title: "Baisses " + suffix, arrow: "↘", color: DOWN, count: "TOP 5", linkDisp: "block", rows: mk(bs) },
+      ]),
+      bKpis("Indices BRVM", [
+        kpi("Composite", "312,47", "+0,38 % · YTD +14,21 %", UP, { size: "22px", subColor: UP }),
+        kpi("BRVM-30", "158,92", "+0,44 % · YTD +12,80 %", UP, { size: "22px", subColor: UP }),
+        kpi("Prestige", "104,33", "−0,12 % · YTD +6,45 %", DOWN, { size: "22px", subColor: DOWN }),
+        kpi("Composite TR", "428,10", "+0,38 % · YTD +19,02 %", UP, { size: "22px", subColor: UP }),
+        kpi("Industrie", "142,05", "+1,26 % · YTD +9,74 %", UP, { size: "22px", subColor: UP }),
+        kpi("Services publics", "719,88", "+0,92 % · YTD +22,31 %", UP, { size: "22px", subColor: UP }),
+        kpi("Finance", "133,47", "−0,54 % · YTD +11,08 %", DOWN, { size: "22px", subColor: DOWN }),
+        kpi("Agriculture", "236,19", "−1,03 % · YTD −3,22 %", DOWN, { size: "22px", subColor: DOWN }),
+      ]),
+      bHeat("Secteurs · variation par fenêtre",
+        ["Secteur", "Jour", "Semaine", "Mois", "3 mois", "YTD"],
+        [
+          { label: "Services publics", values: [0.92, 2.4, 4.1, 9.8, 22.3] },
+          { label: "Industrie", values: [1.26, 1.8, 2.9, 4.2, 9.7] },
+          { label: "Banque", values: [0.41, 1.2, 3.4, 8.1, 18.4] },
+          { label: "Distribution", values: [0.18, 0.6, 1.4, 3.4, 4.8] },
+          { label: "Télécoms", values: [-1.84, -2.1, -0.4, 2.1, 9.1] },
+          { label: "Transport", values: [-0.42, -1.1, -2.2, -2.4, -6.2] },
+          { label: "Agriculture", values: [-1.03, -2.8, -5.1, -6.8, -3.2] },
+        ],
+        { max: 22, count: "7 SECTEURS", footer: "Le jour se lit dans la première colonne, la tendance de fond dans la dernière : deux secteurs seulement sont rouges sur les cinq fenêtres.", minWidth: "760px" }),
+      bTable("Toutes les cotations",
+        cols("Ticker", "Nom", "Secteur", ["Prix", "right"], ["Var", "right"], ["Var. 30 j", "left"], ["Cap (Mds)", "right"], ["Bêta", "right"], ["RSI", "right"]),
+        rows([
+          [K("ABJC.ci"), B("Servair Abidjan"), T("Transport", { color: INK2, size: "12.5px" }), N("1 995"), N("+0,25 %", { weight: 600, color: UP }), spark([98,99,101,100,102,101,103,102,104,103,105,104], UP), N("16,8", { color: INK2 }), N("0,74", { color: INK2 }), N("58", { color: INK2 })],
+          [K("BICC.ci"), B("BICI Côte d'Ivoire"), T("Banque", { color: INK2, size: "12.5px" }), N("7 200"), N("−0,69 %", { weight: 600, color: DOWN }), spark([104,103,102,103,101,100,99,100,98,97,96,95], DOWN), N("144,0", { color: INK2 }), N("0,91", { color: INK2 }), N("47", { color: INK2 })],
+          [K("BOAB.bj"), B("Bank of Africa Bénin"), T("Banque", { color: INK2, size: "12.5px" }), N("4 850"), N("+1,04 %", { weight: 600, color: UP }), spark([96,98,97,100,99,102,101,104,103,105,104,107], UP), N("213,4", { color: INK2 }), N("0,88", { color: INK2 }), N("62", { color: INK2 })],
+          [K("CBIBF.bf"), B("Coris Bank Int."), T("Banque", { color: INK2, size: "12.5px" }), N("9 800"), N("+2,61 %", { weight: 600, color: UP }), spark([92,95,98,101,105,108,112,115,119,122,126,130], UP), N("588,0", { color: INK2 }), N("1,12", { color: INK2 }), N("71", { color: INK2 })],
+          [K("ECOC.ci"), B("Ecobank CI"), T("Banque", { color: INK2, size: "12.5px" }), N("8 490"), N("−2,18 %", { weight: 600, color: DOWN }), spark([106,104,103,101,100,98,97,95,94,92,91,89], DOWN), N("372,1", { color: INK2 }), N("1,05", { color: INK2 }), N("39", { color: INK2 })],
+          [K("FTSC.ci"), B("Filtisac"), T("Industrie", { color: INK2, size: "12.5px" }), N("2 985"), N("+5,12 %", { weight: 600, color: UP }), spark([94,96,95,99,98,102,104,103,108,110,114,118], UP), N("59,7", { color: INK2 }), N("1,34", { color: INK2 }), N("77", { color: INK2 })],
+          [K("PALC.ci"), B("Palmci"), T("Agriculture", { color: INK2, size: "12.5px" }), N("4 275"), N("−3,11 %", { weight: 600, color: DOWN }), spark([105,103,104,101,99,98,96,94,93,91,89,87], DOWN), N("68,4", { color: INK2 }), N("1,21", { color: INK2 }), N("34", { color: INK2 })],
+          [K("SNTS.sn"), B("Sonatel"), T("Télécoms", { color: INK2, size: "12.5px" }), N("22 100"), N("−4,32 %", { weight: 600, color: DOWN }), spark([112,115,118,121,116,120,118,114,112,110,107,104], DOWN), N("2 210,0", { color: INK2 }), N("0,82", { color: INK2 }), N("41", { color: INK2 })],
+        ]),
+        { count: "48 LIGNES", footer: "Barre signée : variation sur 30 jours, échelle ±40 % autour de l'axe central. 40 lignes supplémentaires · tri par clic sur l'en-tête", minWidth: "920px" }),
+    ];
+  }
+
+  depeche(ticker, source, date, star, titre, citation, figs) {
+    return {
+      accent: NAVY, headDisp: "flex", chipDisp: "inline-flex", chip: ticker,
+      source, date, star, dotDisp: NONE, titre, texte: "« " + citation + " »",
+      figsDisp: "flex", figs: figs.map(([k, v, color]) => ({ k, v, color })),
+    };
+  }
+  sigCard(name, note, color, tag) {
+    return {
+      accent: color, headDisp: "flex", chipDisp: "inline-flex", chip: tag,
+      source: "", date: "", star: "", dotDisp: "inline-block", titre: name,
+      texte: note, figsDisp: NONE, figs: [],
+    };
+  }
+  reco(name, ticker, motif, action, poids, pnl, accent) {
+    return {
+      accent, headDisp: "flex", chipDisp: "inline-flex", chip: ticker,
+      source: action, date: "poids " + poids, star: pnl, dotDisp: NONE,
+      titre: name, texte: motif, figsDisp: NONE, figs: [],
+    };
+  }
+  noteAnalyse(cat, date, texte) {
+    return {
+      accent: NAVY, headDisp: "flex", chipDisp: "inline-flex", chip: cat,
+      source: "", date, star: "", dotDisp: NONE, titre: "", texte,
+      figsDisp: NONE, figs: [],
+    };
+  }
+  diag(titre, texte, accent) {
+    return {
+      accent, headDisp: NONE, chipDisp: NONE, chip: "", source: "", date: "", star: "",
+      dotDisp: "inline-block", titre, texte, figsDisp: NONE, figs: [],
+    };
+  }
+  profil(label, vals) {
+    const colors = [NAVY_D, "#4A6FA5", NAVY_S];
+    return {
+      label, note: "/ 100",
+      series: vals.map((v, i) => ({ w: v + "%", color: colors[i], v: String(v) })),
+    };
+  }
+  perfRows(arr, max) {
+    return arr.map(([name, v]) => ({
+      rank: "", rankDisp: NONE, name, meta: "", metaDisp: NONE,
+      price: "", priceDisp: NONE,
+      var: (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(1).replace(".", ",") + " %",
+      barDisp: "block", barW: (Math.abs(v) / max * 100).toFixed(0) + "%",
+    }));
+  }
+
+  renderVals() {
+    const admin = this.props.admin ?? true;
+    const page = this.state.page;
+    const defs = this.pages();
+    const def = defs[page] || defs["Dashboard"];
+    const tabCount = (def.tabs || []).length;
+    const tab = Math.min(this.state.tab, Math.max(0, tabCount - 1));
+
+    const item = (label) => ({
+      label, onClick: this.go(label),
+      bg: page === label ? NAVY : "transparent",
+      shadow: page === label ? "inset 2px 0 0 " + NAVY_S : NONE,
+      dot: page === label ? NAVY_S : DIM,
+      color: page === label ? "#FFFFFF" : INK_W,
+      weight: page === label ? 600 : 400,
+    });
+    const outils = ["Portefeuille", "Signaux"];
+    if (admin) outils.push("Trajectoires Recommandations", "Historique Signaux");
+
+    const tabs = (def.tabs || []).map((label, i) => ({
+      label, idx: String(i + 1).padStart(2, "0"), onClick: this.goTab(i),
+      shadow: i === tab ? "inset 0 -2px 0 " + NAVY : NONE,
+      color: i === tab ? INK : INK3,
+      idxColor: i === tab ? NAVY : INK4,
+      weight: i === tab ? 600 : 400,
+    }));
+
+    const panel = (def.panels && def.panels[tab]) || [];
+
+    return {
+      admin,
+      navSections: [
+        { title: "Marché", items: ["Dashboard", "Infos Marché"].map(item) },
+        { title: "Analyse", items: ["Analyse d'un Titre", "Screening", "Comparateur", "Performance des Titres"].map(item) },
+        { title: "Outils", items: outils.map(item) },
+      ],
+      goAnalyse: this.go("Analyse d'un Titre"),
+      pageTitle: def.title,
+      pageIntro: def.intro || "",
+      pageMeta: def.meta || "",
+      metaDisp: def.meta ? "block" : NONE,
+      badgeDisp: def.badge ? "inline-flex" : NONE,
+      pageActions: (def.actionsByTab && def.actionsByTab[tab]) || def.actions || [],
+      toolbar: (def.toolbars && def.toolbars[tab]) || def.toolbar || [],
+      kpis: def.kpis || [],
+      tabs,
+      blocks: panel,
+    };
+  }
+}
+</script>
+
+
+<div id="__claude_design_branding"><style>#__claude_design_branding{position:fixed;right:16px;bottom:16px;z-index:2147483646;display:flex;align-items:center;gap:7px;height:30px;padding:0 5px 0 10px;border-radius:999px;font-family:"Anthropic Sans",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;font-size:12.5px;font-weight:400;line-height:1;letter-spacing:normal;text-transform:none;color:#141413;background:rgba(255,255,255,.86);-webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);box-shadow:0 0 0 .5px rgba(31,30,29,.14),0 2px 10px rgba(0,0,0,.09)}
+#__claude_design_branding *{box-sizing:border-box;margin:0}
+#__claude_design_branding a{color:inherit;text-decoration:none;display:inline-flex;align-items:center;gap:7px;white-space:nowrap}
+#__claude_design_branding a:hover span{text-decoration:underline}
+#__claude_design_branding svg{flex:none}
+#__claude_design_branding a svg{color:#D97757}
+#__claude_design_branding button{width:20px;height:20px;padding:0;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:currentColor;opacity:.55;border:0;background:none;cursor:pointer;flex:none;font:inherit;transition:opacity .14s}
+#__claude_design_branding button:hover{opacity:1;background:rgba(127,127,127,.22)}
+@media print{#__claude_design_branding{display:none}}</style><a href="https://claude.com/product/design" target="_blank" rel="noopener noreferrer"><svg width="14" height="14" viewBox="0 0 20 21" fill="none" aria-hidden="true"><path fill="currentColor" d="M9.99902 0C15.5258 0.000170936 19.999 4.50643 19.999 10.0547C19.999 11.7656 19.5863 12.9976 18.7861 13.8203C17.9924 14.6362 16.9465 14.9138 15.9854 15.0078C15.05 15.0993 14.0097 15.0262 13.2549 15.0186C12.8524 15.0145 12.5177 15.0267 12.2441 15.0703C11.9682 15.1144 11.8143 15.1813 11.7305 15.2432C11.4745 15.4322 11.3353 15.7121 11.2656 16.1602C11.2303 16.3875 11.2168 16.6362 11.209 16.9131C11.2017 17.1715 11.1986 17.4893 11.1807 17.7705C11.1469 18.2975 11.0495 19.0865 10.4199 19.5908C9.7846 20.0996 8.88652 20.1057 7.85449 19.877C7.36399 19.7682 6.88652 19.6232 6.42578 19.4453C2.66989 17.9949 0.000187748 14.3414 0 10.0547C0 4.50643 4.47223 0.000171048 9.99902 0ZM9.99902 1.60547C5.36781 1.60564 1.60547 5.38391 1.60547 10.0547C1.60566 13.6582 3.84823 16.7296 7.00391 17.9482C7.39027 18.0974 7.79085 18.2184 8.20215 18.3096C9.1375 18.5169 9.384 18.3633 9.41602 18.3379C9.4524 18.3087 9.54558 18.1915 9.5791 17.668C9.5947 17.4239 9.59473 17.1786 9.60352 16.8672C9.61179 16.5742 9.62831 16.2435 9.67969 15.9131C9.78359 15.2455 10.0474 14.4906 10.7764 13.9521C11.1479 13.6778 11.5842 13.5493 11.9912 13.4844C12.4007 13.4191 12.8434 13.4088 13.2705 13.4131C14.1753 13.4222 15.0071 13.4905 15.8291 13.4102C16.6257 13.3322 17.2249 13.1235 17.6357 12.7012C18.0401 12.2855 18.3935 11.5261 18.3936 10.0547C18.3936 5.38391 14.6302 1.60564 9.99902 1.60547ZM5.11621 9.86719C5.86386 9.91468 6.45486 10.5348 6.45508 11.2939C6.45506 12.0838 5.81519 12.7245 5.02539 12.7246C4.28481 12.7246 3.67573 12.1617 3.60254 11.4404L3.59473 11.2939L3.60156 11.1533C3.66942 10.4596 4.23282 9.91186 4.93359 9.86719H5.11621ZM14.9814 7.19141C15.729 7.23889 16.3199 7.85919 16.3203 8.61816C16.3203 9.40801 15.6804 10.0487 14.8906 10.0488C14.1501 10.0487 13.5409 9.48586 13.4678 8.76465L13.46 8.61816L13.4668 8.47754C13.5348 7.78403 14.0983 7.23618 14.7988 7.19141H14.9814ZM6.4541 4.93457C7.20161 4.9822 7.79275 5.60231 7.79297 6.36133C7.79288 7.151 7.15291 7.7917 6.36328 7.79199C5.62274 7.79199 5.01369 7.22903 4.94043 6.50781L4.93262 6.36133L4.93945 6.2207C5.00731 5.52698 5.5707 4.97922 6.27148 4.93457H6.4541ZM11.3867 3.59668C12.1343 3.64419 12.7253 4.26436 12.7256 5.02344C12.7256 5.81326 12.0857 6.45393 11.2959 6.4541C10.5553 6.4541 9.94622 5.89123 9.87305 5.16992L9.86523 5.02344L9.87207 4.88281C9.93996 4.18912 10.5033 3.64133 11.2041 3.59668H11.3867Z"></path></svg><span>Made with Claude Design</span></a><button type="button" aria-label="Dismiss" onclick="this.parentElement.remove()"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg></button></div></body></html>

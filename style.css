@@ -1,39 +1,64 @@
-/* BRVM Analyzer — Streamlit theme v3 (Primary deep green, densité +30%) */
+/* BRVM Analyzer — Streamlit theme v4 (navy + gris, Instrument Sans / IBM Plex Mono)
+ *
+ * Référence : design/BRVM Analyzer - Redesign v4.dc.html (canevas Claude Design).
+ * Les NOMS de jetons de la v3 sont conservés — toutes les pages les utilisent
+ * déjà — seules leurs VALEURS changent. Une page non encore reprise hérite donc
+ * de la nouvelle peau sans être touchée. */
+
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
 :root {
-  /* Palette v3 — 7 couleurs fixes */
-  --bg:            #F7F5F0;       /* fond éditorial neutre chaud */
-  --bg-elev:       #FFFFFF;       /* surface cards */
-  --bg-sunken:     #EFEBDF;       /* zones passives, inputs, headers tables */
-  --bg-hover:      #E7E2D2;
-  --border:        #E1DAC9;
-  --border-strong: #C9BFAE;
-  --ink:           #1A1A1A;       /* texte principal AAA */
-  --ink-2:         #4A453E;
-  --ink-3:         #7A756C;       /* captions, labels (4.5:1 min) */
-  --ink-4:         #B8AF9E;
+  /* Palette v4 — navy sur gris froid */
+  --bg:            #F2F3F5;       /* fond de page */
+  --bg-elev:       #FFFFFF;       /* surface des cartes */
+  --bg-sunken:     #EFF1F4;       /* zones passives, en-têtes de tableaux */
+  --bg-footer:     #F7F8F9;       /* pied de tableau */
+  --bg-hover:      #E9EBEF;
+  --border:        #DCDFE4;
+  --border-soft:   #E9EBEF;       /* filets internes des tableaux */
+  --border-strong: #C4C9D1;
+  --ink:           #14171C;       /* texte principal */
+  --ink-2:         #495060;
+  --ink-3:         #6E7581;       /* captions, labels */
+  --ink-4:         #AEB4BE;
 
-  /* Accents (Primary = deep green, Accent secondaire = terracotta) */
-  --primary:       #1F5D3A;
-  --primary-2:     #174A2D;
-  --primary-bg:    #DBEBDF;
-  --accent:        #B8532A;
-  --accent-2:      #8F3F1F;
-  --accent-bg:    #FBE9DE;
-  --ocre:          #B5730E;       /* warning, plus sombre qu'en v2 pour contraste */
-  --ocre-bg:       #F8EED2;
+  /* Navy — couleur porteuse de la v4 */
+  --primary:       #1B3A6B;
+  --primary-2:     #12294B;       /* barre latérale, survols */
+  --primary-bg:    #E6ECF5;
+  --primary-soft:  #A8C4EA;       /* accent clair, lisible sur navy */
+
+  /* Sur fond sombre (barre latérale) */
+  --on-dark:       #FFFFFF;
+  --on-dark-2:     #C9D6E8;
+  --on-dark-3:     #A9BEDC;
+  --on-dark-4:     #7E9AC2;
+  --on-dark-dim:   #5A7CA8;
+
+  /* Accent secondaire : l'ocre de la v4 (il n'y a plus de terracotta) */
+  --accent:        #8A5A00;
+  --accent-2:      #6E4800;
+  --accent-bg:     #F6EEDC;
+  --ocre:          #8A5A00;
+  --ocre-bg:       #F6EEDC;
 
   /* Sémantique marché (up/down/warn) */
-  --up:            #1F5D3A;
-  --up-soft:       #DBEBDF;
-  --down:          #B42318;
-  --down-soft:     #F5DAD1;
-  --warn:          #B5730E;
-  --warn-soft:     #F8EED2;
-  --neutral:       #7A756C;
-  --neutral-soft:  #EFEBDF;
+  --up:            #0E7A54;
+  --up-soft:       #E4EDE7;
+  --down:          #C0392B;
+  --down-soft:     #F7E5E2;
+  --warn:          #8A5A00;
+  --warn-soft:     #F6EEDC;
+  --neutral:       #6E7581;
+  --neutral-soft:  #EFF1F4;
 
-  /* Aliases de compat v2 — permettent de ne pas casser les helpers existants */
+  /* Polices */
+  --font-sans:     'Instrument Sans', ui-sans-serif, -apple-system,
+                   BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  --font-mono:     'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo,
+                   Consolas, monospace;
+
+  /* Aliases de compat v2/v3 — les helpers existants continuent de fonctionner */
   --deep-green:    var(--primary);
   --deep-green-2:  var(--primary-2);
   --deep-green-bg: var(--primary-bg);
@@ -53,10 +78,9 @@
   max-width: 1400px;
 }
 
-/* Typographie — système uniquement, tabular-nums */
+/* Typographie — Instrument Sans (UI) + IBM Plex Mono (chiffres), tabular-nums */
 html, body {
-  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
-               "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-family: var(--font-sans);
   color: var(--ink);
   font-feature-settings: "tnum";
 }
@@ -64,10 +88,10 @@ html, body {
 .main h2 { font-size: 19px !important; font-weight: 600 !important; margin-top: 8px !important; }
 .main h3 { font-size: 15px !important; font-weight: 600 !important; margin-top: 4px !important; }
 
-/* Sidebar — fond clair, sélecteurs ciblés (pas de * universel) */
+/* Sidebar — navy sombre (v4), sélecteurs ciblés (pas de * universel) */
 section[data-testid="stSidebar"] {
-  background: var(--bg-elev);
-  border-right: 1px solid var(--border);
+  background: var(--primary-2);
+  border-right: none;
 }
 section[data-testid="stSidebar"] .stMarkdown,
 section[data-testid="stSidebar"] .stMarkdown p,
@@ -77,13 +101,22 @@ section[data-testid="stSidebar"] label,
 section[data-testid="stSidebar"] .stCaption,
 section[data-testid="stSidebar"] .stCaption p,
 section[data-testid="stSidebar"] [data-testid="stMetricLabel"] {
-  color: var(--ink-2) !important;
+  color: var(--on-dark-2) !important;
+}
+/* Les éléments imbriqués (p, span, div) portent leur propre couleur issue du
+   thème clair : sur fond navy ils doivent hériter du parent. */
+section[data-testid="stSidebar"] .stMarkdown p,
+section[data-testid="stSidebar"] .stMarkdown span,
+section[data-testid="stSidebar"] .stCaption p,
+section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p,
+section[data-testid="stSidebar"] [data-testid="stExpander"] summary p {
+  color: inherit !important;
 }
 section[data-testid="stSidebar"] h1,
 section[data-testid="stSidebar"] h2,
 section[data-testid="stSidebar"] h3,
 section[data-testid="stSidebar"] [data-testid="stMetricValue"] {
-  color: var(--ink) !important;
+  color: var(--on-dark) !important;
 }
 /* ─── Navigation sidebar : st.radio transformé en menu vertical propre ─── */
 /* IMPORTANT : toutes les règles ci-dessous sont scopées à [role="radiogroup"]
@@ -108,10 +141,10 @@ section[data-testid="stSidebar"] [role="radiogroup"] label {
   width: 100% !important;
   padding: 8px 12px 8px 16px !important;
   margin: 0 !important;
-  border-radius: 6px !important;
+  border-radius: 7px !important;
   border: 1px solid transparent !important;
   font-size: 13px !important;
-  color: var(--ink-2) !important;
+  color: var(--on-dark-2) !important;
   cursor: pointer;
   position: relative;
   transition: background 120ms, color 120ms, border-color 120ms;
@@ -124,37 +157,40 @@ section[data-testid="stSidebar"] [role="radiogroup"] label::before {
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: var(--ink-4);
+  background: var(--on-dark-dim);
   transform: translateY(-50%);
   transition: background 120ms;
 }
 section[data-testid="stSidebar"] [role="radiogroup"] label:hover {
-  background: var(--bg-hover) !important;
-  color: var(--ink) !important;
+  background: var(--primary) !important;
+  color: var(--on-dark) !important;
 }
 section[data-testid="stSidebar"] [role="radiogroup"] label:hover::before {
-  background: var(--ink-3);
+  background: var(--on-dark-3);
 }
 /* Actif : encadré + barre verticale primary + puce verte + bold */
 section[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) {
-  background: var(--bg-elev) !important;
-  border: 1px solid var(--border) !important;
-  color: var(--ink) !important;
+  background: var(--primary) !important;
+  border: 1px solid transparent !important;
+  color: var(--on-dark) !important;
   font-weight: 600 !important;
-  box-shadow: inset 3px 0 0 var(--primary);
+  box-shadow: inset 2px 0 0 var(--primary-soft);
   padding-left: 18px !important;
 }
 section[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked)::before {
-  background: var(--primary);
+  background: var(--primary-soft);
   width: 5px;
   height: 5px;
   left: 8px;
 }
+/* Le <p> interne porte sa propre couleur (thème Streamlit) et masquait celle
+   du label sur fond navy : il doit hériter. */
 section[data-testid="stSidebar"] [role="radiogroup"] label p,
 section[data-testid="stSidebar"] [role="radiogroup"] label > div:last-child {
   font-size: 13px !important;
   line-height: 1.35 !important;
   margin: 0 !important;
+  color: inherit !important;
 }
 
 /* Buttons — défaut ghost/outline, primary deep green */
@@ -418,3 +454,111 @@ hr { border-color: var(--border); margin: 12px 0; opacity: 0.6; }
   background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
   color: #fff; font-weight: 700; font-size: 14px;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   v4 — compléments : barre latérale sombre, chiffres en mono, onglets
+   numérotés, tableaux. Référence : design/BRVM Analyzer - Redesign v4.dc.html
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── Barre latérale sombre : boutons, filets, alertes ── */
+section[data-testid="stSidebar"] .stButton > button,
+section[data-testid="stSidebar"] .stDownloadButton > button,
+section[data-testid="stSidebar"] .stFormSubmitButton > button {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--on-dark-2);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+}
+section[data-testid="stSidebar"] .stButton > button:hover,
+section[data-testid="stSidebar"] .stDownloadButton > button:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.28);
+  color: var(--on-dark);
+}
+section[data-testid="stSidebar"] .stButton > button[kind="primary"] {
+  background: var(--primary-soft);
+  color: var(--primary-2);
+  border-color: var(--primary-soft);
+  font-weight: 600;
+}
+section[data-testid="stSidebar"] hr {
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+section[data-testid="stSidebar"] [data-testid="stExpander"] {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+}
+section[data-testid="stSidebar"] [data-testid="stExpander"] summary,
+section[data-testid="stSidebar"] [data-testid="stExpander"] p {
+  color: var(--on-dark-2) !important;
+}
+/* Les champs de saisie de la barre latérale restent clairs pour rester lisibles */
+section[data-testid="stSidebar"] .stTextInput input,
+section[data-testid="stSidebar"] .stNumberInput input,
+section[data-testid="stSidebar"] .stSelectbox > div > div {
+  background: rgba(255, 255, 255, 0.10) !important;
+  border-color: rgba(255, 255, 255, 0.20) !important;
+  color: var(--on-dark) !important;
+}
+
+/* ── Chiffres en IBM Plex Mono ──
+   Le canevas met en mono tout ce qui se lit en colonne : valeurs de KPI,
+   cellules de tableau, métriques. Le texte courant reste en Instrument Sans. */
+[data-testid="stMetricValue"],
+[data-testid="stMetricDelta"],
+[data-testid="stDataFrame"] [role="gridcell"],
+[data-testid="stTable"] td,
+code, kbd, pre {
+  font-family: var(--font-mono) !important;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Onglets numérotés (01, 02, 03…) comme au canevas ── */
+.stTabs [data-baseweb="tab-list"] {
+  counter-reset: onglet;
+  gap: 28px;
+}
+.stTabs [data-baseweb="tab"] {
+  counter-increment: onglet;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 8px 0 10px;
+  font-size: 13.5px;
+}
+.stTabs [data-baseweb="tab"]::before {
+  content: "0" counter(onglet);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--ink-4);
+  line-height: 1;
+}
+.stTabs [aria-selected="true"]::before { color: var(--primary); }
+.stTabs [aria-selected="true"] {
+  border-bottom: 2px solid var(--primary);
+}
+
+/* ── Tableaux — en-tête gris froid, filets internes légers ── */
+[data-testid="stDataFrame"] {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+[data-testid="stDataFrame"] [role="columnheader"] {
+  background: var(--bg-sunken) !important;
+  border-bottom: 1px solid var(--border) !important;
+  font-size: 10px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-3) !important;
+}
+[data-testid="stDataFrame"] [role="gridcell"] {
+  border-bottom: 1px solid var(--border-soft) !important;
+}
+
+/* ── Cartes de KPI — filet supérieur coloré, coins v4 ── */
+[data-testid="stMetric"] { border-radius: 12px; padding: 15px 17px; }

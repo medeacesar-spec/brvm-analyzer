@@ -202,8 +202,8 @@ def render():
                 "recommendation": {
                     "verdict": verdict,
                     "stars": stars,
-                    "verdict_color": "#1F5D3A" if "ACHAT" in verdict else
-                                     "#B42318" if "VENTE" in verdict or "EVITER" in verdict else "#B5730E",
+                    "verdict_color": "#0E7A54" if "ACHAT" in verdict else
+                                     "#C0392B" if "VENTE" in verdict or "EVITER" in verdict else "#8A5A00",
                     "strengths": [],
                     "warnings": [],
                     "entry_zones": [],
@@ -2913,7 +2913,7 @@ def _render_score_evolution(ticker: str):
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=df["date"], y=df["hybrid_score"], mode="lines+markers",
-        name="Score hybride", line=dict(width=3, color="#1F5D3A"),
+        name="Score hybride", line=dict(width=3, color="#0E7A54"),
     ))
     fig.add_trace(go.Scatter(
         x=df["date"], y=df["fundamental_score"], mode="lines",
@@ -2921,7 +2921,7 @@ def _render_score_evolution(ticker: str):
     ))
     fig.add_trace(go.Scatter(
         x=df["date"], y=df["technical_score"], mode="lines",
-        name="Technique", line=dict(width=1.5, color="#B5730E", dash="dot"),
+        name="Technique", line=dict(width=1.5, color="#8A5A00", dash="dot"),
     ))
     # Bandes de seuils verdicts (70=ACHAT FORT, 52=ACHAT, 38=CONSERVER, 25=PRUDENCE)
     fig.add_hline(y=70, line_dash="dash", line_color="rgba(31,93,58,0.4)",

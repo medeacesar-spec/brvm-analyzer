@@ -166,7 +166,7 @@ def _render_login_buttons(container=st.sidebar, key_prefix: str = "sidebar"):
     `key_prefix` évite les clés dupliquées quand le bouton est rendu
     simultanément dans la sidebar ET dans le main (cas require_login)."""
     if oauth_enabled():
-        if container.button("🔐 Se connecter avec Google",
+        if container.button("Se connecter avec Google",
                             use_container_width=True,
                             key=f"login_google_btn_{key_prefix}"):
             try:
@@ -187,47 +187,63 @@ def render_auth_widget():
         email = get_user_email()
         is_dev = bool(st.session_state.get("dev_user_email"))
         admin = is_admin()
-        admin_tag = " 👑 admin" if admin else ""
-        tag = "🛠️ dev" if is_dev else "🔐"
-        # Design v2 : badge clair avec accent terracotta pour admin, crème pour user.
+        # Redesign v4 : carte translucide sur navy, pastille ADMIN en mono,
+        # aucun emoji (le rôle se lit au badge, pas à l'icône).
+        badges = []
+        if is_dev:
+            badges.append("DEV")
         if admin:
-            border_color = "var(--terracotta)"
-            bg = "var(--terracotta-bg)"
-            accent_color = "var(--terracotta-2)"
-        else:
-            border_color = "var(--border)"
-            bg = "var(--bg-sunken)"
-            accent_color = "var(--ink-2)"
+            badges.append("ADMIN")
+        badge_html = "".join(
+            "<span style='font-family:var(--font-mono);font-size:9px;"
+            "font-weight:600;letter-spacing:0.08em;padding:2px 5px;"
+            "border-radius:4px;background:var(--primary-soft);"
+            f"color:var(--primary-2);'>{b}</span>"
+            for b in badges
+        )
         st.sidebar.markdown(
-            f"<div style='padding:0.55rem 0.75rem;"
-            f"background:{bg};border:1px solid {border_color};"
-            f"border-radius:8px;margin-bottom:0.5rem;'>"
-            f"<b style='color:{accent_color};font-size:0.82rem;'>{tag} {name}{admin_tag}</b><br>"
-            f"<small style='color:var(--ink-3);font-size:0.72rem;'>{email}</small>"
-            f"</div>",
+            "<div style='padding:10px 11px;border-radius:8px;"
+            "background:rgba(168,196,234,0.14);"
+            "border:1px solid rgba(168,196,234,0.34);margin-bottom:0.5rem;'>"
+            "<div style='display:flex;align-items:center;gap:7px;"
+            "flex-wrap:wrap;margin-bottom:3px;'>"
+            "<span style='font-size:12.5px;font-weight:600;"
+            f"color:var(--on-dark);'>{name}</span>{badge_html}</div>"
+            "<span style='font-family:var(--font-mono);font-size:10.5px;"
+            f"color:var(--on-dark-3);'>{email}</span>"
+            "</div>",
             unsafe_allow_html=True,
         )
-        if st.sidebar.button("🚪 Se déconnecter",
+        if st.sidebar.button("Se déconnecter",
                              use_container_width=True, key="logout_btn"):
             _logout()
     else:
         # En mode local pur (pas d'OAuth), l'utilisateur est implicitement admin local
         if not oauth_enabled():
             st.sidebar.markdown(
-                "<div style='padding:0.55rem 0.75rem;"
-                "background:var(--terracotta-bg);"
-                "border:1px solid var(--terracotta);"
-                "border-radius:8px;margin-bottom:0.5rem;'>"
-                "<b style='color:var(--terracotta-2);font-size:0.82rem;'>🗄️ Mode local · 👑 admin</b><br>"
-                "<small style='color:var(--ink-3);font-size:0.72rem;'>Instance mono-utilisateur</small>"
+                "<div style='padding:10px 11px;border-radius:8px;"
+                "background:rgba(168,196,234,0.14);"
+                "border:1px solid rgba(168,196,234,0.34);margin-bottom:0.5rem;'>"
+                "<div style='display:flex;align-items:center;gap:7px;"
+                "margin-bottom:3px;'>"
+                "<span style='font-size:12.5px;font-weight:600;"
+                "color:var(--on-dark);'>Mode local</span>"
+                "<span style='font-family:var(--font-mono);font-size:9px;"
+                "font-weight:600;letter-spacing:0.08em;padding:2px 5px;"
+                "border-radius:4px;background:var(--primary-soft);"
+                "color:var(--primary-2);'>ADMIN</span></div>"
+                "<span style='font-family:var(--font-mono);font-size:10.5px;"
+                "color:var(--on-dark-3);'>Instance mono-utilisateur</span>"
                 "</div>",
                 unsafe_allow_html=True,
             )
         else:
             st.sidebar.markdown(
-                "<div style='padding:0.55rem 0.75rem;background:var(--bg-sunken);"
-                "border:1px solid var(--border);border-radius:8px;margin-bottom:0.5rem;'>"
-                "<b style='color:var(--ink-2);font-size:0.82rem;'>🔒 Non connecté</b>"
+                "<div style='padding:10px 11px;border-radius:8px;"
+                "background:rgba(255,255,255,0.06);"
+                "border:1px solid rgba(255,255,255,0.16);margin-bottom:0.5rem;'>"
+                "<span style='font-size:12.5px;font-weight:600;"
+                "color:var(--on-dark-2);'>Non connecté</span>"
                 "</div>",
                 unsafe_allow_html=True,
             )
