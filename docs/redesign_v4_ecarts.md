@@ -1,6 +1,10 @@
 # Redesign v4 — écarts au canevas, onglet par onglet
 
 Registre de travail. Référence : `design/BRVM Analyzer - Redesign v4.dc.html`.
+
+**Trente et un écarts**, dont deux à arbitrer. Le document a longtemps annoncé
+« 25 » : le chiffre était faux dès la première rédaction — le décompte onglet
+par onglet, lui, a toujours été juste. Recompté le 08/09.
 Diagnostic établi le 8 septembre 2026 en ouvrant le canevas et l'application
 **côte à côte**, page par page et onglet par onglet — 10 pages, 33 onglets.
 
@@ -110,8 +114,8 @@ Légende : **à faire** · *en cours* · fait (vu au rendu)
 
 | # | Écart | État |
 |---|---|---|
-| S1 | Onglet 1 : champs nus ; le canevas montre un **tableau des seuils** avec la colonne « effet sur l'univers » (« retire 22 titres ») | à faire |
-| S2 | Onglet 2 : idem, avec la colonne « pourquoi » qui justifie chaque critère de marché | à faire |
+| S1 | Onglet 1 : champs nus ; le canevas montre un **tableau des seuils** avec la colonne « effet sur l'univers » (« retire 22 titres ») | **fait** — vu au rendu le 08/09. La colonne distingue en plus ce qu'un seuil écarte de ce qu'une **donnée manquante** écarte |
+| S2 | Onglet 2 : idem, avec la colonne « pourquoi » qui justifie chaque critère de marché | **fait** — vu au rendu le 08/09 |
 | S3 | Un intitulé « Univers d'analyse » que le canevas n'a pas | à arbitrer |
 
 ### Comparateur — Tableau · Profil · Performance
@@ -157,7 +161,7 @@ Conforme. Les cartes de contradiction sont plus riches que le canevas
 
 ## Causes récurrentes
 
-Les vingt-cinq écarts se ramènent à cinq causes. Corriger la cause vaut mieux
+Les trente et un écarts se ramènent à cinq causes. Corriger la cause vaut mieux
 que corriger les symptômes un à un.
 
 1. **Rangées de KPI manquantes** — 7 cartes (P5 ×4, P3, A7 ×2). Le canevas
@@ -180,7 +184,7 @@ que corriger les symptômes un à un.
 1. ~~Les 7 cartes de KPI manquantes (P5, P3, A7)~~ — **fait le 08/09**.
 2. ~~Les sous-lignes des scores (A3) et la grille (A4)~~ — **fait le 08/09**.
 3. Les contrôles segmentés (A2, A5, A6) — ~~I1 fait le 08/09~~.
-4. Les tableaux pédagogiques de Screening (S1, S2).
+4. ~~Les tableaux pédagogiques de Screening (S1, S2)~~ — **fait le 08/09**.
 5. Les trois blocs à re-rendre (P4, A8, C1).
 6. La barre signée des positions (P1).
 7. Les détails : T1, T2, H1, H2, D2, D3, A9-A13, P2 — ~~I2 fait le 08/09~~.

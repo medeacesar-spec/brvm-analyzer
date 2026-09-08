@@ -100,59 +100,83 @@ def render():
     onglet_fond, onglet_risque, onglet_res = st.tabs(
         ["Filtres fondamentaux", "Risque et liquidité", "Résultats"])
 
+    # UN SEUIL SEUL NE DIT RIEN. « PER ≤ 15 » ne se juge qu'à son effet : sur
+    # cette cote il retire neuf titres ou vingt-neuf selon l'exercice publié.
+    # Le canevas met donc les seuils en TABLEAU, avec la colonne qui manquait —
+    # ce que chaque critère écarte. Elle ne peut se remplir qu'après le calcul :
+    # on réserve ici l'emplacement, comme la rangée de KPI juste au-dessus.
+    effets = {}
+
+    _ENTETE = ("font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;"
+               "color:var(--ink-3);font-weight:600;padding:0 0 7px;"
+               "border-bottom:1px solid var(--border);")
+    _CRITERE = ("font-size:13px;font-weight:600;padding-top:9px;"
+                "color:var(--ink);")
+    _EXPLIQUE = "font-size:12.5px;color:var(--ink-3);padding-top:11px;"
+    _COLONNES = [2.1, 1, 1, 2.8]
+
+    def _entete_seuils(derniere: str):
+        cols = st.columns(_COLONNES)
+        for col, txt, align in zip(cols, ("Critère", "Minimum", "Maximum",
+                                          derniere),
+                                   ("left", "right", "right", "left")):
+            with col:
+                st.markdown(f"<div style='{_ENTETE}text-align:{align};'>"
+                            f"{txt}</div>", unsafe_allow_html=True)
+
+    def _ligne_seuil(label, key_prefix, default_max, step=1.0, divide=False,
+                     min_abs=0.0, max_abs=None, pourquoi=None, colonne=None):
+        """Une ligne du tableau des seuils.
+
+        Les deux champs restent des champs — un tableau qu'on ne peut pas
+        régler ne servirait à rien. C'est la mise en colonnes et la dernière
+        cellule qui changent : l'effet mesuré, ou la raison du critère.
+        """
+        c1, c2, c3, c4 = st.columns(_COLONNES)
+        with c1:
+            st.markdown(f"<div style='{_CRITERE}'>{label}</div>",
+                        unsafe_allow_html=True)
+        with c2:
+            vmin = st.number_input(
+                f"{label} min", min_value=min_abs, max_value=max_abs,
+                value=0.0, step=step, key=f"{key_prefix}_min",
+                label_visibility="collapsed")
+        with c3:
+            vmax = st.number_input(
+                f"{label} max", min_value=min_abs, max_value=max_abs,
+                value=default_max, step=step, key=f"{key_prefix}_max",
+                label_visibility="collapsed")
+        with c4:
+            if pourquoi is not None:
+                st.markdown(f"<div style='{_EXPLIQUE}'>{pourquoi}</div>",
+                            unsafe_allow_html=True)
+            else:
+                effets[label] = (st.empty(), colonne)
+        if divide:
+            return vmin / 100, vmax / 100
+        return vmin, vmax
+
     with onglet_fond:
-        col_f1, col_f2, col_f3, col_f4, col_f5 = st.columns(5)
-
-        def _filter_col(label, key_prefix, default_max, step=1.0, divide=False,
-                        min_abs=0.0, max_abs=None):
-            """Affiche un label-xs + 2 inputs min/max serrés."""
-            st.markdown(
-                f"<div class='label-xs' style='margin-bottom:4px;'>{label}</div>",
-                unsafe_allow_html=True,
-            )
-            cmin, cmax = st.columns(2)
-            with cmin:
-                vmin = st.number_input(
-                    f"{label} min", min_value=min_abs, max_value=max_abs,
-                    value=0.0, step=step, key=f"{key_prefix}_min",
-                    label_visibility="collapsed",
-                )
-            with cmax:
-                vmax = st.number_input(
-                    f"{label} max", min_value=min_abs, max_value=max_abs,
-                    value=default_max, step=step, key=f"{key_prefix}_max",
-                    label_visibility="collapsed",
-                )
-            if divide:
-                return vmin / 100, vmax / 100
-            return vmin, vmax
-
-        with col_f1:
-            min_yield, max_yield = _filter_col(
-                "Dividend Yield", "yield", 30.0, step=0.5, divide=True, max_abs=30.0
-            )
-        with col_f2:
-            min_per, max_per = _filter_col(
-                "PER", "per", 100.0, step=1.0, divide=False, max_abs=100.0
-            )
-        with col_f3:
-            min_roe, max_roe = _filter_col(
-                "ROE", "roe", 100.0, step=1.0, divide=True, max_abs=100.0
-            )
-        with col_f4:
-            min_payout, max_payout = _filter_col(
-                "Payout", "payout", 200.0, step=5.0, divide=True, max_abs=200.0
-            )
-        with col_f5:
-            min_de, max_de = _filter_col(
-                "D/E", "de", 20.0, step=0.5, divide=False, max_abs=20.0
-            )
-
+        _entete_seuils("Effet sur l'univers")
+        min_yield, max_yield = _ligne_seuil(
+            "Dividend Yield", "yield", 30.0, step=0.5, divide=True,
+            max_abs=30.0, colonne="dividend_yield")
+        min_per, max_per = _ligne_seuil(
+            "PER", "per", 100.0, step=1.0, max_abs=100.0, colonne="per")
+        min_roe, max_roe = _ligne_seuil(
+            "ROE", "roe", 100.0, step=1.0, divide=True, max_abs=100.0,
+            colonne="roe")
+        min_payout, max_payout = _ligne_seuil(
+            "Payout", "payout", 200.0, step=5.0, divide=True, max_abs=200.0,
+            colonne="payout_ratio")
+        min_de, max_de = _ligne_seuil(
+            "D/E", "de", 20.0, step=0.5, max_abs=20.0, colonne="debt_equity")
+        pied_fond = st.empty()
 
     with onglet_risque:
-        # Separes des fondamentaux, et c'est deliberé : ils ne se lisent pas dans
-        # les comptes mais dans le cours. Un titre peut tenir tous les seuils
-        # comptables et n'echanger que 900 000 francs par mois.
+        # Separes des fondamentaux, et c'est delibere : ils ne se lisent pas
+        # dans les comptes mais dans le cours. Un titre peut tenir tous les
+        # seuils comptables et n'echanger que 900 000 francs par mois.
         if mesures_risque:
             st.markdown(
                 "<div style='background:var(--bg-elev);border:1px solid "
@@ -166,29 +190,42 @@ def render():
                 "papier, impossible à vendre en pratique.</div></div>",
                 unsafe_allow_html=True,
             )
-            col_r1, col_r2, col_r3, _col_vide = st.columns(4)
-            with col_r1:
-                min_vol, max_vol = _filter_col(
-                    "Volatilité annuelle", "vol", 150.0, step=5.0, divide=True,
-                    max_abs=150.0)
-            with col_r2:
-                min_rdt, max_rdt = _filter_col(
-                    "Rendement annualisé", "rdt", 100.0, step=5.0, divide=True,
-                    min_abs=-100.0, max_abs=200.0)
-            with col_r3:
-                st.markdown(
-                    "<div class='label-xs' style='margin-bottom:4px;'>"
-                    "Échangé par mois, minimum</div>", unsafe_allow_html=True)
+            _entete_seuils("Pourquoi")
+            min_vol, max_vol = _ligne_seuil(
+                "Volatilité annuelle", "vol", 150.0, step=5.0, divide=True,
+                max_abs=150.0,
+                pourquoi="écart-type des rendements mensuels, annualisé")
+            min_rdt, max_rdt = _ligne_seuil(
+                "Rendement annualisé", "rdt", 100.0, step=5.0, divide=True,
+                min_abs=-100.0, max_abs=200.0,
+                pourquoi="sur les cinq dernières années, dividendes compris")
+            c1, c2, c3, c4 = st.columns(_COLONNES)
+            with c1:
+                st.markdown(f"<div style='{_CRITERE}'>Échangé par mois</div>",
+                            unsafe_allow_html=True)
+            with c2:
                 min_echange = st.number_input(
                     "Montant échangé minimum", min_value=0.0, value=0.0,
                     step=10.0, key="echange_min", label_visibility="collapsed",
-                    help="En millions de FCFA. Un titre sous 10 M par mois se "
-                         "revend difficilement.") * 1e6
+                    help="En millions de FCFA.") * 1e6
+            with c3:
+                st.markdown(f"<div style='{_EXPLIQUE}text-align:right;'>—</div>",
+                            unsafe_allow_html=True)
+            with c4:
+                st.markdown(
+                    f"<div style='{_EXPLIQUE}'>en millions de FCFA ; sous "
+                    f"10 M par mois, un titre se revend mal</div>",
+                    unsafe_allow_html=True)
+            st.caption(
+                "Un titre sans historique mensuel suffisant n'est **pas** "
+                "écarté par ces trois critères : il n'a simplement pas ces "
+                "mesures, et l'exclure reviendrait à punir une introduction "
+                "récente de sa jeunesse."
+            )
         else:
             min_vol, max_vol = 0.0, 99.0
             min_rdt, max_rdt = -99.0, 99.0
             min_echange = 0.0
-
 
     # ─── Compute ratios ─────────────────────────────────────────────────
     results = []
@@ -248,28 +285,87 @@ def render():
 
     screen_df = pd.DataFrame(results)
 
-    # Apply ratio filters
-    mask = pd.Series(True, index=screen_df.index)
+    # Apply ratio filters.
+    #
+    # UN MASQUE PAR CRITERE, et non un seul masque cumule : la colonne « effet
+    # sur l'univers » demande de savoir ce que CHAQUE critere retire a lui
+    # seul. Le resultat final est leur conjonction — rien ne change au
+    # filtrage, seule la comptabilite s'ajoute.
+    _vrai = lambda: pd.Series(True, index=screen_df.index)
+    masques = {}
+
+    m = _vrai()
     if min_yield > 0:
-        mask &= screen_df["dividend_yield"].fillna(0) >= min_yield
+        m &= screen_df["dividend_yield"].fillna(0) >= min_yield
     if max_yield < 0.30:
-        mask &= screen_df["dividend_yield"].fillna(0) <= max_yield
+        m &= screen_df["dividend_yield"].fillna(0) <= max_yield
+    masques["Dividend Yield"] = m
+
+    m = _vrai()
     if min_per > 0:
-        mask &= (screen_df["per"].fillna(0) >= min_per) | (screen_df["per"].fillna(0) <= 0)
+        m &= (screen_df["per"].fillna(0) >= min_per) | (screen_df["per"].fillna(0) <= 0)
     if max_per < 100:
-        mask &= (screen_df["per"].fillna(999) <= max_per) & (screen_df["per"].fillna(0) > 0)
+        m &= (screen_df["per"].fillna(999) <= max_per) & (screen_df["per"].fillna(0) > 0)
+    masques["PER"] = m
+
+    m = _vrai()
     if min_roe > 0:
-        mask &= screen_df["roe"].fillna(0) >= min_roe
+        m &= screen_df["roe"].fillna(0) >= min_roe
     if max_roe < 1.0:
-        mask &= screen_df["roe"].fillna(0) <= max_roe
+        m &= screen_df["roe"].fillna(0) <= max_roe
+    masques["ROE"] = m
+
+    m = _vrai()
     if min_payout > 0:
-        mask &= screen_df["payout_ratio"].fillna(0) >= min_payout
+        m &= screen_df["payout_ratio"].fillna(0) >= min_payout
     if max_payout < 2.0:
-        mask &= screen_df["payout_ratio"].fillna(0) <= max_payout
+        m &= screen_df["payout_ratio"].fillna(0) <= max_payout
+    masques["Payout"] = m
+
+    m = _vrai()
     if min_de > 0:
-        mask &= screen_df["debt_equity"].fillna(0) >= min_de
+        m &= screen_df["debt_equity"].fillna(0) >= min_de
     if max_de < 20:
-        mask &= screen_df["debt_equity"].fillna(0) <= max_de
+        m &= screen_df["debt_equity"].fillna(0) <= max_de
+    masques["D/E"] = m
+
+    mask = _vrai()
+    for m in masques.values():
+        mask &= m
+
+    # La colonne qui manquait, remplie une fois le compte fait. Elle distingue
+    # ce qu'un seuil ecarte de ce qu'une DONNEE MANQUANTE ecarte : ici, un
+    # ratio absent vaut zero et tombe sous le seuil — le titre sort sans que
+    # rien ne le dise. C'est desormais dit, ligne par ligne.
+    _sans_donnee_total = 0
+    for libelle, (emplacement, colonne) in effets.items():
+        garde = masques.get(libelle)
+        if garde is None:
+            continue
+        exclus = ~garde
+        n = int(exclus.sum())
+        manquants = 0
+        if colonne and colonne in screen_df.columns:
+            manquants = int((exclus & screen_df[colonne].isna()).sum())
+        _sans_donnee_total += manquants
+        if not n:
+            texte = "ne retire rien"
+        else:
+            texte = f"retire {n} titre{'s' if n > 1 else ''}"
+            if manquants:
+                texte += (f", dont <b>{manquants} faute de donnée</b>")
+        emplacement.markdown(
+            f"<div style='{_EXPLIQUE}'>{texte}</div>", unsafe_allow_html=True)
+
+    pied_fond.caption(
+        "Sur ces cinq critères, un titre dont le ratio est **absent** est "
+        "traité comme s'il valait zéro : il tombe sous le seuil et sort de "
+        "l'univers. La colonne le dit ligne par ligne."
+        + (f" Actuellement **{_sans_donnee_total}** exclusion"
+           f"{'s' if _sans_donnee_total > 1 else ''} de ce seul fait."
+           if _sans_donnee_total else "")
+        + " Les trois critères de l'onglet voisin, eux, ne les écartent pas."
+    )
 
     filtered = screen_df[mask].sort_values("fundamental_score", ascending=False, na_position="last")
 
