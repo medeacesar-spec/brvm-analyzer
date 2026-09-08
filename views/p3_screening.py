@@ -126,7 +126,8 @@ def render():
                             f"{txt}</div>", unsafe_allow_html=True)
 
     def _ligne_seuil(label, key_prefix, default_max, step=1.0, divide=False,
-                     min_abs=0.0, max_abs=None, pourquoi=None, colonne=None):
+                     min_abs=0.0, max_abs=None, pourquoi=None, colonne=None,
+                     default_min=None):
         """Une ligne du tableau des seuils.
 
         Les deux champs restent des champs — un tableau qu'on ne peut pas
@@ -140,7 +141,8 @@ def render():
         with c2:
             vmin = st.number_input(
                 f"{label} min", min_value=min_abs, max_value=max_abs,
-                value=0.0, step=step, key=f"{key_prefix}_min",
+                value=(min_abs if default_min is None else default_min),
+                step=step, key=f"{key_prefix}_min",
                 label_visibility="collapsed")
         with c3:
             vmax = st.number_input(
@@ -197,7 +199,7 @@ def render():
                 max_abs=150.0,
                 pourquoi="écart-type des rendements mensuels, annualisé")
             min_rdt, max_rdt = _ligne_seuil(
-                "Rendement annualisé", "rdt", 100.0, step=5.0, divide=True,
+                "Rendement annualisé", "rdt", 200.0, step=5.0, divide=True,
                 min_abs=-100.0, max_abs=200.0,
                 pourquoi="sur les cinq dernières années, dividendes compris")
             c1, c2, c3, c4 = st.columns(_COLONNES)
@@ -217,16 +219,12 @@ def render():
                     f"<div style='{_EXPLIQUE}'>en millions de FCFA ; sous "
                     f"10 M par mois, un titre se revend mal</div>",
                     unsafe_allow_html=True)
-            st.caption(
-                "Un titre sans historique mensuel suffisant n'est **pas** "
-                "écarté par ces trois critères : il n'a simplement pas ces "
-                "mesures, et l'exclure reviendrait à punir une introduction "
-                "récente de sa jeunesse."
-            )
+            pied_risque = st.empty()
         else:
-            min_vol, max_vol = 0.0, 99.0
-            min_rdt, max_rdt = -99.0, 99.0
+            min_vol, max_vol = 0.0, 1.50
+            min_rdt, max_rdt = -1.00, 2.00
             min_echange = 0.0
+            pied_risque = st.empty()
 
     # ─── Compute ratios ─────────────────────────────────────────────────
     results = []
@@ -246,20 +244,11 @@ def render():
 
             verdict, hybrid = verdicts.get(ticker, (None, None))
             risque = mesures_risque.get(ticker) or {}
-            # Un titre sans historique mensuel suffisant n'est pas ecarte : il
-            # n'a simplement pas ces mesures. L'exclure reviendrait a punir une
-            # introduction recente de sa jeunesse.
-            if risque:
-                vol = risque.get("volatilite")
-                rdt = risque.get("rendement_annualise")
-                ech = risque.get("montant_echange")
-                if vol is not None and not (min_vol <= vol <= max_vol):
-                    continue
-                if rdt is not None and not (min_rdt <= rdt <= max_rdt):
-                    continue
-                if ech is not None and ech < min_echange:
-                    continue
-
+            # Les trois criteres de marche ne filtrent plus ICI : ils
+            # rejoignent les masques, plus bas, avec les cinq comptables. Le
+            # filtrage etait en effet de bord dans la boucle, ce qui le rendait
+            # incomptable — la colonne « effet sur l'univers » ne pouvait rien
+            # en dire.
             results.append({
                 "ticker": ticker,
                 "name": data.get("company_name") or "",
@@ -290,82 +279,114 @@ def render():
     #
     # UN MASQUE PAR CRITERE, et non un seul masque cumule : la colonne « effet
     # sur l'univers » demande de savoir ce que CHAQUE critere retire a lui
-    # seul. Le resultat final est leur conjonction — rien ne change au
-    # filtrage, seule la comptabilite s'ajoute.
+    # seul. Le resultat final est leur conjonction.
+    #
+    # LA REGLE, arbitree le 08/09 : *si le titre n'a pas d'information sur un
+    # seuil, il est ecarte*. Sans la valeur, on ne peut pas dire qu'il est
+    # conforme — et le dire quand meme reviendrait a le faire passer pour tel.
+    # Elle vaut pour les HUIT criteres : les cinq comptables l'appliquaient
+    # deja a moitie (un ratio absent valait zero, donc tombait sous un
+    # minimum, mais passait sous un maximum), les trois de marche ne
+    # l'appliquaient pas du tout.
+    #
+    # Un critere ne mord toutefois QUE s'il a ete regle : tant que ses bornes
+    # sont celles du champ, il ne retire personne. Sans cela, un seuil que
+    # personne n'a touche ecarterait les titres sans historique.
     _vrai = lambda: pd.Series(True, index=screen_df.index)
-    masques = {}
 
-    m = _vrai()
-    if min_yield > 0:
-        m &= screen_df["dividend_yield"].fillna(0) >= min_yield
-    if max_yield < 0.30:
-        m &= screen_df["dividend_yield"].fillna(0) <= max_yield
-    masques["Dividend Yield"] = m
+    def _seuil(colonne, mini, maxi, plancher, plafond, positif=False):
+        """Le masque d'un critere, et la connaissance de sa valeur.
 
-    m = _vrai()
-    if min_per > 0:
-        m &= (screen_df["per"].fillna(0) >= min_per) | (screen_df["per"].fillna(0) <= 0)
-    if max_per < 100:
-        m &= (screen_df["per"].fillna(999) <= max_per) & (screen_df["per"].fillna(0) > 0)
-    masques["PER"] = m
+        `positif` : une valeur nulle ou negative ne renseigne pas le critere.
+        Un PER negatif ne dit pas que la societe est bon marche, il dit qu'elle
+        perd de l'argent — c'est une absence d'information, pas une valeur.
+        """
+        if not (mini > plancher or maxi < plafond):
+            return _vrai(), None
+        v = screen_df[colonne]
+        connue = (v.notna() & (v > 0)) if positif else v.notna()
+        return connue & (v >= mini) & (v <= maxi), connue
 
-    m = _vrai()
-    if min_roe > 0:
-        m &= screen_df["roe"].fillna(0) >= min_roe
-    if max_roe < 1.0:
-        m &= screen_df["roe"].fillna(0) <= max_roe
-    masques["ROE"] = m
-
-    m = _vrai()
-    if min_payout > 0:
-        m &= screen_df["payout_ratio"].fillna(0) >= min_payout
-    if max_payout < 2.0:
-        m &= screen_df["payout_ratio"].fillna(0) <= max_payout
-    masques["Payout"] = m
-
-    m = _vrai()
-    if min_de > 0:
-        m &= screen_df["debt_equity"].fillna(0) >= min_de
-    if max_de < 20:
-        m &= screen_df["debt_equity"].fillna(0) <= max_de
-    masques["D/E"] = m
+    masques = {
+        "Dividend Yield": _seuil("dividend_yield", min_yield, max_yield, 0.0, 0.30),
+        "PER": _seuil("per", min_per, max_per, 0.0, 100.0, positif=True),
+        "ROE": _seuil("roe", min_roe, max_roe, 0.0, 1.00),
+        "Payout": _seuil("payout_ratio", min_payout, max_payout, 0.0, 2.00),
+        "D/E": _seuil("debt_equity", min_de, max_de, 0.0, 20.0),
+        "Volatilité annuelle": _seuil("volatilite", min_vol, max_vol, 0.0, 1.50),
+        "Rendement annualisé": _seuil("rendement_annualise", min_rdt, max_rdt,
+                                      -1.00, 2.00),
+        "Échangé par mois": _seuil("montant_echange", min_echange,
+                                   float("inf"), 0.0, float("inf")),
+    }
 
     mask = _vrai()
-    for m in masques.values():
-        mask &= m
+    for garde, _ in masques.values():
+        mask &= garde
 
     # La colonne qui manquait, remplie une fois le compte fait. Elle distingue
-    # ce qu'un seuil ecarte de ce qu'une DONNEE MANQUANTE ecarte : ici, un
-    # ratio absent vaut zero et tombe sous le seuil — le titre sort sans que
-    # rien ne le dise. C'est desormais dit, ligne par ligne.
+    # ce qu'un SEUIL ecarte de ce qu'une DONNEE ABSENTE ecarte — sans quoi la
+    # regle s'appliquerait sans qu'on la voie.
     _sans_donnee_total = 0
-    for libelle, (emplacement, colonne) in effets.items():
-        garde = masques.get(libelle)
+    for libelle, (emplacement, _colonne) in effets.items():
+        garde, connue = masques.get(libelle, (None, None))
         if garde is None:
             continue
         exclus = ~garde
         n = int(exclus.sum())
-        manquants = 0
-        if colonne and colonne in screen_df.columns:
-            manquants = int((exclus & screen_df[colonne].isna()).sum())
+        manquants = int((exclus & ~connue).sum()) if connue is not None else 0
         _sans_donnee_total += manquants
         if not n:
             texte = "ne retire rien"
         else:
             texte = f"retire {n} titre{'s' if n > 1 else ''}"
             if manquants:
-                texte += (f", dont <b>{manquants} faute de donnée</b>")
+                texte += f", dont <b>{manquants} faute de donnée</b>"
         emplacement.markdown(
             f"<div style='{_EXPLIQUE}'>{texte}</div>", unsafe_allow_html=True)
 
     pied_fond.caption(
-        "Sur ces cinq critères, un titre dont le ratio est **absent** est "
-        "traité comme s'il valait zéro : il tombe sous le seuil et sort de "
-        "l'univers. La colonne le dit ligne par ligne."
+        "Un critère **réglé** écarte les titres hors bornes **et** ceux dont "
+        "la valeur est inconnue : sans information sur un seuil, un titre ne "
+        "peut pas être dit conforme. Un PER nul ou négatif compte pour une "
+        "absence — il ne dit pas que la société est bon marché, il dit qu'elle "
+        "perd de l'argent. Tant qu'un critère n'est pas réglé, il ne retire "
+        "personne."
         + (f" Actuellement **{_sans_donnee_total}** exclusion"
-           f"{'s' if _sans_donnee_total > 1 else ''} de ce seul fait."
+           f"{'s' if _sans_donnee_total > 1 else ''} faute de donnée."
            if _sans_donnee_total else "")
-        + " Les trois critères de l'onglet voisin, eux, ne les écartent pas."
+    )
+
+    # L'onglet des critères de marché dit, lui, QUI n'a pas d'historique : ce
+    # sont toujours les mêmes — les introductions récentes — et il vaut mieux
+    # les nommer que laisser chercher lesquels ont disparu.
+    _sans_historique = sorted(
+        screen_df.loc[screen_df["volatilite"].isna(), "ticker"].tolist())
+    _regles_marche = [l for l in ("Volatilité annuelle", "Rendement annualisé",
+                                  "Échangé par mois")
+                      if masques[l][1] is not None]
+    if _sans_historique:
+        _phrase = (
+            f"**{len(_sans_historique)}** titre"
+            f"{'s' if len(_sans_historique) > 1 else ''} n'"
+            f"{'ont' if len(_sans_historique) > 1 else 'a'} pas vingt-quatre "
+            f"mois de cotation et n'"
+            f"{'ont' if len(_sans_historique) > 1 else 'a'} donc aucune de ces "
+            f"trois mesures : " + ", ".join(f"`{t}`" for t in _sans_historique)
+            + ". "
+            + ("Ces critères étant réglés, "
+               f"{'ils sont' if len(_sans_historique) > 1 else 'il est'} "
+               "écarté" + ("s" if len(_sans_historique) > 1 else "") + "."
+               if _regles_marche else
+               "Aucun de ces critères n'étant réglé, "
+               f"{'ils restent' if len(_sans_historique) > 1 else 'il reste'} "
+               "dans l'univers."))
+    else:
+        _phrase = ("Tous les titres de la sélection ont au moins vingt-quatre "
+                   "mois de cotation.")
+    pied_risque.caption(
+        _phrase + " Une introduction récente reste sans mesure de marché "
+        "pendant deux ans."
     )
 
     filtered = screen_df[mask].sort_values("fundamental_score", ascending=False, na_position="last")
