@@ -70,3 +70,19 @@ mais partielles :
 Ce qui n'est PAS vérifié : que le bloc s'affiche au bon endroit de la page,
 avec les bonnes données, dans le vrai flux Streamlit. Seul un utilisateur
 connecté peut le confirmer.
+
+## Écarts assumés au canevas
+
+Ce que le canevas demande et que l'application ne fait pas, avec la raison.
+Aucun n'est un oubli ; chacun a été décidé.
+
+| Ce que le canevas montre | Ce qui est livré | Pourquoi |
+|---|---|---|
+| Colonnes **Bêta** et **RSI** au tableau des cotations | Les deux, **plus la corrélation** — un bêta dont la corrélation tombe sous 0,30 s'affiche en gris | Le calcul a révélé que la corrélation au marché est faible sur cette place (0,05 à 0,69). Un bêta seul aurait fait croire à une sensibilité qu'il ne mesure pas. |
+| Carte de chaleur de calibration sur **4 horizons** | 1 et 3 mois | L'historique des signaux ne couvre pas encore six ni douze mois. Une colonne vide n'est pas une information. |
+| **Impact chiffré** sur chacune des 3 étapes du plan | Sur deux étapes | « Ouvrir de nouvelles lignes » n'a pas d'impact calculable avant de choisir les montants. Case vide plutôt que nombre inventé. |
+| Graphique en **axes parallèles** (Profil comparatif) | Barres horizontales groupées, déjà en place | Les deux répondent à « quelle est la forme de ce titre ». Le second est au moins aussi lisible et existait ; le remplacer n'aurait rien apporté. |
+| KPI du Dashboard sous-titrés **« +2 vs veille »** | « 38 % de la cote » | Les comptes de la veille ne sont pas stockés. La part du marché est calculable et dit autant. |
+| **Tri par clic sur l'en-tête** du tableau des cotations | Sélecteur « Trier par » explicite | Un tableau HTML ne se trie pas au clic. Le tri reste, il se voit. |
+| Une seule **bande d'accès** sous les listes Top 5 | Idem | Les cinq boutons par liste ont disparu ; le saut vers un titre précis reste au sélecteur du tableau des cotations. |
+| Icône « B » en pastille | Emoji de la barre d'onglet inchangé | `st.set_page_config` prend un emoji ou une image ; changer demanderait de livrer un fichier d'icône. Non fait. |
