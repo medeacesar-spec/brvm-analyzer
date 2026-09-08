@@ -146,28 +146,45 @@ def breadth_bar(up: int, flat: int, down: int, label: str = "Largeur du marché"
     )
 
 
-def heatmap(lignes, colonnes, echelle: float = None, footer: str = ""):
+def heatmap(lignes, colonnes, echelle: float = None, footer: str = "",
+            mode: str = "signe", intitule_colonne: str = "Secteur",
+            formatter=None):
     """Carte de chaleur : une ligne par entité, une colonne par fenêtre.
 
     `lignes` : liste de (libellé, [valeurs en %]) — une valeur par colonne,
     `None` pour une case sans donnée (rendue vide, jamais en zéro : un trou
     n'est pas une stabilité).
     `colonnes` : libellés des fenêtres, sans la première colonne du libellé.
-    `echelle` : variation en % qui sature la couleur. Par défaut, le plus
-    grand écart observé — ainsi la teinte reste lisible même un mois calme.
+    `echelle` : valeur qui sature la couleur. Par défaut, le plus grand écart
+    observé — ainsi la teinte reste lisible même un mois calme.
+    `mode` : « signe » colore en vert au-dessus de zéro et en rouge en
+    dessous — c'est la lecture d'une variation. « intensite » emploie une
+    seule teinte navy du clair au foncé : pour un score, où il n'y a pas de
+    négatif, deux couleurs feraient croire à un seuil qui n'existe pas.
     """
     valeurs = [v for _, vals in lignes for v in vals if v is not None]
     if not valeurs:
         return
     if not echelle:
-        echelle = max(abs(v) for v in valeurs) or 1.0
+        # Le maximum absolu comme échelle rendait la carte illisible dès
+        # qu'UNE case sortait du lot : sur les secteurs, la colonne « Max »
+        # à +903 % délavait les quarante autres cases. On sature au 85e
+        # centile — les extrêmes s'affichent à pleine teinte, le reste garde
+        # son contraste.
+        tries = sorted(abs(v) for v in valeurs)
+        rang = max(0, int(0.85 * (len(tries) - 1)))
+        echelle = tries[rang] or max(tries) or 1.0
 
     def _fond(v):
         if v is None:
             return "var(--bg-elev)"
         intensite = min(abs(v) / echelle, 1.0) * 0.85
-        # Teintes du canevas : vert #0E7A54 en hausse, rouge #C0392B en baisse.
-        r, g, b = (14, 122, 84) if v >= 0 else (192, 57, 43)
+        if mode == "intensite":
+            # Navy #1B3A6B, du clair au foncé.
+            r, g, b = (27, 58, 107)
+        else:
+            # Teintes du canevas : vert #0E7A54 en hausse, rouge #C0392B en baisse.
+            r, g, b = (14, 122, 84) if v >= 0 else (192, 57, 43)
         return f"rgba({r},{g},{b},{intensite:.3f})"
 
     def _encre(v):
@@ -179,7 +196,7 @@ def heatmap(lignes, colonnes, echelle: float = None, footer: str = ""):
         "<div style='padding:9px 10px;background:var(--bg-sunken);"
         "border-bottom:1px solid var(--border);font-size:10px;font-weight:600;"
         "color:var(--ink-3);letter-spacing:0.09em;text-transform:uppercase;"
-        "white-space:nowrap;'>Secteur</div>"
+        f"white-space:nowrap;'>{intitule_colonne}</div>"
         + "".join(
             "<div style='padding:9px 10px;background:var(--bg-sunken);"
             "border-bottom:1px solid var(--border);font-size:10px;font-weight:600;"
@@ -196,7 +213,12 @@ def heatmap(lignes, colonnes, echelle: float = None, footer: str = ""):
             f"font-weight:500;color:var(--ink);white-space:nowrap;'>{libelle}</div>"
         )
         for v in vals:
-            texte = "—" if v is None else f"{v:+.2f} %"
+            if v is None:
+                texte = "—"
+            elif formatter is not None:
+                texte = formatter(v)
+            else:
+                texte = f"{v:+.2f} %"
             cellules += (
                 "<div style='padding:9px 10px;border-bottom:1px solid var(--bg-elev);"
                 "border-right:1px solid var(--bg-elev);text-align:right;"

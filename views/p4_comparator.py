@@ -184,6 +184,35 @@ def render():
         )
         st.plotly_chart(fig, use_container_width=True)
 
+        # ── Le même profil, en intensité ──
+        # Le graphique groupé répond « quelle est la forme de ce titre ». La
+        # carte de chaleur répond à l'autre question, que le graphique rend
+        # laborieuse : sur CE critère, lequel gagne ? Une lecture en ligne,
+        # une lecture en colonne, les mêmes six scores.
+        from utils.ui_helpers import heatmap
+        _noms = [data["fundamentals"].get("company_name") or t
+                 for t, data in stocks.items()]
+        _lignes = []
+        for _lib, _fn in bar_metrics:
+            _lignes.append((_lib, [_fn(d["ratios"]) for d in stocks.values()]))
+        st.markdown(
+            "<div style='display:flex;align-items:baseline;gap:10px;"
+            "margin:26px 0 12px;'>"
+            "<h2 style='font-size:17px;font-weight:600;margin:0;"
+            "letter-spacing:-0.015em;'>Le même profil, en intensité</h2>"
+            "<span style='font-family:var(--font-mono);font-size:11.5px;"
+            "color:var(--ink-3);'>SCORE 0-100</span></div>",
+            unsafe_allow_html=True,
+        )
+        heatmap(
+            _lignes, _noms, echelle=100, mode="intensite",
+            intitule_colonne="Critère",
+            formatter=lambda v: f"{v:.0f}",
+            footer="Lecture en ligne : qui gagne sur ce critère. En colonne : "
+                   "le profil d'ensemble d'un titre. Les scores sont bornés à "
+                   "100 — au-delà du seuil de chaque critère, la case sature.",
+        )
+
 
     with onglet_perf:
         # --- Performance Chart ---

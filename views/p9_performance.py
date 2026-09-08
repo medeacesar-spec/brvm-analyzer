@@ -258,6 +258,48 @@ def render():
 
     # ───────── TAB 2: By sector ─────────
     with tab_sectors:
+        # ── Secteurs × périodes ──
+        # Le graphique en barres ne montre qu'UNE fenêtre à la fois : on y
+        # lit quel secteur mène aujourd'hui, jamais s'il mène depuis
+        # longtemps. La carte de chaleur met les six fenêtres côte à côte —
+        # en ligne, la persistance d'un secteur ; en colonne, ce que la
+        # période favorise.
+        from utils.ui_helpers import heatmap as _heatmap
+        _fenetres = [p for p in PERIODS if p in perf_df.columns]
+        if _fenetres and "sector" in perf_df.columns:
+            # dropna ne suffit pas : un secteur vide est une chaîne vide,
+            # pas un NaN, et sortait en ligne fantôme à +0,00 %.
+            _av_sect = perf_df.dropna(subset=["sector"]).copy()
+            _av_sect = _av_sect[_av_sect["sector"].astype(str).str.strip() != ""]
+            _par_secteur = _av_sect.groupby("sector")[_fenetres].mean() * 100
+            if not _par_secteur.empty:
+                _derniere = _fenetres[-1]
+                _par_secteur = _par_secteur.sort_values(_derniere,
+                                                        ascending=False)
+                _lignes_h = [(nom, [None if pd.isna(v) else float(v)
+                                    for v in ligne])
+                             for nom, ligne in _par_secteur.iterrows()]
+                st.markdown(
+                    "<div style='display:flex;align-items:baseline;gap:10px;"
+                    "margin:6px 0 12px;'>"
+                    "<h2 style='font-size:17px;font-weight:600;margin:0;"
+                    "letter-spacing:-0.015em;'>Secteurs × périodes</h2>"
+                    "<span style='font-family:var(--font-mono);"
+                    "font-size:11.5px;color:var(--ink-3);'>"
+                    "MOYENNE PAR SECTEUR</span></div>",
+                    unsafe_allow_html=True,
+                )
+                _heatmap(
+                    _lignes_h, _fenetres,
+                    footer="Moyenne simple des titres du secteur, non "
+                           "pondérée. Lecture en ligne : la persistance d'un "
+                           "secteur. En colonne : ce que la période favorise. "
+                           "Une case vide est une fenêtre sans historique "
+                           "suffisant. La teinte sature au 85e centile : "
+                           "sans cela, la colonne la plus large délaverait "
+                           "toutes les autres.",
+                )
+
         st.subheader(f"Performance sectorielle — {period}")
 
         sector_perf = (
