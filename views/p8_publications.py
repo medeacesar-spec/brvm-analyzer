@@ -94,21 +94,32 @@ def render():
     st.caption("Chaque dépêche croise un chiffre calculé par l'app et une "
                "citation textuelle de la source. Rien n'est reformulé.")
 
+    # BARRE D'OUTILS DE PAGE. Le canevas place la période AU-DESSUS des
+    # onglets, et c'est ce qu'elle est : elle gouverne la page, pas un onglet.
+    # Posée sous les onglets, elle semblait ne valoir que pour la revue, alors
+    # que le fil brut couvre la même fenêtre.
+    barre, _ = st.columns([1, 3])
+    with barre:
+        jours = st.segmented_control(
+            "Période", [7, 15, 30], default=15,
+            format_func=lambda j: f"{j} j", key="infos_periode",
+        ) or 15
+
     tab0, tab1 = st.tabs([
         "Revue de presse",
         "Fil d'actualités",
     ])
     with tab0:
-        _render_revue()
+        _render_revue(jours)
     with tab1:
-        _render_news_feed()
+        _render_news_feed(jours)
 
 
 # ════════════════════════════════════════════════════════════════════
 # Tab 0 : Revue de presse
 # ════════════════════════════════════════════════════════════════════
 
-def _render_revue():
+def _render_revue(jours: int = 15):
     """Depeches croisees avec les chiffres extraits et le portefeuille.
 
     On ne reformule jamais : chaque entree combine des chiffres CALCULES par
@@ -117,13 +128,6 @@ def _render_revue():
     passee a la trappe.
     """
     from analysis.revue import build_revue, RUBRIQUES
-
-    col_j, col_p = st.columns([1, 3])
-    with col_j:
-        jours = st.segmented_control(
-            "Période", [7, 15, 30], default=15,
-            format_func=lambda j: f"{j} j", key="revue_periode",
-        ) or 15
 
     try:
         df_pf = get_portfolio()
@@ -163,6 +167,19 @@ def _render_revue():
             st.markdown(_carte_depeche(e), unsafe_allow_html=True)
 
 
+def _date_courte(valeur) -> str:
+    """« 02/09 » plutôt que « 2026-09-07 ».
+
+    La fenêtre ne dépasse jamais trente jours : l'année ne lève aucune
+    ambiguïté et prend la place du titre. Le fil brut de l'onglet voisin
+    écrivait déjà les dates ainsi.
+    """
+    texte = str(valeur or "")
+    if len(texte) >= 10 and texte[4] == "-" and texte[7] == "-":
+        return f"{texte[8:10]}/{texte[5:7]}"
+    return texte[:10]
+
+
 def _carte_depeche(e: dict) -> str:
     """Carte de depeche au modele du canevas v4.
 
@@ -197,7 +214,7 @@ def _carte_depeche(e: dict) -> str:
                          f"<span style='font-size:12px;color:var(--ink-3);'>"
                          f"{e.get('source', '')}</span>" if e.get("source") else "",
                          f"<span style='font-family:var(--font-mono);font-size:11px;"
-                         f"color:var(--ink-4);'>{e.get('date', '')}</span>"
+                         f"color:var(--ink-4);'>{_date_courte(e.get('date'))}</span>"
                          if e.get("date") else "",
                          etoile) if x]
     entete = (
@@ -250,7 +267,7 @@ def _carte_depeche(e: dict) -> str:
 # Tab 1 : Fil d'actualités
 # ════════════════════════════════════════════════════════════════════
 
-def _render_news_feed():
+def _render_news_feed(jours: int = 15):
     tickers_data = load_tickers()
     ticker_names = {t["ticker"]: t["name"] for t in tickers_data}
 
@@ -288,6 +305,24 @@ def _render_news_feed():
     # pas de date populée, on l'a abandonné.
     from analysis.publications import get_publications_with_status
     news = get_publications_with_status(ticker=selected_ticker, limit=200)
+
+    # LA FENETRE DE LA PAGE VAUT ICI AUSSI. Mais le fil brut est le filet de
+    # securite — il sert a verifier qu'aucune publication officielle n'est
+    # passee a la trappe : ce qu'il ecarte se COMPTE et se dit, plutot que de
+    # disparaitre sans bruit.
+    hors_fenetre = hors_a_integrer = 0
+    if jours and not news.empty and "pub_date" in news.columns:
+        horodatage = pd.to_datetime(news["pub_date"], errors="coerce")
+        limite = pd.Timestamp.today().normalize() - pd.Timedelta(days=jours)
+        dans = horodatage.isna() | (horodatage >= limite)
+        hors_fenetre = int((~dans).sum())
+        # Ce qui compte, dans ce qu'on ecarte, c'est ce qui reste A INTEGRER :
+        # c'est la seule chose que cet onglet promet de ne pas laisser filer.
+        ecartes = news[~dans]
+        hors_a_integrer = (int((ecartes["status"] == "À intégrer").sum())
+                           if "status" in ecartes.columns else 0)
+        news = news[dans]
+
     if news.empty:
         st.info("Aucune publication scannée. Cliquez sur Actualiser ou "
                  "lancez `python scripts/scan_publications.py`.")
@@ -345,6 +380,18 @@ def _render_news_feed():
             f"<div style='text-align:right;padding-top:8px;"
             f"color:var(--ink-3);font-size:12.5px;'>{len(news)} articles</div>",
             unsafe_allow_html=True,
+        )
+
+    if hors_fenetre:
+        st.caption(
+            f"**{hors_fenetre}** publication"
+            f"{'s' if hors_fenetre > 1 else ''} plus ancienne"
+            f"{'s' if hors_fenetre > 1 else ''} que la fenêtre de **{jours} "
+            f"jours** ne sont pas listée{'s' if hors_fenetre > 1 else ''}"
+            + (f", dont **{hors_a_integrer}** reste"
+               f"{'nt' if hors_a_integrer > 1 else ''} à intégrer"
+               if hors_a_integrer else "")
+            + " — élargir la période en tête de page pour les voir."
         )
 
     # ── Appliquer filtre types actifs ──

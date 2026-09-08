@@ -40,6 +40,12 @@ BRVM_DEV_LOGIN=1 streamlit run app.py --server.port 8502
 Le formulaire « Accès développeur » apparaît alors dans la barre latérale.
 Sans la variable, il n'existe pas — Streamlit Cloud ne la définit pas.
 
+La session de test s'ouvre par défaut sur **`dev@local`**, dont le portefeuille
+a été rempli le 08/09 d'une copie des positions réelles : sans lui, les pages
+sous connexion s'affichaient vides et ne montraient aucun des blocs à comparer.
+Pour ouvrir un autre compte, `BRVM_DEV_EMAIL=...` à côté de `BRVM_DEV_LOGIN=1`
+— le champ du formulaire ne se remplit pas depuis l'extérieur de Streamlit.
+
 ### 3. Comparer onglet par onglet, pas page par page
 
 **C'est ici que l'erreur se commet.** Portefeuille et Analyse d'un Titre ont
@@ -79,8 +85,8 @@ Légende : **à faire** · *en cours* · fait (vu au rendu)
 
 | # | Écart | État |
 |---|---|---|
-| I1 | Le sélecteur de période est sous les onglets ; le canevas le place **au-dessus**, en barre d'outils de page | à faire |
-| I2 | Dates au format long (`2026-09-07`) ; le canevas les met en `02/09` | à faire |
+| I1 | Le sélecteur de période est sous les onglets ; le canevas le place **au-dessus**, en barre d'outils de page | **fait** — vu au rendu le 08/09. Il gouverne désormais les deux onglets, comme dans le canevas ; ce que la fenêtre écarte du fil brut est compté, avec ce qui y reste à intégrer |
+| I2 | Dates au format long (`2026-09-07`) ; le canevas les met en `02/09` | **fait** — vu au rendu le 08/09. Le fil brut les écrivait déjà ainsi ; la revue s'aligne |
 
 ### Analyse d'un Titre — 6 onglets
 
