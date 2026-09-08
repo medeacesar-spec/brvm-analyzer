@@ -122,8 +122,80 @@ def render():
                     values.append(format_ratio(val, fmt))
             comp_data[f"{name} · {ticker}"] = values
 
-        comp_df = pd.DataFrame(comp_data)
-        st.dataframe(comp_df, use_container_width=True, hide_index=True)
+        # ── Rendu au modèle du canevas : le meilleur de chaque ligne ressort ──
+        # `st.dataframe` alignait douze lignes de chiffres tous de la même
+        # couleur : pour savoir qui gagne sur le ROE, il fallait comparer à
+        # l'œil, ligne par ligne. Le canevas met le meilleur en gras et en
+        # encre pleine, les autres en gris. La question « lequel est le
+        # meilleur sur ce critère » se lit alors sans calcul.
+        #
+        # Le sens du « meilleur » dépend du critère : un PER ou un ratio
+        # d'endettement bas vaut mieux qu'un haut. Les critères sans ordre
+        # (prix, EPS, DPS) n'ont pas de gagnant et restent neutres.
+        PREFERE_BAS = {"per", "debt_equity", "pb", "payout_ratio"}
+        SANS_ORDRE = {"price", "eps", "dps"}
+        _colonnes = [c for c in comp_data if c != "Indicateur"]
+
+        def _brut(ticker_col, cle):
+            """Valeur numérique brute, pour comparer sans passer par le texte."""
+            _t = ticker_col.rsplit(" · ", 1)[-1]
+            _d = stocks.get(_t)
+            if not _d:
+                return None
+            if cle == "price":
+                return _d["fundamentals"].get("price")
+            if cle == "_checklist":
+                _cl = _d["ratios"].get("checklist", [])
+                return sum(1 for c in _cl if c["passed"] is True) if _cl else None
+            return _d["ratios"].get(cle)
+
+        _th = ("font-size:10px;text-transform:uppercase;letter-spacing:0.09em;"
+               "color:var(--ink-3);font-weight:600;padding:9px 12px;"
+               "border-bottom:1px solid var(--border);background:var(--bg-sunken);"
+               "white-space:nowrap;")
+        _td = ("padding:10px 12px;border-bottom:1px solid var(--border-soft);"
+               "font-size:13px;")
+        _tdn = (_td + "text-align:right;font-variant-numeric:tabular-nums;"
+                "white-space:nowrap;")
+
+        _html = (f"<tr><th style='{_th}text-align:left;'>Indicateur</th>"
+                 + "".join(f"<th style='{_th}text-align:right;'>{c}</th>"
+                           for c in _colonnes) + "</tr>")
+        for _i, (_lib, _cle, _fmt) in enumerate(metrics):
+            _bruts = {c: _brut(c, _cle) for c in _colonnes}
+            _valides = {c: v for c, v in _bruts.items()
+                        if v is not None and not pd.isna(v)}
+            _gagnant = None
+            if _cle not in SANS_ORDRE and len(_valides) > 1:
+                _gagnant = (min(_valides, key=_valides.get)
+                            if _cle in PREFERE_BAS
+                            else max(_valides, key=_valides.get))
+            _html += f"<tr><td style='{_td}font-weight:500;'>{_lib}</td>"
+            for _c in _colonnes:
+                _txt = comp_data[_c][_i]
+                _meilleur = _c == _gagnant
+                _html += (
+                    f"<td style='{_tdn}"
+                    + ("font-weight:600;color:var(--ink);"
+                       if _meilleur else "color:var(--ink-3);")
+                    + f"'>{_txt}</td>"
+                )
+            _html += "</tr>"
+
+        st.markdown(
+            "<div style='background:var(--bg-elev);border:1px solid var(--border);"
+            "border-radius:12px;overflow:hidden;'>"
+            "<div style='overflow-x:auto;'>"
+            "<table style='width:100%;border-collapse:collapse;'>"
+            f"{_html}</table></div>"
+            "<div style='padding:10px 12px;background:var(--bg-footer);"
+            "font-size:11.5px;color:var(--ink-3);'>"
+            "La meilleure valeur de chaque ligne est en gras. Pour le PER, le "
+            "payout, la dette et le P/B, « meilleur » veut dire plus bas. "
+            "Prix, EPS et DPS n'ont pas de gagnant : ils dépendent du nombre "
+            "d'actions, pas de la qualité.</div></div>",
+            unsafe_allow_html=True,
+        )
 
         # Boutons "Ouvrir" pour chaque ticker sélectionné
         if tickers:

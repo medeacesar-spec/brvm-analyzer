@@ -436,7 +436,7 @@ if not st.session_state.get("db_verified"):
             # Page de garde pendant la mise à jour quotidienne.
             st.markdown("## BRVM Analyzer")
             st.info(
-                "⏳ **Mise à jour quotidienne en cours — durée estimée ~1 minute**\n\n"
+                "**Mise à jour quotidienne en cours — durée estimée ~1 minute**\n\n"
                 "Récupération des cotations du jour et des prix manquants pour "
                 "les 48 titres. Cette opération ne se fait qu'une "
                 "fois par jour et par session.\n\n"
@@ -474,7 +474,7 @@ if not st.session_state.get("db_verified"):
         st.markdown("## BRVM Analyzer")
         st.markdown("### Premier lancement — Initialisation")
         st.info(
-            "⏳ **Durée estimée : ~2 minutes**\n\n"
+            "**Durée estimée : ~2 minutes**\n\n"
             "L'application récupère les cotations, profils et prix historiques "
             "des **48 titres BRVM**. Un délai anti-requête de 300 ms est appliqué "
             "entre chaque titre (~48 × 1.3 s + rapports + indices).\n\n"
