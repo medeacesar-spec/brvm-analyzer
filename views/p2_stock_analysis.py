@@ -468,7 +468,7 @@ def render():
 def _render_fundamental(fundamentals, ratios):
     """Onglet analyse fondamentale v3 : score breakdown + ratios avec
     position secteur + trajectoire financiere + structure bilan."""
-    from utils.ui_helpers import section_heading
+    from utils.ui_helpers import section_heading, kpi_grille
 
     sector = fundamentals.get("sector", "")
     benchmarks = get_sector_benchmarks(sector) if sector else {}
@@ -488,11 +488,51 @@ def _render_fundamental(fundamentals, ratios):
     total = bd.get("total", ratios.get("fundamental_score", 0)) or 0
     profile = bd.get("profile", "")
 
+    # LA SOUS-LIGNE DIT CE QUI A FAIT LE SCORE. « Rentabilite 13/15 » ne se
+    # verifie pas ; « ROE 28,4 % · marge 24,8 % » se verifie, et se discute.
+    # Chaque sous-ligne nomme les ratios qui ALIMENTENT reellement le
+    # bareme — pas ceux qui feraient joli a cote.
+    def _pct(v, decimales=1):
+        return None if v is None else f"{v * 100:.{decimales}f} %"
+
+    def _fois(v):
+        return None if v is None else f"{v:.2f}×"
+
+    def _nombre(v):
+        return None if v is None or v <= 0 else f"{v:.1f}"
+
+    def _joindre(*morceaux):
+        gardes = [m for m in morceaux if m]
+        return " · ".join(gardes) if gardes else "donnée manquante"
+
+    _secteur = (fundamentals.get("sector") or "").lower()
+    _banque = "banque" in _secteur or "bank" in _secteur
+
+    _roe, _marge = ratios.get("roe"), ratios.get("net_margin")
+    _de, _couv = ratios.get("debt_equity"), ratios.get("interest_coverage")
+    _per, _pb = ratios.get("per"), ratios.get("pb")
+    _dy, _payout = ratios.get("dividend_yield"), ratios.get("payout_ratio")
+
     subs = [
-        ("Rentabilité",  bd.get("rentabilite", 0),  15),
-        ("Endettement",  bd.get("endettement", 0),  10),
-        ("Valorisation", bd.get("valorisation", 0), 15),
-        ("Dividendes",   bd.get("dividendes", 0),   10),
+        ("Rentabilité", bd.get("rentabilite", 0), 15,
+         _joindre(f"ROE {_pct(_roe)}" if _roe is not None else None,
+                  f"marge {_pct(_marge)}" if _marge is not None else None)),
+        ("Endettement", bd.get("endettement", 0), 10,
+         # Les depots d'une banque sont sa matiere premiere, pas sa dette : le
+         # bareme lui pose une valeur neutre, et la carte doit le dire plutot
+         # que de laisser croire a une mesure.
+         "banque — ratio d'endettement non applicable" if _banque else
+         _joindre(f"D/E {_fois(_de)}" if _de is not None else None,
+                  f"couverture {_fois(_couv)}" if _couv is not None else None)),
+        ("Valorisation", bd.get("valorisation", 0), 15,
+         _joindre(f"PER {_nombre(_per)}" if _nombre(_per) else None,
+                  f"P/B {_nombre(_pb)}" if _nombre(_pb) else None)),
+        ("Dividendes", bd.get("dividendes", 0), 10,
+         # Le bareme note le RENDEMENT ; le payout ne fait que le penaliser
+         # au-dela de cent pour cent. La sous-ligne nomme donc le rendement
+         # d'abord, et le payout ensuite comme ce qu'il est.
+         _joindre(f"yield {_pct(_dy, 2)}" if _dy is not None else None,
+                  f"payout {_pct(_payout, 0)}" if _payout is not None else None)),
     ]
 
     def _tone_for(score, max_score):
@@ -501,52 +541,23 @@ def _render_fundamental(fundamentals, ratios):
         if pct >= 0.40: return "var(--ocre)"
         return "var(--down)"
 
-    # Grille : 1 col score total + 4 cols sous-scores
-    c_total, c_sub = st.columns([1.6, 4])
-    with c_total:
-        st.markdown(
-            # Carte sombre (canevas v4) : le score d'ensemble se distingue des
-            # quatre sous-scores qui le composent, au lieu de leur ressembler.
-            f"<div style='background:var(--primary-2);border:1px solid var(--primary-2);"
-            f"border-radius:12px;padding:15px 17px;height:100%;'>"
-            f"<div style='font-size:10.5px;font-weight:600;letter-spacing:0.09em;"
-            f"text-transform:uppercase;color:var(--on-dark-3);"
-            f"margin-bottom:4px;'>Score fondamental</div>"
-            f"<div style='font-size:29px;font-weight:600;letter-spacing:-0.02em;"
-            f"color:var(--on-dark);font-variant-numeric:tabular-nums;'>"
-            f"{total:.0f} <span style='color:var(--on-dark-4);font-size:16px;font-weight:400;'>/ 50</span>"
-            f"</div>"
-            f"<div style='height:4px;background:rgba(255,255,255,0.18);border-radius:999px;"
-            f"margin:8px 0 10px 0;overflow:hidden;'>"
-            f"<div style='width:{min(100, total/50*100):.0f}%;height:100%;"
-            f"background:var(--primary-soft);border-radius:999px;'></div></div>"
-            f"<div style='font-size:12px;color:var(--on-dark-2);line-height:1.4;'>Profil "
-            f"<b style='color:var(--on-dark);'>{profile or '—'}</b></div>"
-            f"</div>",
-            unsafe_allow_html=True,
-        )
-    with c_sub:
-        cells = st.columns(4)
-        for (label, val, maxv), cell in zip(subs, cells):
-            tone = _tone_for(val, maxv)
-            pct = (val / maxv * 100) if maxv else 0
-            with cell:
-                st.markdown(
-                    f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
-                    f"border-top:2px solid {tone};"
-                    f"border-radius:12px;padding:14px 16px;height:100%;'>"
-                    f"<div class='label-xs' style='margin-bottom:4px;'>{label}</div>"
-                    f"<div style='font-size:20px;font-weight:600;color:var(--ink);"
-                    f"font-variant-numeric:tabular-nums;'>"
-                    f"{val:.0f} <span style='color:var(--ink-3);font-size:13px;font-weight:400;'>/ {maxv}</span>"
-                    f"</div>"
-                    f"<div style='height:3px;background:var(--bg-sunken);border-radius:999px;"
-                    f"margin-top:10px;overflow:hidden;'>"
-                    f"<div style='width:{pct:.0f}%;height:100%;background:{tone};"
-                    f"border-radius:999px;'></div></div>"
-                    f"</div>",
-                    unsafe_allow_html=True,
-                )
+    # UNE GRILLE, PAS CINQ COLONNES FIXES. `st.columns` imposait cinq colonnes
+    # quelle que soit la largeur : « ENDETTEMENT » se brisait en
+    # « ENDETTEMEN / T ». La grille du canevas replie la rangee au lieu de
+    # couper les mots.
+    kpi_grille(
+        [dict(label="Score fondamental",
+              value=(f"{total:.0f} <span style='color:var(--on-dark-4);"
+                     f"font-size:16px;font-weight:400;'>/ 50</span>"),
+              sub=f"Profil <b>{profile or '—'}</b>", dark=True,
+              bar_pct=min(100, total / 50 * 100))]
+        + [dict(label=label,
+                value=(f"{val:.0f} <span style='color:var(--ink-3);"
+                       f"font-size:13px;font-weight:400;'>/ {maxv}</span>"),
+                sub=sous, accent=_tone_for(val, maxv),
+                bar_pct=(val / maxv * 100) if maxv else 0, taille="22px")
+           for label, val, maxv, sous in subs],
+        mini="196px")
 
     # ═══════════════════════════════════════════════════════════════════
     # Tableau des ratios calcules.
