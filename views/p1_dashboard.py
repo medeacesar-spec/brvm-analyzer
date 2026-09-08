@@ -1228,13 +1228,10 @@ def render():
     if _m is not None and not _m.empty:
         _var30 = {r["ticker"]: r["variation"] for _, r in _m.iterrows()}
 
-    # Le canevas termine ce tableau par deux colonnes Bêta et RSI. Ni l'une ni
-    # l'autre n'a de source : `market_data.beta` et `market_data.rsi` sont
-    # vides sur les quarante-huit lignes, et l'ancien tableau les affichait
-    # deja creuses sans le dire. Plutot que deux colonnes qui ne se
-    # rempliront jamais, on donne les deux mesures que l'application calcule
-    # vraiment et qui repondent a la meme question — a quel prix se detient
-    # ce titre, et peut-on le revendre.
+    # Le bêta et le RSI du canevas sont désormais calculés
+    # (`scripts/calculer_beta_rsi.py`). La corrélation au marché est lue avec
+    # eux : sur cette place elle est faible, et un bêta dont la corrélation
+    # tombe sous 0,30 ne décrit presque rien — il s'affiche en gris.
     try:
         from analysis.risque import toutes_les_mesures as _mesures_risque
         _risque = _mesures_risque()
@@ -1261,7 +1258,7 @@ def render():
         _tri = st.selectbox(
             "Trier par",
             ["Capitalisation", "Variation du jour", "Variation 30 jours",
-             "Ticker"],
+             "Ticker", "RSI", "Bêta"],
             key="dash_tri_cotations",
         )
 
@@ -1274,6 +1271,8 @@ def render():
         "Variation du jour": ("variation", False),
         "Variation 30 jours": ("var30", False),
         "Ticker": ("ticker", True),
+        "RSI": ("rsi", False),
+        "Bêta": ("beta", False),
     }
     _col, _asc = _cles[_tri]
     if _col in display_df.columns:
@@ -1310,13 +1309,6 @@ def render():
             return vide
         return fmt.format(v).replace(",", " ")
 
-    def _fmt_echange(v):
-        """Un montant échangé se lit en milliards ou en millions, jamais en
-        francs : la colonne servirait à compter des zéros."""
-        if v is None or pd.isna(v) or not v:
-            return "—"
-        return f"{v / 1e9:.1f} Md" if v >= 1e9 else f"{v / 1e6:.0f} M"
-
     _th = ("font-size:10px;text-transform:uppercase;letter-spacing:0.09em;"
            "color:var(--ink-3);font-weight:600;padding:9px 12px;"
            "border-bottom:1px solid var(--border);background:var(--bg-sunken);"
@@ -1336,8 +1328,8 @@ def render():
         f"<th style='{_th}text-align:right;'>Var</th>"
         f"<th style='{_th}text-align:left;'>Var. 30 j</th>"
         f"<th style='{_th}text-align:right;'>Cap (Mds)</th>"
-        f"<th style='{_th}text-align:right;'>Volatilité</th>"
-        f"<th style='{_th}text-align:right;'>Échangé / mois</th>"
+        f"<th style='{_th}text-align:right;'>Bêta</th>"
+        f"<th style='{_th}text-align:right;'>RSI</th>"
         "</tr>"
     )
     for _, r in display_df.iterrows():
@@ -1346,8 +1338,16 @@ def render():
                "var(--down)" if _v and _v < 0 else "var(--ink-3)")
         _cap = r.get("market_cap")
         _mes = _risque.get(r.get("ticker")) or {}
-        _vol = _mes.get("volatilite")
-        _ech = _mes.get("montant_echange")
+        _corr = _mes.get("correlation_marche")
+        # Un bêta dont la corrélation est faible se lit en gris : la valeur
+        # est juste, mais elle n'explique presque rien du mouvement du titre.
+        _c_beta = ("var(--ink-4)" if _corr is not None and abs(_corr) < 0.30
+                   else "var(--ink-2)")
+        _t_beta = (f"corrélation au marché {_corr:.2f}"
+                   if _corr is not None else "corrélation inconnue")
+        _rsi = r.get("rsi")
+        _c_rsi = ("var(--warn)" if _rsi is not None and not pd.isna(_rsi)
+                  and (_rsi > 70 or _rsi < 30) else "var(--ink-2)")
         _lignes += (
             "<tr>"
             f"<td style='{_td}font-family:var(--font-mono);font-size:11.5px;"
@@ -1361,9 +1361,11 @@ def render():
             f"<td style='{_td}min-width:90px;'>{_barre_signee(r.get('var30'))}</td>"
             f"<td style='{_tdn}color:var(--ink-2);'>"
             f"{_n(_cap / 1e9 if _cap and not pd.isna(_cap) else None, '{:,.1f}')}</td>"
-            f"<td style='{_tdn}color:var(--ink-2);'>"
-            f"{_n(_vol * 100 if _vol is not None else None, '{:.0f} %')}</td>"
-            f"<td style='{_tdn}color:var(--ink-2);'>{_fmt_echange(_ech)}</td>"
+            f"<td style='{_tdn}color:{_c_beta};' title='{_t_beta}'>"
+            f"{_n(r.get('beta'), '{:.2f}')}</td>"
+            f"<td style='{_tdn}color:{_c_rsi};font-weight:"
+            f"{600 if _c_rsi != 'var(--ink-2)' else 400};'>"
+            f"{_n(_rsi, '{:.0f}')}</td>"
             "</tr>"
         )
 
@@ -1377,9 +1379,12 @@ def render():
         "font-size:11.5px;color:var(--ink-3);'>"
         "Barre signée : variation sur 30 jours, échelle ±40 % autour de l'axe "
         "central ; au-delà, la barre sature. Une barre absente est un titre "
-        "sans historique mensuel suffisant. Volatilité et montant échangé "
-        "remplacent le bêta et le RSI du modèle : ces deux-là n'ont aucune "
-        "source renseignée dans la base.</div></div>",
+        "sans historique mensuel suffisant. Bêta mensuel contre le BRVM "
+        "Composite, sur 24 mois minimum ; en gris quand la corrélation au "
+        "marché tombe sous 0,30 — la valeur reste juste, mais elle "
+        "n'explique presque rien. RSI de Wilder sur 14 cotations "
+        "quotidiennes, en ocre au-delà de 70 ou en deçà de 30."
+        "</div></div>",
         unsafe_allow_html=True,
     )
 
