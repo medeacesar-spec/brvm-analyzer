@@ -1112,8 +1112,17 @@ def render():
 
     tab_day, tab_week, tab_month = st.tabs([day_label, "Semaine", "Mois"])
     with tab_day:
-        st.caption(f"Dernière clôture comparée à la précédente · "
-                   f"{session_label.date_long.lower()}")
+        # En séance, le dernier point du cache est un relevé de mi-séance, pas
+        # une clôture. Annoncer « dernière clôture comparée à la précédente »
+        # pendant que le bandeau affiche « MI-SÉANCE 13:21 » fait mentir la
+        # page sur ce qu'elle compare.
+        _en_seance = session_label.status.lower().startswith("mi-séance")
+        st.caption(
+            ("Relevé de mi-séance comparé à la dernière clôture · "
+             if _en_seance else
+             "Dernière clôture comparée à la précédente · ")
+            + session_label.date_long.lower()
+        )
         _render_top5(perf.get("day", pd.DataFrame()), "du jour")
     with tab_week:
         if week_caption:
