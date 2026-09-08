@@ -2162,6 +2162,19 @@ def _render_recommendation(result, fundamentals):
     verdict = reco.get("verdict", "N/A")
     verdict_tone = _verdict_tone(verdict)
 
+    # Le prix cible se calcule ICI, en tete : le canevas ouvre l'onglet par une
+    # rangee qui porte le cours et la cible, et le detail des methodes vient
+    # plus bas. Le calcul servait deja plus loin — il ne se fait pas deux fois.
+    ratios_src = result.get("ratios") or {}
+    if "price" not in ratios_src or not ratios_src.get("price"):
+        ratios_src = dict(ratios_src)
+        ratios_src["price"] = fundamentals.get("price") or 0
+    tgt = compute_target_price(ratios_src, sector=fundamentals.get("sector"))
+    tp = tgt.get("target_price")
+    cur = tgt.get("current_price") or 0
+    conf = tgt.get("confidence", "moyenne")
+    comps = tgt.get("components", [])
+
     # ═══════════════════════════════════════════════════════════════════
     # Card "VERDICT DU MODÈLE" avec stacked bar composition
     # ═══════════════════════════════════════════════════════════════════
@@ -2246,6 +2259,41 @@ def _render_recommendation(result, fundamentals):
     )
 
     # ═══════════════════════════════════════════════════════════════════
+    # Rangée "PRIX ACTUEL / PRIX CIBLE" — ce que vaut le titre, ce que le
+    # modèle en dit. Le canevas les met en cartes de KPI en tête d'onglet ;
+    # le détail des méthodes reste plus bas, sans répéter ces deux chiffres.
+    # ═══════════════════════════════════════════════════════════════════
+    from utils.ui_helpers import kpi_grille
+
+    _cartes_prix = []
+    if cur:
+        _cartes_prix.append(dict(label="Prix actuel", value=f"{cur:,.0f}",
+                                 sub="FCFA", accent="var(--ink-4)",
+                                 taille="22px"))
+    if not tp:
+        _cartes_prix.append(dict(label="Prix cible (modèle)", value="—",
+                                 sub="données EPS ou DPS manquantes",
+                                 accent="var(--ink-4)", taille="22px"))
+    elif conf == "faible" and len(comps) >= 2:
+        # Confiance faible : la moyenne des methodes serait un chiffre
+        # fabrique. On montre l'ecart entre elles, qui est l'information.
+        _prix = [c["price"] for c in comps]
+        _cartes_prix.append(dict(
+            label="Prix cible (modèle)",
+            value=f"{min(_prix):,.0f} – {max(_prix):,.0f}",
+            sub="méthodes divergentes, pas de cible unique",
+            accent="var(--ocre)", taille="22px"))
+    else:
+        _dpct = tgt.get("delta_pct") or 0
+        _ton = ("var(--up)" if _dpct > 0 else
+                "var(--down)" if _dpct < 0 else "var(--ink-4)")
+        _cartes_prix.append(dict(
+            label="Prix cible (modèle)", value=f"{tp:,.0f}",
+            sub=f"{'+' if _dpct >= 0 else ''}{_dpct:.1f} % vs cours",
+            accent=_ton, sub_color=_ton, taille="22px"))
+    kpi_grille(_cartes_prix)
+
+    # ═══════════════════════════════════════════════════════════════════
     # Card "CE QUE LE SCORE NE DIT PAS" — le risque, qui n'y entre pas
     # ═══════════════════════════════════════════════════════════════════
     # Le score vaut Fondamental /50 + Technique /50 : le risque n'en fait pas
@@ -2327,15 +2375,6 @@ def _render_recommendation(result, fundamentals):
     # ═══════════════════════════════════════════════════════════════════
     # Card "PRIX CIBLE" — modèle PER sectoriel + Yield cible
     # ═══════════════════════════════════════════════════════════════════
-    ratios_src = result.get("ratios") or {}
-    if "price" not in ratios_src or not ratios_src.get("price"):
-        ratios_src = dict(ratios_src)
-        ratios_src["price"] = fundamentals.get("price") or 0
-    tgt = compute_target_price(ratios_src, sector=fundamentals.get("sector"))
-    tp = tgt.get("target_price")
-    cur = tgt.get("current_price") or 0
-    conf = tgt.get("confidence", "moyenne")
-    comps = tgt.get("components", [])
 
     # Détaille les prix de chaque méthode en FCFA, avec formule
     comps_rows = "".join(
@@ -2364,27 +2403,11 @@ def _render_recommendation(result, fundamentals):
         )
     # ── Cas 2 : confiance faible → PAS de moyenne trompeuse, on montre la fourchette ──
     elif conf == "faible" and len(comps) >= 2:
-        prices_only = [c["price"] for c in comps]
-        lo, hi = min(prices_only), max(prices_only)
         st.markdown(
             f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
             f"border-left:4px solid var(--ocre);"
             f"border-radius:12px;padding:16px 20px;margin-top:12px;'>"
             f"<div style='display:flex;align-items:flex-start;gap:32px;flex-wrap:wrap;'>"
-            f"<div>"
-            f"<div class='label-xs' style='margin-bottom:3px;'>Prix actuel</div>"
-            f"<div style='font-size:22px;font-weight:600;color:var(--ink);"
-            f"letter-spacing:-0.01em;font-variant-numeric:tabular-nums;'>"
-            f"{cur:,.0f} <span style='font-size:12px;color:var(--ink-3);"
-            f"font-weight:400;'>FCFA</span></div>"
-            f"</div>"
-            f"<div>"
-            f"<div class='label-xs' style='margin-bottom:3px;'>Fourchette modèle</div>"
-            f"<div style='font-size:22px;font-weight:600;color:var(--ink);"
-            f"letter-spacing:-0.01em;font-variant-numeric:tabular-nums;'>"
-            f"{lo:,.0f} – {hi:,.0f} <span style='font-size:12px;color:var(--ink-3);"
-            f"font-weight:400;'>FCFA</span></div>"
-            f"</div>"
             f"<div style='flex:1;min-width:240px;'>"
             f"<div class='label-xs' style='margin-bottom:3px;'>Lecture</div>"
             f"<div style='font-size:13px;color:var(--ink);'>"
@@ -2418,20 +2441,6 @@ def _render_recommendation(result, fundamentals):
             f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
             f"border-radius:12px;padding:16px 20px;margin-top:12px;'>"
             f"<div style='display:flex;align-items:flex-start;gap:32px;flex-wrap:wrap;'>"
-            f"<div>"
-            f"<div class='label-xs' style='margin-bottom:3px;'>Prix actuel</div>"
-            f"<div style='font-size:22px;font-weight:600;color:var(--ink);"
-            f"letter-spacing:-0.01em;font-variant-numeric:tabular-nums;'>"
-            f"{cur:,.0f} <span style='font-size:12px;color:var(--ink-3);"
-            f"font-weight:400;'>FCFA</span></div>"
-            f"</div>"
-            f"<div>"
-            f"<div class='label-xs' style='margin-bottom:3px;'>Prix cible (modèle)</div>"
-            f"<div style='font-size:22px;font-weight:600;color:var(--ink);"
-            f"letter-spacing:-0.01em;font-variant-numeric:tabular-nums;'>"
-            f"{tp:,.0f} <span style='font-size:12px;color:var(--ink-3);"
-            f"font-weight:400;'>FCFA</span></div>"
-            f"</div>"
             f"<div>"
             f"<div class='label-xs' style='margin-bottom:3px;'>Delta</div>"
             f"<div style='font-size:22px;font-weight:600;color:{tone_color};"
