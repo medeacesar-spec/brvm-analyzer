@@ -218,3 +218,41 @@ def heatmap(lignes, colonnes, echelle: float = None, footer: str = ""):
         f"{entetes}{cellules}</div></div>{pied}</div>",
         unsafe_allow_html=True,
     )
+
+
+def status_strip(statut: str, seance: str, maj: str = "",
+                 titres: int = 0, total: int = 0):
+    """Bandeau de contexte de séance, en haut de chaque page.
+
+    Le canevas v4 ouvre chaque page par une bande pleine largeur qui répond à
+    deux questions avant toute donnée : *de quelle séance parle-t-on* et
+    *depuis quand la page est-elle à jour*. Sans elle, un chiffre affiché ne
+    dit pas s'il date de la clôture d'hier ou du relevé de midi.
+    """
+    droite = ""
+    morceaux = []
+    if maj:
+        morceaux.append(f"MAJ {maj}")
+    if total:
+        morceaux.append(f"{titres}/{total} titres")
+    if morceaux:
+        droite = (
+            "<span style='font-family:var(--font-mono);font-size:11.5px;"
+            f"color:var(--ink-3);'>{' · '.join(morceaux)}</span>"
+        )
+    st.markdown(
+        "<div style='display:flex;align-items:center;justify-content:space-between;"
+        "flex-wrap:wrap;gap:12px;padding-bottom:14px;margin-bottom:6px;"
+        "border-bottom:1px solid var(--border);'>"
+        "<div style='display:flex;align-items:center;gap:10px;flex-wrap:wrap;'>"
+        "<span style='display:inline-flex;align-items:center;gap:7px;"
+        "padding:4px 9px;border-radius:5px;background:var(--bg-sunken);"
+        "color:var(--ink-2);font-family:var(--font-mono);font-size:11px;"
+        "font-weight:600;letter-spacing:0.04em;'>"
+        "<span style='width:6px;height:6px;border-radius:50%;"
+        "background:var(--ink-2);'></span>"
+        f"{statut.upper()}</span>"
+        f"<span style='font-size:13px;color:var(--ink-2);'>{seance}</span>"
+        f"</div>{droite}</div>",
+        unsafe_allow_html=True,
+    )
