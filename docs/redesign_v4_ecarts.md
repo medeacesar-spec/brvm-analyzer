@@ -135,7 +135,7 @@ Conforme sur les quatre onglets.
 | P1 | Performance | Le tableau des positions n'a pas la **barre signée** de variation | à faire |
 | P2 | Performance | L'intro omet « frais d'achat inclus dans le coût de revient » | à faire |
 | P3 | Recommandations | Manque la carte **Concentration 3 lignes** (seuil de vigilance 50 %) | **fait** — vu au rendu le 08/09. La rangée passe de trois à quatre cartes et au gabarit v4 |
-| P4 | Recommandations | Diagnostic en tableau ; le canevas en fait des **cartes** à filet et pastille | à faire |
+| P4 | Recommandations | Diagnostic en tableau ; le canevas en fait des **cartes** à filet et pastille | **fait** — vu au rendu le 08/09. Composant partagé `cartes_constats`, en grille repliable |
 | P5 | Risque | Manque les **4 cartes de risque** : volatilité du portefeuille, **bêta agrégé**, perte maximale simulée, rendement par unité de risque | **fait** — vu au rendu le 08/09. Trois des quatre mesures n'existaient pas : elles sont calculées sur la série du portefeuille reconstituée aux poids d'aujourd'hui |
 
 ### Signaux — Synthèse · Contradictions
