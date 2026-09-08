@@ -35,7 +35,9 @@ def _load_verdicts_dict() -> dict:
 def render():
     # Hiérarchie v3 : Title + caption → univers → filtres → résultats
     st.title("Screening multi-critères")
-    st.caption("Filtrer les titres BRVM ayant des données disponibles")
+    st.caption("Les filtres comptables et les filtres de marché sont "
+               "séparés : un titre peut tenir tous les seuils du bilan et "
+               "n'échanger que 900 000 francs par mois.")
 
     all_stocks = get_all_stocks_for_analysis()
     if all_stocks.empty:
@@ -56,7 +58,7 @@ def render():
     section_heading("Univers d'analyse", spacing="tight")
     available_sectors = sorted(all_stocks["sector"].dropna().unique().tolist())
 
-    col_sectors, col_tickers, col_card = st.columns([2, 2, 1])
+    col_sectors, col_tickers = st.columns(2)
 
     with col_sectors:
         st.markdown(
@@ -90,99 +92,103 @@ def render():
             selected_tickers = ticker_options
         target_tickers = {s.split(" · ")[0] for s in selected_tickers}
 
-    with col_card:
-        # Card "Univers filtré" — card bordée
-        n_filtered = len([s for s in selected_tickers if s.split(" · ")[0] in target_tickers])
-        st.markdown(
-            f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
-            f"border-radius:12px;padding:14px 16px;min-height:76px;'>"
-            f"<div class='label-xs' style='margin-bottom:4px;'>Univers filtré</div>"
-            f"<div style='font-size:26px;font-weight:600;color:var(--ink);"
-            f"letter-spacing:-0.02em;font-variant-numeric:tabular-nums;"
-            f"line-height:1;'>{n_filtered}</div>"
-            f"<div style='font-size:11.5px;color:var(--ink-3);margin-top:4px;'>— titres</div>"
-            f"</div>",
-            unsafe_allow_html=True,
-        )
+    # La rangée de KPI se remplit APRÈS le calcul, mais s'affiche AVANT les
+    # onglets : c'est elle qui rend visible l'effet d'un filtre pendant qu'on
+    # est encore dans l'onglet des filtres.
+    zone_kpi = st.container()
 
-    # ─── Filtres fondamentaux ───────────────────────────────────────────
-    section_heading("Filtres fondamentaux", spacing="loose")
+    onglet_fond, onglet_risque, onglet_res = st.tabs(
+        ["Filtres fondamentaux", "Risque et liquidité", "Résultats"])
 
-    col_f1, col_f2, col_f3, col_f4, col_f5 = st.columns(5)
+    with onglet_fond:
+        col_f1, col_f2, col_f3, col_f4, col_f5 = st.columns(5)
 
-    def _filter_col(label, key_prefix, default_max, step=1.0, divide=False,
-                    min_abs=0.0, max_abs=None):
-        """Affiche un label-xs + 2 inputs min/max serrés."""
-        st.markdown(
-            f"<div class='label-xs' style='margin-bottom:4px;'>{label}</div>",
-            unsafe_allow_html=True,
-        )
-        cmin, cmax = st.columns(2)
-        with cmin:
-            vmin = st.number_input(
-                f"{label} min", min_value=min_abs, max_value=max_abs,
-                value=0.0, step=step, key=f"{key_prefix}_min",
-                label_visibility="collapsed",
-            )
-        with cmax:
-            vmax = st.number_input(
-                f"{label} max", min_value=min_abs, max_value=max_abs,
-                value=default_max, step=step, key=f"{key_prefix}_max",
-                label_visibility="collapsed",
-            )
-        if divide:
-            return vmin / 100, vmax / 100
-        return vmin, vmax
-
-    with col_f1:
-        min_yield, max_yield = _filter_col(
-            "Dividend Yield", "yield", 30.0, step=0.5, divide=True, max_abs=30.0
-        )
-    with col_f2:
-        min_per, max_per = _filter_col(
-            "PER", "per", 100.0, step=1.0, divide=False, max_abs=100.0
-        )
-    with col_f3:
-        min_roe, max_roe = _filter_col(
-            "ROE", "roe", 100.0, step=1.0, divide=True, max_abs=100.0
-        )
-    with col_f4:
-        min_payout, max_payout = _filter_col(
-            "Payout", "payout", 200.0, step=5.0, divide=True, max_abs=200.0
-        )
-    with col_f5:
-        min_de, max_de = _filter_col(
-            "D/E", "de", 20.0, step=0.5, divide=False, max_abs=20.0
-        )
-
-    # ─── Filtres de risque et de liquidité ──────────────────────────────
-    # Separes des fondamentaux, et c'est deliberé : ils ne se lisent pas dans
-    # les comptes mais dans le cours. Un titre peut tenir tous les seuils
-    # comptables et n'echanger que 900 000 francs par mois.
-    if mesures_risque:
-        section_heading("Risque et liquidité", spacing="loose")
-        col_r1, col_r2, col_r3, _col_vide = st.columns(4)
-        with col_r1:
-            min_vol, max_vol = _filter_col(
-                "Volatilité annuelle", "vol", 150.0, step=5.0, divide=True,
-                max_abs=150.0)
-        with col_r2:
-            min_rdt, max_rdt = _filter_col(
-                "Rendement annualisé", "rdt", 100.0, step=5.0, divide=True,
-                min_abs=-100.0, max_abs=200.0)
-        with col_r3:
+        def _filter_col(label, key_prefix, default_max, step=1.0, divide=False,
+                        min_abs=0.0, max_abs=None):
+            """Affiche un label-xs + 2 inputs min/max serrés."""
             st.markdown(
-                "<div class='label-xs' style='margin-bottom:4px;'>"
-                "Échangé par mois, minimum</div>", unsafe_allow_html=True)
-            min_echange = st.number_input(
-                "Montant échangé minimum", min_value=0.0, value=0.0,
-                step=10.0, key="echange_min", label_visibility="collapsed",
-                help="En millions de FCFA. Un titre sous 10 M par mois se "
-                     "revend difficilement.") * 1e6
-    else:
-        min_vol, max_vol = 0.0, 99.0
-        min_rdt, max_rdt = -99.0, 99.0
-        min_echange = 0.0
+                f"<div class='label-xs' style='margin-bottom:4px;'>{label}</div>",
+                unsafe_allow_html=True,
+            )
+            cmin, cmax = st.columns(2)
+            with cmin:
+                vmin = st.number_input(
+                    f"{label} min", min_value=min_abs, max_value=max_abs,
+                    value=0.0, step=step, key=f"{key_prefix}_min",
+                    label_visibility="collapsed",
+                )
+            with cmax:
+                vmax = st.number_input(
+                    f"{label} max", min_value=min_abs, max_value=max_abs,
+                    value=default_max, step=step, key=f"{key_prefix}_max",
+                    label_visibility="collapsed",
+                )
+            if divide:
+                return vmin / 100, vmax / 100
+            return vmin, vmax
+
+        with col_f1:
+            min_yield, max_yield = _filter_col(
+                "Dividend Yield", "yield", 30.0, step=0.5, divide=True, max_abs=30.0
+            )
+        with col_f2:
+            min_per, max_per = _filter_col(
+                "PER", "per", 100.0, step=1.0, divide=False, max_abs=100.0
+            )
+        with col_f3:
+            min_roe, max_roe = _filter_col(
+                "ROE", "roe", 100.0, step=1.0, divide=True, max_abs=100.0
+            )
+        with col_f4:
+            min_payout, max_payout = _filter_col(
+                "Payout", "payout", 200.0, step=5.0, divide=True, max_abs=200.0
+            )
+        with col_f5:
+            min_de, max_de = _filter_col(
+                "D/E", "de", 20.0, step=0.5, divide=False, max_abs=20.0
+            )
+
+
+    with onglet_risque:
+        # Separes des fondamentaux, et c'est deliberé : ils ne se lisent pas dans
+        # les comptes mais dans le cours. Un titre peut tenir tous les seuils
+        # comptables et n'echanger que 900 000 francs par mois.
+        if mesures_risque:
+            st.markdown(
+                "<div style='background:var(--bg-elev);border:1px solid "
+                "var(--border);border-left:2px solid var(--warn);"
+                "border-radius:0 12px 12px 0;padding:12px 16px;"
+                "margin-bottom:14px;'>"
+                "<div style='font-size:13px;color:var(--ink-2);line-height:1.5;"
+                "max-width:76ch;'>Ces filtres ne se lisent pas au bilan mais "
+                "dans le cours. Un titre peut afficher 42/50 au fondamental et "
+                "n'échanger que 900 000 francs par mois : excellent sur le "
+                "papier, impossible à vendre en pratique.</div></div>",
+                unsafe_allow_html=True,
+            )
+            col_r1, col_r2, col_r3, _col_vide = st.columns(4)
+            with col_r1:
+                min_vol, max_vol = _filter_col(
+                    "Volatilité annuelle", "vol", 150.0, step=5.0, divide=True,
+                    max_abs=150.0)
+            with col_r2:
+                min_rdt, max_rdt = _filter_col(
+                    "Rendement annualisé", "rdt", 100.0, step=5.0, divide=True,
+                    min_abs=-100.0, max_abs=200.0)
+            with col_r3:
+                st.markdown(
+                    "<div class='label-xs' style='margin-bottom:4px;'>"
+                    "Échangé par mois, minimum</div>", unsafe_allow_html=True)
+                min_echange = st.number_input(
+                    "Montant échangé minimum", min_value=0.0, value=0.0,
+                    step=10.0, key="echange_min", label_visibility="collapsed",
+                    help="En millions de FCFA. Un titre sous 10 M par mois se "
+                         "revend difficilement.") * 1e6
+        else:
+            min_vol, max_vol = 0.0, 99.0
+            min_rdt, max_rdt = -99.0, 99.0
+            min_echange = 0.0
+
 
     # ─── Compute ratios ─────────────────────────────────────────────────
     results = []
@@ -267,121 +273,217 @@ def render():
 
     filtered = screen_df[mask].sort_values("fundamental_score", ascending=False, na_position="last")
 
-    # ─── Résultats ──────────────────────────────────────────────────────
-    section_heading(f"{len(filtered)} titres correspondent", spacing="loose")
-
-    if filtered.empty:
-        st.info("Aucun titre ne correspond. Élargissez vos critères.")
-        return
-
-    # Rendu HTML éditorial avec colonnes : Ticker / Nom / Secteur / Prix /
-    # Yield / PER / ROE / Payout / Score / Verdict (tag coloré)
-    def _verdict_tag(verdict):
-        if not verdict:
-            return "<span class='muted'>—</span>"
-        v = verdict.upper()
-        if "ACHAT FORT" in v:
-            return "<span class='tag up' style='text-transform:none;'>ACHAT FORT</span>"
-        if "ACHAT" in v or "ACHETER" in v:
-            return "<span class='tag up' style='text-transform:none;'>ACHETER</span>"
-        if "CONSERVER" in v:
-            return "<span class='tag ocre' style='text-transform:none;'>CONSERVER</span>"
-        if "PRUDENCE" in v:
-            return "<span class='tag ocre' style='text-transform:none;'>PRUDENCE</span>"
-        if "VENTE" in v or "EVITER" in v or "ÉVITER" in v:
-            return "<span class='tag down' style='text-transform:none;'>ÉVITER</span>"
-        return f"<span class='tag neutral'>{verdict}</span>"
-
-    def _fmt_pct(v, digits=2):
-        if v is None or pd.isna(v) or not v:
-            return "—"
-        return f"{v*100:.{digits}f}%"
-
-    def _fmt_dec(v, digits=1):
-        if v is None or pd.isna(v) or not v:
-            return "—"
-        return f"{v:.{digits}f}"
-
-    def _fmt_int(v):
-        if v is None or pd.isna(v) or not v:
-            return "—"
-        return f"{v:,.0f}"
-
-    def _fmt_echange(v):
-        """Un montant echange se lit en milliards ou en millions, jamais en
-        francs : la colonne servirait a compter des zeros."""
-        if v is None or pd.isna(v) or not v:
-            return "—"
-        return f"{v / 1e9:.1f} Md" if v >= 1e9 else f"{v / 1e6:.0f} M"
-
-    header_style = (
-        "font-size:10.5px;text-transform:uppercase;letter-spacing:0.08em;"
-        "color:var(--ink-3);font-weight:500;padding:10px;"
-        "border-bottom:1px solid var(--border);background:var(--bg-sunken);"
-    )
-    cell_style = "padding:10px;font-size:13px;border-bottom:1px solid var(--border-soft);"
-    num_style = cell_style + "text-align:right;font-variant-numeric:tabular-nums;"
-
-    rows_html = (
-        f"<tr>"
-        f"<th style='{header_style};text-align:left;'>Ticker</th>"
-        f"<th style='{header_style};text-align:left;'>Nom</th>"
-        f"<th style='{header_style};text-align:left;'>Secteur</th>"
-        f"<th style='{header_style};text-align:right;'>Prix</th>"
-        f"<th style='{header_style};text-align:right;'>Yield</th>"
-        f"<th style='{header_style};text-align:right;'>PER</th>"
-        f"<th style='{header_style};text-align:right;'>ROE</th>"
-        f"<th style='{header_style};text-align:right;'>Payout</th>"
-        f"<th style='{header_style};text-align:right;'>Volat.</th>"
-        f"<th style='{header_style};text-align:right;'>Rdt/an</th>"
-        f"<th style='{header_style};text-align:right;'>Échangé</th>"
-        f"<th style='{header_style};text-align:right;'>Score</th>"
-        f"<th style='{header_style};text-align:left;'>Verdict</th>"
-        f"</tr>"
-    )
-    for _, r in filtered.iterrows():
-        score = r.get("fundamental_score")
-        score_str = f"{score:.0f}/50" if score is not None else "—"
-        rows_html += (
-            f"<tr>"
-            f"<td style='{cell_style}'><span class='ticker'>{r['ticker']}</span></td>"
-            f"<td style='{cell_style};font-weight:500;'>{r['name']}</td>"
-            f"<td style='{cell_style};color:var(--ink-3);'>{r['sector']}</td>"
-            f"<td style='{num_style}'>{_fmt_int(r['price'])}</td>"
-            f"<td style='{num_style}'>{_fmt_pct(r['dividend_yield'])}</td>"
-            f"<td style='{num_style}'>{_fmt_dec(r['per'])}</td>"
-            f"<td style='{num_style}'>{_fmt_pct(r['roe'], 1)}</td>"
-            f"<td style='{num_style}'>{_fmt_pct(r['payout_ratio'], 0)}</td>"
-            f"<td style='{num_style}'>{_fmt_pct(r.get('volatilite'), 0)}</td>"
-            f"<td style='{num_style}'>"
-            f"{_fmt_pct(r.get('rendement_annualise'), 0)}</td>"
-            f"<td style='{num_style}'>{_fmt_echange(r.get('montant_echange'))}</td>"
-            f"<td style='{num_style};font-weight:600;'>{score_str}</td>"
-            f"<td style='{cell_style}'>{_verdict_tag(r.get('verdict'))}</td>"
-            f"</tr>"
+    # ─── Rangée de KPI (au-dessus des onglets) ──────────────────────────
+    _yield_med = filtered["dividend_yield"].dropna()
+    _score_med = filtered["fundamental_score"].dropna()
+    with zone_kpi:
+        _k1, _k2, _k3, _k4 = st.columns(4)
+        with _k1:
+            # Carte sombre : l'univers est le point de depart, pas un resultat.
+            st.markdown(
+                "<div style='background:var(--primary-2);"
+                "border:1px solid var(--primary-2);border-radius:12px;"
+                "padding:15px 17px;'>"
+                "<div style='font-size:10.5px;font-weight:600;"
+                "letter-spacing:0.09em;text-transform:uppercase;"
+                "color:var(--on-dark-3);'>Univers filtré</div>"
+                "<div style='font-size:29px;font-weight:600;"
+                "letter-spacing:-0.02em;color:var(--on-dark);"
+                f"font-variant-numeric:tabular-nums;'>{len(screen_df)}</div>"
+                "<div style='font-size:11.5px;color:var(--on-dark-2);'>"
+                f"titres sur {len(all_stocks)}</div></div>",
+                unsafe_allow_html=True,
+            )
+        _k2.metric("Correspondances", f"{len(filtered)}", help="Après filtres")
+        _k3.metric(
+            "Yield médian",
+            f"{_yield_med.median() * 100:.2f} %" if not _yield_med.empty else "—",
+            help="Médiane de la sélection",
+        )
+        _k4.metric(
+            "Score médian",
+            f"{_score_med.median():.0f} / 50" if not _score_med.empty else "—",
+            help="Score fondamental médian de la sélection",
         )
 
-    st.markdown(
-        f"<div style='border:1px solid var(--border);border-radius:12px;"
-        f"overflow:hidden;background:var(--bg-elev);margin-bottom:16px;'>"
-        f"<table style='width:100%;border-collapse:collapse;'>{rows_html}</table>"
-        f"</div>",
-        unsafe_allow_html=True,
-    )
+    with onglet_res:
+        # ─── Résultats ──────────────────────────────────────────────────────
 
-    # Quick jump + export
-    col_nav, col_csv = st.columns([3, 1])
-    with col_nav:
-        picker_options = [
-            (row["ticker"], f"{row['ticker']} — {row['name']}")
-            for _, row in filtered.iterrows()
-        ]
-        ticker_quick_picker(picker_options, key="screen_goto",
-                             label="Ouvrir l'analyse d'un titre")
-    with col_csv:
-        csv = filtered[["ticker", "name", "sector", "price", "dividend_yield",
-                        "per", "roe", "payout_ratio", "debt_equity",
-                        "volatilite", "rendement_annualise", "montant_echange",
-                        "fundamental_score", "verdict"]].to_csv(index=False)
-        st.download_button("Exporter CSV", csv, "brvm_screening.csv", "text/csv",
-                           use_container_width=True)
+        if filtered.empty:
+            st.info("Aucun titre ne correspond. Élargissez vos critères.")
+            return
+
+        # ── Rendement contre qualité du bilan ──
+        # Le tableau donne les deux colonnes ; il ne dit pas qu'elles
+        # s'opposent souvent. Le nuage le montre d'un coup : en haut à
+        # droite, les titres qui tiennent les deux à la fois. L'aire du
+        # disque porte le montant échangé — un point gros et bien placé est
+        # aussi un point qu'on peut revendre.
+        _n = filtered.dropna(subset=["fundamental_score", "dividend_yield"])
+        if len(_n) >= 3:
+            import plotly.graph_objects as go
+            from utils.charts import COLORS
+            _ech = _n["montant_echange"].fillna(0)
+            # sizemode="area" : c'est l'AIRE du disque qui porte le montant,
+            # pas son diametre. En diametre, un titre dix fois plus liquide
+            # occupait cent fois la surface et ecrasait le reste du nuage.
+            _sizeref = (2.0 * _ech.max() / (36.0 ** 2)) if _ech.max() > 0 else 1
+            # Etiqueter les quarante-six titres rend le nuage illisible : on ne
+            # nomme que ceux qui tiennent les deux reperes, plus les cinq
+            # meilleurs scores. Le survol nomme tous les autres.
+            _notables = (
+                ((_n["fundamental_score"] >= 35) & (_n["dividend_yield"] >= 0.06))
+                | _n["fundamental_score"].rank(ascending=False, method="min").le(5)
+            )
+            _fig = go.Figure(go.Scatter(
+                x=_n["fundamental_score"], y=_n["dividend_yield"] * 100,
+                mode="markers+text",
+                text=[nom if garde else "" for nom, garde
+                      in zip(_n["name"], _notables)],
+                customdata=_n["name"],
+                textposition="top center",
+                textfont=dict(size=10, color=COLORS["text"]),
+                marker=dict(
+                    size=_ech.clip(lower=_ech.max() * 0.02 if _ech.max() else 1),
+                    sizemode="area", sizeref=_sizeref, sizemin=6,
+                    color=_n["dividend_yield"].apply(
+                        lambda v: COLORS["green"] if v and v >= 0.06
+                        else COLORS["yellow"]),
+                    opacity=0.8, line=dict(color="#FFFFFF", width=1.5)),
+                hovertemplate="%{customdata}<br>Score %{x:.0f}/50 · "
+                              "Yield %{y:.2f} %<extra></extra>",
+            ))
+            _fig.add_hline(y=6, line=dict(color=COLORS["secondary"], width=1,
+                                          dash="dash"))
+            _fig.add_vline(x=35, line=dict(color=COLORS["secondary"], width=1,
+                                           dash="dash"))
+            _fig.update_layout(
+                height=340, margin=dict(l=10, r=10, t=10, b=10),
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor=COLORS["bg"],
+                xaxis=dict(title="Score fondamental →",
+                           gridcolor=COLORS["border"], zeroline=False),
+                yaxis=dict(title="↑ Dividend Yield (%)",
+                           gridcolor=COLORS["border"], zeroline=False),
+                showlegend=False, font=dict(color=COLORS["text"], size=11),
+            )
+            st.plotly_chart(_fig, use_container_width=True,
+                            key="screen_nuage")
+            st.caption(
+                "Le trait horizontal marque la cible de 6 % de rendement, le "
+                "vertical un score de 35/50. En haut à droite : les deux à la "
+                "fois. L'aire du disque est le montant échangé par mois. "
+                "Seuls les titres qui tiennent les deux repères, et les cinq "
+                "meilleurs scores, sont nommés — le survol nomme les autres."
+            )
+
+        # Rendu HTML éditorial avec colonnes : Ticker / Nom / Secteur / Prix /
+        # Yield / PER / ROE / Payout / Score / Verdict (tag coloré)
+        def _verdict_tag(verdict):
+            if not verdict:
+                return "<span class='muted'>—</span>"
+            v = verdict.upper()
+            if "ACHAT FORT" in v:
+                return "<span class='tag up' style='text-transform:none;'>ACHAT FORT</span>"
+            if "ACHAT" in v or "ACHETER" in v:
+                return "<span class='tag up' style='text-transform:none;'>ACHETER</span>"
+            if "CONSERVER" in v:
+                return "<span class='tag ocre' style='text-transform:none;'>CONSERVER</span>"
+            if "PRUDENCE" in v:
+                return "<span class='tag ocre' style='text-transform:none;'>PRUDENCE</span>"
+            if "VENTE" in v or "EVITER" in v or "ÉVITER" in v:
+                return "<span class='tag down' style='text-transform:none;'>ÉVITER</span>"
+            return f"<span class='tag neutral'>{verdict}</span>"
+
+        def _fmt_pct(v, digits=2):
+            if v is None or pd.isna(v) or not v:
+                return "—"
+            return f"{v*100:.{digits}f}%"
+
+        def _fmt_dec(v, digits=1):
+            if v is None or pd.isna(v) or not v:
+                return "—"
+            return f"{v:.{digits}f}"
+
+        def _fmt_int(v):
+            if v is None or pd.isna(v) or not v:
+                return "—"
+            return f"{v:,.0f}"
+
+        def _fmt_echange(v):
+            """Un montant echange se lit en milliards ou en millions, jamais en
+            francs : la colonne servirait a compter des zeros."""
+            if v is None or pd.isna(v) or not v:
+                return "—"
+            return f"{v / 1e9:.1f} Md" if v >= 1e9 else f"{v / 1e6:.0f} M"
+
+        header_style = (
+            "font-size:10.5px;text-transform:uppercase;letter-spacing:0.08em;"
+            "color:var(--ink-3);font-weight:500;padding:10px;"
+            "border-bottom:1px solid var(--border);background:var(--bg-sunken);"
+        )
+        cell_style = "padding:10px;font-size:13px;border-bottom:1px solid var(--border-soft);"
+        num_style = cell_style + "text-align:right;font-variant-numeric:tabular-nums;"
+
+        rows_html = (
+            f"<tr>"
+            f"<th style='{header_style};text-align:left;'>Ticker</th>"
+            f"<th style='{header_style};text-align:left;'>Nom</th>"
+            f"<th style='{header_style};text-align:left;'>Secteur</th>"
+            f"<th style='{header_style};text-align:right;'>Prix</th>"
+            f"<th style='{header_style};text-align:right;'>Yield</th>"
+            f"<th style='{header_style};text-align:right;'>PER</th>"
+            f"<th style='{header_style};text-align:right;'>ROE</th>"
+            f"<th style='{header_style};text-align:right;'>Payout</th>"
+            f"<th style='{header_style};text-align:right;'>Volat.</th>"
+            f"<th style='{header_style};text-align:right;'>Rdt/an</th>"
+            f"<th style='{header_style};text-align:right;'>Échangé</th>"
+            f"<th style='{header_style};text-align:right;'>Score</th>"
+            f"<th style='{header_style};text-align:left;'>Verdict</th>"
+            f"</tr>"
+        )
+        for _, r in filtered.iterrows():
+            score = r.get("fundamental_score")
+            score_str = f"{score:.0f}/50" if score is not None else "—"
+            rows_html += (
+                f"<tr>"
+                f"<td style='{cell_style}'><span class='ticker'>{r['ticker']}</span></td>"
+                f"<td style='{cell_style};font-weight:500;'>{r['name']}</td>"
+                f"<td style='{cell_style};color:var(--ink-3);'>{r['sector']}</td>"
+                f"<td style='{num_style}'>{_fmt_int(r['price'])}</td>"
+                f"<td style='{num_style}'>{_fmt_pct(r['dividend_yield'])}</td>"
+                f"<td style='{num_style}'>{_fmt_dec(r['per'])}</td>"
+                f"<td style='{num_style}'>{_fmt_pct(r['roe'], 1)}</td>"
+                f"<td style='{num_style}'>{_fmt_pct(r['payout_ratio'], 0)}</td>"
+                f"<td style='{num_style}'>{_fmt_pct(r.get('volatilite'), 0)}</td>"
+                f"<td style='{num_style}'>"
+                f"{_fmt_pct(r.get('rendement_annualise'), 0)}</td>"
+                f"<td style='{num_style}'>{_fmt_echange(r.get('montant_echange'))}</td>"
+                f"<td style='{num_style};font-weight:600;'>{score_str}</td>"
+                f"<td style='{cell_style}'>{_verdict_tag(r.get('verdict'))}</td>"
+                f"</tr>"
+            )
+
+        st.markdown(
+            f"<div style='border:1px solid var(--border);border-radius:12px;"
+            f"overflow:hidden;background:var(--bg-elev);margin-bottom:16px;'>"
+            f"<table style='width:100%;border-collapse:collapse;'>{rows_html}</table>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+        # Quick jump + export
+        col_nav, col_csv = st.columns([3, 1])
+        with col_nav:
+            picker_options = [
+                (row["ticker"], f"{row['ticker']} — {row['name']}")
+                for _, row in filtered.iterrows()
+            ]
+            ticker_quick_picker(picker_options, key="screen_goto",
+                                 label="Ouvrir l'analyse d'un titre")
+        with col_csv:
+            csv = filtered[["ticker", "name", "sector", "price", "dividend_yield",
+                            "per", "roe", "payout_ratio", "debt_equity",
+                            "volatilite", "rendement_annualise", "montant_echange",
+                            "fundamental_score", "verdict"]].to_csv(index=False)
+            st.download_button("Exporter CSV", csv, "brvm_screening.csv", "text/csv",
+                               use_container_width=True)
