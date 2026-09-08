@@ -12,7 +12,6 @@ from data.storage import get_all_stocks_for_analysis, get_analyzable_tickers
 from data.db import read_sql_df
 from analysis.fundamental import compute_ratios, format_ratio
 from utils.nav import ticker_quick_picker
-from utils.ui_helpers import section_heading
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -54,8 +53,10 @@ def render():
     except Exception:                                           # noqa: BLE001
         mesures_risque, _fmt_risque = {}, None
 
-    # ─── Univers d'analyse ──────────────────────────────────────────────
-    section_heading("Univers d'analyse", spacing="tight")
+    # ─── Secteurs et titres ─────────────────────────────────────────────
+    # L'intitule « Univers d'analyse » a ete retire le 08/09, sur arbitrage :
+    # le canevas n'en a pas. Les deux menus sont la barre d'outils de la page,
+    # et une barre d'outils n'a pas besoin d'un titre pour se faire comprendre.
     available_sectors = sorted(all_stocks["sector"].dropna().unique().tolist())
 
     col_sectors, col_tickers = st.columns(2)

@@ -98,12 +98,16 @@ def render():
     # onglets, et c'est ce qu'elle est : elle gouverne la page, pas un onglet.
     # Posée sous les onglets, elle semblait ne valoir que pour la revue, alors
     # que le fil brut couvre la même fenêtre.
+    # SEPT, TROIS, UN. La fenetre allait jusqu'a trente jours et ramenait trop
+    # de lignes pour qu'on y voie quelque chose. Sept jours par defaut : la
+    # plus large des trois, et deja moitie moins que l'ancienne valeur par
+    # defaut. Ce que la fenetre ecarte reste compte, onglet par onglet.
     barre, _ = st.columns([1, 3])
     with barre:
         jours = st.segmented_control(
-            "Période", [7, 15, 30], default=15,
+            "Période", [1, 3, 7], default=7,
             format_func=lambda j: f"{j} j", key="infos_periode",
-        ) or 15
+        ) or 7
 
     tab0, tab1 = st.tabs([
         "Revue de presse",
@@ -119,7 +123,7 @@ def render():
 # Tab 0 : Revue de presse
 # ════════════════════════════════════════════════════════════════════
 
-def _render_revue(jours: int = 15):
+def _render_revue(jours: int = 7):
     """Depeches croisees avec les chiffres extraits et le portefeuille.
 
     On ne reformule jamais : chaque entree combine des chiffres CALCULES par
@@ -128,6 +132,13 @@ def _render_revue(jours: int = 15):
     passee a la trappe.
     """
     from analysis.revue import build_revue, RUBRIQUES
+
+    # Le Bulletin Officiel de la Cote ouvre l'onglet. Il vient du tableau de
+    # bord, ou il s'intercalait entre la rangee de KPI et les onglets ; ici il
+    # est chez lui — c'est la meme matiere, ce que le marche annonce, et c'est
+    # la seule source qui donne les dividendes en BRUT avec leur date de mise
+    # en paiement et le taux de retenue applicable.
+    _render_boc()
 
     try:
         df_pf = get_portfolio()
@@ -165,6 +176,64 @@ def _render_revue(jours: int = 15):
         )
         for e in entrees:
             st.markdown(_carte_depeche(e), unsafe_allow_html=True)
+
+
+def _render_boc():
+    """Synthese du dernier Bulletin Officiel + operations a venir."""
+    try:
+        bul = read_sql_df(
+            "SELECT date_bulletin, numero, capitalisation, per_moyen, url "
+            "FROM boc_bulletins ORDER BY date_bulletin DESC LIMIT 1")
+        ops = read_sql_df(
+            "SELECT emetteur, ticker, type, brut, irvm_physique, irvm_morale, "
+            "date_operation, detail FROM boc_operations "
+            "WHERE date_bulletin = (SELECT MAX(date_bulletin) FROM boc_operations) "
+            "ORDER BY date_operation")
+    except Exception:
+        return
+    if bul is None or bul.empty:
+        return
+
+    b = bul.iloc[0]
+    lignes = [f"Bulletin officiel n° {b['numero']} du {b['date_bulletin']}"]
+    if pd.notna(b.get("capitalisation")):
+        lignes.append(f"capitalisation officielle {b['capitalisation']/1e9:,.0f} Mds")
+    if pd.notna(b.get("per_moyen")):
+        lignes.append(f"PER moyen du marché {b['per_moyen']:.2f}")
+    st.caption(" · ".join(lignes))
+
+    if ops is None or ops.empty:
+        return
+
+    # Les lignes du portefeuille passent devant
+    try:
+        pf = get_portfolio()
+        detenus = set(pf["ticker"].dropna()) if pf is not None and not pf.empty else set()
+    except Exception:
+        detenus = set()
+
+    divid = ops[ops["type"] == "dividende"].copy()
+    autres = ops[ops["type"] != "dividende"]
+    if not divid.empty:
+        divid["_mien"] = divid["ticker"].apply(lambda t: t in detenus)
+        divid = divid.sort_values(["_mien", "date_operation"], ascending=[False, True])
+
+    with st.expander(
+        f"Opérations à venir · {len(divid)} dividende(s) annoncé(s)", expanded=False
+    ):
+        for _, o in divid.iterrows():
+            marque = " ★" if o["_mien"] else ""
+            retenue = ""
+            if pd.notna(o.get("irvm_physique")):
+                net_pp = o["brut"] * (1 - o["irvm_physique"] / 100)
+                retenue = (f" — net {net_pp:,.2f} F après IRVM "
+                           f"{int(o['irvm_physique'])} % (personne physique)")
+            st.markdown(
+                f"**{o['emetteur']}**{marque} · **{o['brut']:,.2f} F brut/action** "
+                f"le {o['date_operation']}{retenue}"
+            )
+        for _, o in autres.iterrows():
+            st.caption(f"{o['emetteur']} — {str(o['detail'])[:160]}")
 
 
 def _date_courte(valeur) -> str:
@@ -267,7 +336,7 @@ def _carte_depeche(e: dict) -> str:
 # Tab 1 : Fil d'actualités
 # ════════════════════════════════════════════════════════════════════
 
-def _render_news_feed(jours: int = 15):
+def _render_news_feed(jours: int = 7):
     tickers_data = load_tickers()
     ticker_names = {t["ticker"]: t["name"] for t in tickers_data}
 
