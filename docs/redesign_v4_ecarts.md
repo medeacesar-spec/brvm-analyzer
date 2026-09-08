@@ -2,7 +2,8 @@
 
 Registre de travail. Référence : `design/BRVM Analyzer - Redesign v4.dc.html`.
 
-**Trente et un écarts**, dont deux à arbitrer. Le document a longtemps annoncé
+**Trente et un écarts.** Les deux qui étaient à arbitrer — D1 et S3 — l'ont
+été le 08/09, et un troisième a été refusé sur le fond (A8). Le document a longtemps annoncé
 « 25 » : le chiffre était faux dès la première rédaction — le décompte onglet
 par onglet, lui, a toujours été juste. Recompté le 08/09.
 Diagnostic établi le 8 septembre 2026 en ouvrant le canevas et l'application
@@ -81,7 +82,7 @@ Légende : **à faire** · *en cours* · fait (vu au rendu)
 
 | # | Écart | État |
 |---|---|---|
-| D1 | Le bulletin BOC et le bouton « Revue de presse » s'intercalent entre les KPI et les onglets ; le canevas enchaîne KPI → onglets | à arbitrer (ajouts de l'app) |
+| D1 | Le bulletin BOC et le bouton « Revue de presse » s'intercalent entre les KPI et les onglets ; le canevas enchaîne KPI → onglets | **arbitré le 08/09 : les deux vont dans Infos Marché.** Fait — le tableau de bord enchaîne KPI → onglets. Le BOC ouvre désormais la Revue de presse ; le bouton, qui ne faisait que renvoyer à cette page, est simplement retiré |
 | D2 | Les lignes des Top 5 portent le ticker seul ; le canevas y met **ticker · secteur** | à faire |
 | D3 | La bande « Ouvrir l'analyse d'un titre » est sous la carte ; le canevas la met **en pied de carte** | à faire |
 
@@ -89,7 +90,7 @@ Légende : **à faire** · *en cours* · fait (vu au rendu)
 
 | # | Écart | État |
 |---|---|---|
-| I1 | Le sélecteur de période est sous les onglets ; le canevas le place **au-dessus**, en barre d'outils de page | **fait** — vu au rendu le 08/09. Il gouverne désormais les deux onglets, comme dans le canevas ; ce que la fenêtre écarte du fil brut est compté, avec ce qui y reste à intégrer |
+| I1 | Le sélecteur de période est sous les onglets ; le canevas le place **au-dessus**, en barre d'outils de page | **fait** — vu au rendu le 08/09. Il gouverne désormais les deux onglets, comme dans le canevas ; ce que la fenêtre écarte du fil brut est compté, avec ce qui y reste à intégrer. Fenêtres ramenées à **1 j / 3 j / 7 j** (défaut 7) le 08/09 : 7, 15 et 30 jours ramenaient trop de lignes |
 | I2 | Dates au format long (`2026-09-07`) ; le canevas les met en `02/09` | **fait** — vu au rendu le 08/09. Le fil brut les écrivait déjà ainsi ; la revue s'aligne |
 
 ### Analyse d'un Titre — 6 onglets
@@ -103,7 +104,7 @@ Légende : **à faire** · *en cours* · fait (vu au rendu)
 | A5 | Technique | Période et surcouches en menu et cases à cocher ; le canevas met **segmentés et pastilles** | à faire |
 | A6 | Technique | Pas de sélecteur **Périodicité** (Journalière / Mensuelle) | à faire |
 | A7 | Recommandation | Manque les cartes **Prix actuel** et **Prix cible (modèle)** | **fait** — vu au rendu le 08/09, dans les deux cas : cible unique (BOAS.sn, « +9.5 % vs cours ») et méthodes divergentes (SNTS.sn, fourchette). Les deux tuiles qui répétaient ces chiffres plus bas ont été retirées |
-| A8 | Recommandation | Composition du score en barre empilée ; le canevas montre des **barres pondérées 60/40** | à faire |
+| A8 | Recommandation | Composition du score en barre empilée ; le canevas montre des **barres pondérées 60/40** | **refusé le 08/09** — voir ci-dessous |
 | A9 | Profil | Actionnariat en carte latérale ; le canevas en fait **3 cartes de KPI** | à faire |
 | A10 | Profil | Le nom de la société est répété en titre de section | à faire |
 | A11 | Risque | Un titre de section « Risque » en trop au-dessus de la note | à faire |
@@ -116,7 +117,7 @@ Légende : **à faire** · *en cours* · fait (vu au rendu)
 |---|---|---|
 | S1 | Onglet 1 : champs nus ; le canevas montre un **tableau des seuils** avec la colonne « effet sur l'univers » (« retire 22 titres ») | **fait** — vu au rendu le 08/09. La colonne distingue en plus ce qu'un seuil écarte de ce qu'une **donnée manquante** écarte |
 | S2 | Onglet 2 : idem, avec la colonne « pourquoi » qui justifie chaque critère de marché | **fait** — vu au rendu le 08/09 |
-| S3 | Un intitulé « Univers d'analyse » que le canevas n'a pas | à arbitrer |
+| S3 | Un intitulé « Univers d'analyse » que le canevas n'a pas | **arbitré le 08/09 : le retirer.** Fait |
 
 ### Comparateur — Tableau · Profil · Performance
 
@@ -159,6 +160,28 @@ Conforme. Les cartes de contradiction sont plus riches que le canevas
 
 ---
 
+## Un écart refusé : A8
+
+Le canevas montre la composition du score hybride en trois barres annotées
+« pondéré 60 % » et « pondéré 40 % », le technique étant noté sur 25.
+
+**Le modèle ne fait rien de tel.** `analysis/scoring.py` calcule
+`hybrid_score = fund_score + tech_score`, deux barèmes sur cinquante : une
+somme simple, 50/50, sans pondération d'aucune sorte. Le « 60/40 » du canevas
+est une invention du design.
+
+Adopter la forme du canevas reviendrait donc à AFFICHER une pondération que le
+code n'applique pas — un chiffre faux, sur la carte même qui explique le
+score. Arbitrage du donneur d'ordre, le 8 septembre : *« il n'y a aucune raison
+de changer la pondération. Design ne peut pas prendre cette décision. »*
+
+La barre empilée de l'application reste donc en place. Elle dit ce que le
+modèle fait : deux composantes sur cinquante, et ce qui manque pour cent.
+
+Si la forme en trois barres est un jour reprise, ce sera **sans** l'annotation
+de pondération, et avec chaque score rapporté à son propre maximum — 38/50 et
+20/50, pas 38/50 et 20/25.
+
 ## Causes récurrentes
 
 Les trente et un écarts se ramènent à cinq causes. Corriger la cause vaut mieux
@@ -185,6 +208,6 @@ que corriger les symptômes un à un.
 2. ~~Les sous-lignes des scores (A3) et la grille (A4)~~ — **fait le 08/09**.
 3. Les contrôles segmentés (A2, A5, A6) — ~~I1 fait le 08/09~~.
 4. ~~Les tableaux pédagogiques de Screening (S1, S2)~~ — **fait le 08/09**.
-5. Les trois blocs à re-rendre (P4, A8, C1).
+5. Les blocs à re-rendre : P4 et C1 — ~~A8 refusé le 08/09~~.
 6. La barre signée des positions (P1).
 7. Les détails : T1, T2, H1, H2, D2, D3, A9-A13, P2 — ~~I2 fait le 08/09~~.

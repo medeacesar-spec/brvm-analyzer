@@ -1068,20 +1068,12 @@ def render():
                f"{total_mcap / 1e9:,.0f}".replace(",", " ") if total_mcap > 0 else "—",
                "Mds FCFA", accent="var(--primary)")
 
-    # ── Bulletin Officiel de la Cote ──
-    # Chiffres officiels de la BRVM et, surtout, les operations a venir : le
-    # BOC annonce les dividendes en BRUT avec leur date de mise en paiement et
-    # le taux de retenue applicable, ce qu'aucune autre source ne donne.
-    _render_boc()
-
-    # Acces rapide a la revue de presse (l'analyse detaillee vit dans Infos Marche)
-    _revue_col, _ = st.columns([1, 3])
-    with _revue_col:
-        if st.button("Revue de presse", key="dash_goto_revue",
-                     help="Dépêches du marché croisées avec vos lignes",
-                     use_container_width=True):
-            from utils.nav import goto_revue
-            goto_revue()
+    # LE CANEVAS ENCHAINE LA RANGEE DE KPI ET LES ONGLETS. S'y intercalaient
+    # le Bulletin Officiel de la Cote et un bouton vers la revue de presse.
+    # Arbitrage du 08/09 : les deux partent vers Infos Marche. Le BOC y a
+    # emmene son contenu ; le bouton, lui, ne faisait que renvoyer a cette
+    # page — l'y deplacer, c'est le retirer d'ici, la barre laterale menant
+    # deja a Infos Marche.
 
     # Tabs Jour / Semaine / Mois — labels avec date explicite dans chaque caption
     perf = _compute_period_performance(quotes)
@@ -1447,61 +1439,3 @@ def render():
     ]
     ticker_quick_picker(picker_options, key="dash_goto",
                         label="Ouvrir l'analyse d'un titre")
-
-
-def _render_boc():
-    """Synthese du dernier Bulletin Officiel + operations a venir."""
-    try:
-        bul = read_sql_df(
-            "SELECT date_bulletin, numero, capitalisation, per_moyen, url "
-            "FROM boc_bulletins ORDER BY date_bulletin DESC LIMIT 1")
-        ops = read_sql_df(
-            "SELECT emetteur, ticker, type, brut, irvm_physique, irvm_morale, "
-            "date_operation, detail FROM boc_operations "
-            "WHERE date_bulletin = (SELECT MAX(date_bulletin) FROM boc_operations) "
-            "ORDER BY date_operation")
-    except Exception:
-        return
-    if bul is None or bul.empty:
-        return
-
-    b = bul.iloc[0]
-    lignes = [f"Bulletin officiel n° {b['numero']} du {b['date_bulletin']}"]
-    if pd.notna(b.get("capitalisation")):
-        lignes.append(f"capitalisation officielle {b['capitalisation']/1e9:,.0f} Mds")
-    if pd.notna(b.get("per_moyen")):
-        lignes.append(f"PER moyen du marché {b['per_moyen']:.2f}")
-    st.caption(" · ".join(lignes))
-
-    if ops is None or ops.empty:
-        return
-
-    # Les lignes du portefeuille passent devant
-    try:
-        pf = get_portfolio()
-        detenus = set(pf["ticker"].dropna()) if pf is not None and not pf.empty else set()
-    except Exception:
-        detenus = set()
-
-    divid = ops[ops["type"] == "dividende"].copy()
-    autres = ops[ops["type"] != "dividende"]
-    if not divid.empty:
-        divid["_mien"] = divid["ticker"].apply(lambda t: t in detenus)
-        divid = divid.sort_values(["_mien", "date_operation"], ascending=[False, True])
-
-    with st.expander(
-        f"Opérations à venir · {len(divid)} dividende(s) annoncé(s)", expanded=False
-    ):
-        for _, o in divid.iterrows():
-            marque = " ★" if o["_mien"] else ""
-            retenue = ""
-            if pd.notna(o.get("irvm_physique")):
-                net_pp = o["brut"] * (1 - o["irvm_physique"] / 100)
-                retenue = (f" — net {net_pp:,.2f} F après IRVM "
-                           f"{int(o['irvm_physique'])} % (personne physique)")
-            st.markdown(
-                f"**{o['emetteur']}**{marque} · **{o['brut']:,.2f} F brut/action** "
-                f"le {o['date_operation']}{retenue}"
-            )
-        for _, o in autres.iterrows():
-            st.caption(f"{o['emetteur']} — {str(o['detail'])[:160]}")
