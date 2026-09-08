@@ -936,9 +936,10 @@ def render():
                                    total_portfolio, ticker_to_sector)
         _render_position_recommendations(portfolio, total_value, cash,
                                          volet="tout")
-        if cash > 0:
-            _render_cash_recommendations(portfolio, cash, total_portfolio,
-                                         ticker_to_sector)
+        # Le « Conseiller d'investissement » a ete retire le 08/09, sur
+        # arbitrage, comme l'assistant de la page Signaux. Les suggestions
+        # d'emploi du cash restent, elles, dans les blocs au-dessus, qui les
+        # calculent au lieu de les converser.
 
     with onglet_neuf:
         # Les memes questions, sous l'angle du risque — et elargies a toute la
@@ -2151,69 +2152,6 @@ def _render_optimisation(portfolio, cash):
                   f"color:var(--ink-2);margin-bottom:6px;'>· {_gras_html(a)}</div>"
                   for a in avertissements)
         + "</div>", unsafe_allow_html=True)
-
-
-
-def _render_cash_recommendations(portfolio, cash, total_portfolio, ticker_to_sector):
-    """Zone de chat intelligent pour recommandations d'investissement."""
-    from analysis.llm_chat import chat
-
-    section_heading("Conseiller d'investissement", spacing="loose")
-    st.caption(
-        f"Cash disponible : **{cash:,.0f} {CURRENCY}**. "
-        "Décrivez vos préférences et l'assistant analysera toutes les données disponibles."
-    )
-
-    # Initialize chat history
-    if "pf_chat_history" not in st.session_state:
-        st.session_state.pf_chat_history = []
-
-    # Quick suggestion buttons — only shown when chat is empty
-    if not st.session_state.pf_chat_history:
-        st.markdown("**Suggestions rapides :**")
-        cols = st.columns(4)
-        suggestions = [
-            "Titres les plus sûrs avec faible risque",
-            "Meilleur rendement dividende",
-            "Diversifier hors secteur bancaire",
-            "Renforcer mes meilleures positions",
-        ]
-        for i, sug in enumerate(suggestions):
-            if cols[i].button(f"{sug}", key=f"sug_{i}"):
-                # Stash the pending prompt so it's picked up after rerun
-                st.session_state["pf_pending_prompt"] = sug
-                st.rerun()
-
-    # Display chat history
-    for msg in st.session_state.pf_chat_history:
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
-
-    # Chat input
-    user_input = st.chat_input(
-        "Ex: Je veux des titres sûrs avec peu de risque d'effondrement...",
-        key="pf_chat_input",
-    )
-
-    # Pick up prompt from either chat_input or a suggestion button
-    pending = st.session_state.pop("pf_pending_prompt", None)
-    prompt = user_input or pending
-
-    if prompt:
-        st.session_state.pf_chat_history.append({"role": "user", "content": prompt})
-        with st.chat_message("user", avatar="🧑‍💼"):
-            st.markdown(prompt)
-
-        with st.chat_message("assistant"):
-            with st.spinner("Analyse en cours..."):
-                response = chat(
-                    query=prompt,
-                    mode="portfolio",
-                    chat_history=st.session_state.pf_chat_history[:-1],
-                )
-            st.markdown(response)
-
-        st.session_state.pf_chat_history.append({"role": "assistant", "content": response})
 
 
 def _render_info_box():

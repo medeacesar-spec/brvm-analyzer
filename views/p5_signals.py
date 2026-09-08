@@ -510,8 +510,12 @@ def render():
             unsafe_allow_html=True,
         )
         if not _contras:
-            st.info("Aucun désaccord : sur les titres analysés, le bilan et "
-                    "le cours disent la même chose.")
+            # `st.info` peignait cette phrase en boite bleue d'alerte : un
+            # etat NORMAL — tout concorde — s'y lisait comme un avertissement.
+            # `note` est ecrit pour cela.
+            from utils.ui_helpers import note as _note
+            _note("", "Aucun désaccord : sur les titres analysés, le bilan et "
+                      "le cours disent la même chose.", ton="up")
         for _e in _contras:
             _cons = _e.get("consolidated", {}) or {}
             _reco = (_e.get("result", {}) or {}).get("recommendation", {}) or {}
@@ -558,9 +562,10 @@ def render():
                 unsafe_allow_html=True,
             )
 
-    # Assistant chat
-    section_heading("Assistant Signaux", spacing="loose")
-    _render_signals_chat(all_signals, stock_summaries)
+    # L'assistant de signaux a ete retire le 08/09, sur arbitrage. Le moteur
+    # `analysis/llm_chat.py` reste en place : il sert encore l'assistant de la
+    # page Portefeuille, et sa table `_TICKER_ALIASES` est lue par
+    # `scripts/scan_boc.py` et `scripts/scan_news.py`.
 
 
 def _render_consolidated_view(per_ticker):
@@ -681,66 +686,3 @@ def _render_consolidated_view(per_ticker):
         for _, row in df.iterrows()
     ]
     ticker_quick_picker(picker_options, key="sig_goto", label="Ouvrir l'analyse d'un titre")
-
-
-def _render_signals_chat(all_signals, stock_summaries):
-    """Zone de chat intelligent pour discuter des signaux."""
-    from analysis.llm_chat import chat
-
-    st.subheader("Assistant Signaux")
-    st.caption(
-        "Posez des questions sur les signaux, les titres, les risques — "
-        "l'assistant a accès à toutes les données fondamentales, techniques et aux actualités du marché."
-    )
-
-    if "sig_chat_history" not in st.session_state:
-        st.session_state.sig_chat_history = []
-
-    # Display chat history
-    for msg in st.session_state.sig_chat_history:
-        with st.chat_message(msg["role"], avatar="🧑‍💼" if msg["role"] == "user" else "📡"):
-            st.markdown(msg["content"])
-
-    # Chat input
-    user_input = st.chat_input(
-        "Ex: NEI CEDA est risqué car la société a perdu de l'argent... / Quel est le yield de Société Générale ?",
-        key="sig_chat_input",
-    )
-
-    # Pick up prompt from either chat_input or a pending suggestion click
-    pending = st.session_state.pop("sig_pending_prompt", None)
-    prompt = user_input or pending
-
-    if prompt:
-        st.session_state.sig_chat_history.append({"role": "user", "content": prompt})
-        with st.chat_message("user", avatar="🧑‍💼"):
-            st.markdown(prompt)
-
-        with st.chat_message("assistant", avatar="📡"):
-            with st.spinner("Analyse en cours..."):
-                response = chat(
-                    query=prompt,
-                    mode="signals",
-                    chat_history=st.session_state.sig_chat_history[:-1],
-                    signals_data=all_signals,
-                    stock_summaries=stock_summaries,
-                )
-            st.markdown(response)
-
-        st.session_state.sig_chat_history.append({"role": "assistant", "content": response})
-
-    # Quick suggestions when empty
-    if not st.session_state.sig_chat_history:
-        st.markdown("**Suggestions :**")
-        cols = st.columns(4)
-        suggestions = [
-            "Quels signaux d'achat sont les plus fiables ?",
-            "Quels titres présentent le plus de risque ?",
-            "Quel est le yield de Société Générale CI ?",
-            "Y a-t-il des signaux contradictoires ?",
-        ]
-        for i, sug in enumerate(suggestions):
-            if cols[i].button(f"{sug}", key=f"sig_sug_{i}"):
-                st.session_state["sig_pending_prompt"] = sug
-                st.rerun()
-

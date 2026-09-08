@@ -5,6 +5,17 @@ contextuelles à partir de toutes les données collectées (fondamentaux,
 technique, actualités, profils, portefeuille).
 
 Aucune API externe requise.
+
+ETAT AU 08/09/2026 — les deux interfaces qui appelaient `chat()` ont ete
+retirees sur arbitrage : l'« Assistant Signaux » de la page Signaux et le
+« Conseiller d'investissement » de la page Portefeuille. Le module reste
+neanmoins en place : sa table `_TICKER_ALIASES` est lue par
+`scripts/scan_boc.py` et `scripts/scan_news.py` pour reconnaitre une societe
+citee en toutes lettres dans un bulletin ou une depeche.
+
+Le reste du module — detection d'intentions, classements, fiches par titre —
+n'a donc plus d'appelant. Le reduire a ce qui sert encore est un chantier a
+part, qui touche deux scripts de collecte quotidienne.
 """
 
 import re
@@ -478,7 +489,13 @@ def _build_ticker_response(ticker: str, metrics: list, intents: list) -> str:
     if data["news"]:
         lines.append("\n**Actualités récentes :**")
         for art in data["news"][:3]:
-            date = art.get("article_date") or (art.get("created_at", "")[:10] if art.get("created_at") else "")
+            # `created_at` revient de Postgres en Timestamp, pas en chaine :
+            # le decouper comme du texte levait « 'Timestamp' object is not
+            # subscriptable », et l'assistant plantait des qu'une societe
+            # nommee avait une actualite datee — dont sa propre question
+            # suggeree « Quel est le yield de Societe Generale CI ? ».
+            _cree = art.get("created_at")
+            date = art.get("article_date") or (str(_cree)[:10] if _cree else "")
             title = art.get("title", "")
             lines.append(f"- [{date}] {title}" if date else f"- {title}")
 
