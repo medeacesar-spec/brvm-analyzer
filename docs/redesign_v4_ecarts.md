@@ -2,7 +2,7 @@
 
 Registre de travail. Référence : `design/BRVM Analyzer - Redesign v4.dc.html`.
 
-**Trente et un écarts.** Les deux qui étaient à arbitrer — D1 et S3 — l'ont
+**Trente-quatre écarts.** Les deux qui étaient à arbitrer — D1 et S3 — l'ont
 été le 08/09, et un troisième a été refusé sur le fond (A8). Le document a longtemps annoncé
 « 25 » : le chiffre était faux dès la première rédaction — le décompte onglet
 par onglet, lui, a toujours été juste. Recompté le 08/09.
@@ -110,6 +110,9 @@ Légende : **à faire** · *en cours* · fait (vu au rendu)
 | A11 | Risque | Un titre de section « Risque » en trop au-dessus de la note | à faire |
 | A12 | Technique | Emoji résiduel « 📖 Comprendre les indicateurs techniques » | à faire |
 | A13 | Technique | Tendance affichée « Haussiere » sans accent (donnée) | à faire |
+| A14 | Technique | **Niveaux clés incomplet** : le canevas donne 7 lignes — Résistance 2, Résistance 1, Cours, **SMA 50**, **SMA 200**, Support 1, Support 2 — chacune avec son écart au cours. L'application ne construit jamais les lignes de moyenne mobile, alors qu'elles sont tracées sur le graphique juste au-dessus. Sur ABJC.ci : 3 lignes au lieu de 7 | à faire |
+| A15 | Technique | **Signaux techniques en liste, pas en cartes.** Le canevas en fait des cartes à ton et étiquette (Info · Achat · Vigilance) avec une phrase qui explique le signal. L'application affiche « RSI en surachat — RSI = 77.5 (> 70) » : le constat sans la lecture. Même nature que P4, déjà corrigé côté portefeuille — `cartes_constats` existe | à faire |
+| A16 | Technique | **Une explication repliée dans une explication.** L'expander « 📖 Comprendre les indicateurs techniques » est ouvert **à l'intérieur** de « En savoir plus · RSI, MACD, Moyennes mobiles » : deux niveaux de repli pour le même sujet, là où le canevas n'en a qu'un. C'est la vraie forme de l'écart A12, dont l'emoji n'était que le symptôme visible | à faire |
 
 ### Screening — Filtres fondamentaux · Risque et liquidité · Résultats
 
@@ -184,7 +187,7 @@ de pondération, et avec chaque score rapporté à son propre maximum — 38/50 
 
 ## Causes récurrentes
 
-Les trente et un écarts se ramènent à cinq causes. Corriger la cause vaut mieux
+Les trente-quatre écarts se ramènent à cinq causes. Corriger la cause vaut mieux
 que corriger les symptômes un à un.
 
 1. **Rangées de KPI manquantes** — 7 cartes (P5 ×4, P3, A7 ×2). Le canevas
@@ -198,9 +201,29 @@ que corriger les symptômes un à un.
    le composant était annoncé par la passation mais n'avait jamais été
    écrit ; il l'est depuis le 08/09, et les trois rangées corrigées
    ci-dessus passent par lui.
-5. **Blocs rendus autrement** — tableau au lieu de cartes (P4), barre empilée
+5. **Blocs rendus autrement** — tableau au lieu de cartes (P4, A15), barre empilée
    au lieu de barres pondérées (A8), barres au lieu d'axes parallèles (C1),
    champs nus au lieu de tableaux pédagogiques (S1, S2).
+
+## Ce que le registre avait manqué
+
+Le diagnostic du 8 septembre a parcouru les 33 onglets, mais il a lu l'onglet
+**Technique** de trop loin. Trois écarts s'y sont ajoutés le 8 au soir, en le
+comparant bloc par bloc au canevas plutôt qu'en survolant sa forme générale :
+
+- **A14** — le tableau des niveaux clés perd les deux moyennes mobiles, qui
+  sont pourtant l'essentiel de ce qu'un lecteur y cherche : le cours est-il
+  au-dessus ou en dessous, et de combien.
+- **A15** — les signaux sont une liste, pas des cartes ; le constat y est,
+  la lecture non.
+- **A16** — deux expanders emboîtés sur le même sujet. L'écart A12 ne notait
+  que l'emoji, qui n'en était que la partie visible.
+
+La leçon rejoint celle de la méthode : **un onglet ne se juge pas à sa
+silhouette.** Il se compare bloc par bloc, comme les pages se comparent onglet
+par onglet. Les autres onglets méritent la même relecture avant d'être
+déclarés conformes — « Performance des Titres » et « Signaux » ont été
+déclarés conformes sur une lecture d'ensemble.
 
 ## Ordre de correction proposé
 
