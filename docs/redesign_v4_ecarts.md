@@ -2,7 +2,7 @@
 
 Registre de travail. Référence : `design/BRVM Analyzer - Redesign v4.dc.html`.
 
-**Quarante écarts.** Les deux qui étaient à arbitrer — D1 et S3 — l'ont
+**Quarante et un écarts.** Les deux qui étaient à arbitrer — D1 et S3 — l'ont
 été le 08/09, et un troisième a été refusé sur le fond (A8). Le document a longtemps annoncé
 « 25 » : le chiffre était faux dès la première rédaction — le décompte onglet
 par onglet, lui, a toujours été juste. Recompté le 08/09.
@@ -166,15 +166,16 @@ trois autres.
 
 | # | Écart | État |
 |---|---|---|
-| T1 | Badge **ADMIN** absent à côté du titre | à faire |
-| T2 | Backtest : note « Lecture du backtest » absente | à faire |
+| T1 | Badge **ADMIN** absent à côté du titre | **fait** — vu au rendu le 08/09, par `titre_admin`. Au passage, la page s'intitulait « Analyses » : le canevas et la barre latérale disent tous deux **Trajectoires Recommandations**, on cliquait sur un nom pour en trouver un autre |
+| T2 | Backtest : note « Lecture du backtest » absente | **fait** — vu au rendu le 08/09. Elle dit ce que les cartes taisaient : pourquoi « détectées » et « évaluées » diffèrent (20 entrées trop récentes, les inclure gonflerait la moyenne), **et** que moyenne et médiane s'écartent de 11,5 points — le résultat tient à quelques entrées |
 
 ### Historique Signaux — 5 onglets
 
 | # | Écart | État |
 |---|---|---|
-| H1 | Badge **ADMIN** absent à côté du titre | à faire |
-| H2 | Bouton **Exporter CSV** en tête de page absent | à faire |
+| H1 | Badge **ADMIN** absent à côté du titre | **fait** — vu au rendu le 08/09 |
+| H2 | Bouton **Exporter CSV** en tête de page absent | **sans objet** — vérifié au rendu le 08/09 : le bouton existe, sur l'onglet « Données brutes », celui-là même auquel le canevas l'assigne (`actionsByTab[4]`). Seule sa position diffère — dans le corps de l'onglet plutôt qu'en tête de page. Le diagnostic du 8/09 avait lu le canevas de trop loin |
+| H3 | Deux boutons hors canevas sur « Données brutes » : **Exporter JSON**, que le canevas n'a pas, et **Colonnes**, désactivé avec l'infobulle « à venir » — un contrôle qui annonce une fonction inexistante | à arbitrer (ajouts de l'app) |
 
 ---
 
@@ -202,7 +203,7 @@ de pondération, et avec chaque score rapporté à son propre maximum — 38/50 
 
 ## Causes récurrentes
 
-Les quarante écarts se ramènent à cinq causes. Corriger la cause vaut mieux
+Les quarante et un écarts se ramènent à cinq causes. Corriger la cause vaut mieux
 que corriger les symptômes un à un.
 
 1. **Rangées de KPI manquantes** — 7 cartes (P5 ×4, P3, A7 ×2). Le canevas
@@ -261,4 +262,4 @@ signe** : le calcul, lui, tranche.
 4. ~~Les tableaux pédagogiques de Screening (S1, S2)~~ — **fait le 08/09**.
 5. ~~Les blocs à re-rendre : P4 et C1~~ — **fait le 08/09** ; ~~A8 refusé~~.
 6. La barre signée : les positions du portefeuille (P1) **et le classement de Performance des Titres (F1)** — le même composant répond aux deux.
-7. Les détails : T1, T2, H1, H2, D2, D3, A9-A13, P2 — ~~I2 fait le 08/09~~.
+7. Les détails : ~~T1, T2, H1, H2~~ **faits le 08/09** ; restent D2, D3, A9, A10, A11 — ~~A12, A13, I2, P2 faits~~.

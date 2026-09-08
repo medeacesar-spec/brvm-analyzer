@@ -394,6 +394,27 @@ def note(titre: str, texte: str, ton: str = "primary"):
     )
 
 
+def titre_admin(texte: str):
+    """Le titre d'une page réservée, avec son badge ADMIN à côté.
+
+    Deux des dix pages ne s'ouvrent qu'en session administrateur. Rien ne le
+    disait à l'écran : on ne l'apprenait qu'en tombant sur le refus depuis un
+    compte ordinaire. Le canevas met un badge au titre — c'est la seule
+    marque qui distingue ces pages des huit autres.
+
+    Rendu en markdown plutôt que par `st.title` : c'est le même `<h1>`, mais
+    il accepte le badge sur la même ligne.
+    """
+    st.markdown(
+        f"# {texte} "
+        "<span style=\"font-family:var(--font-mono);font-size:9.5px;"
+        "font-weight:600;letter-spacing:0.08em;padding:3px 6px;"
+        "border-radius:4px;background:var(--primary-bg);"
+        "color:var(--primary-2);vertical-align:middle;\">ADMIN</span>",
+        unsafe_allow_html=True,
+    )
+
+
 def cartes_constats(constats, mini: str = "300px"):
     """Une grille de constats en cartes — le motif `bCards` du canevas.
 

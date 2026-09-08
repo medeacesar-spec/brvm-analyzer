@@ -23,7 +23,11 @@ VERDICT_OPTIONS = ["ACHAT FORT", "ACHAT", "CONSERVER", "PRUDENCE", "EVITER"]
 
 
 def render():
-    st.title("Analyses")
+    # Le canevas — et la barre laterale — appellent cette page
+    # « Trajectoires Recommandations ». Elle s'intitulait « Analyses » :
+    # le lecteur qui cliquait sur un nom en trouvait un autre.
+    from utils.ui_helpers import titre_admin
+    titre_admin("Trajectoires Recommandations")
     st.caption(
         "Cohortes en cours · Trajectoires Achat fort → Achat · "
         "Backtest performance par verdict"
@@ -251,13 +255,47 @@ def _render_backtest():
                "entrées gagnantes", accent=_a,
                sub_color=_a if _hit is not None else "")
 
+    # LECTURE DU BACKTEST. Les quatre cartes donnent « entrees detectees » et
+    # « evaluees » cote a cote sans jamais dire pourquoi les deux nombres
+    # different, ni pourquoi l'ecart compte. Il compte beaucoup : les entrees
+    # trop recentes pour que l'horizon soit complet sont ECARTEES du calcul,
+    # et les inclure gonflerait mecaniquement la moyenne — une entree de la
+    # semaine derniere n'a pas eu le temps de mal tourner.
     if result["mean_pct"] is not None:
-        st.caption(
-            f"Sur {result['n_evaluated']} entrées en `{verdict}` évaluées à "
-            f"+{horizon}j : moyenne **{result['mean_pct']:+.1f} %**, "
-            f"médiane {result['median_pct']:+.1f} %, hit rate "
+        from utils.ui_helpers import note as _note
+        _immatures = (result["n_entries"] or 0) - (result["n_evaluated"] or 0)
+        _texte = (
+            f"Une <b>entrée</b> est une transition d'un autre verdict vers "
+            f"<b>{verdict}</b> — pas un titre qui y séjourne. Sur "
+            f"<b>{result['n_evaluated']}</b> entrées évaluées à +{horizon} "
+            f"jours : moyenne <b>{result['mean_pct']:+.1f} %</b>, médiane "
+            f"{result['median_pct']:+.1f} %, hit rate "
             f"{result['hit_rate_pct']:.0f} %."
         )
+        if _immatures > 0:
+            _texte += (
+                f" Les <b>{_immatures}</b> entrée"
+                f"{'s' if _immatures > 1 else ''} dont l'horizon n'est pas "
+                f"encore complet {'sont comptées' if _immatures > 1 else 'est comptée'} "
+                f"à part plutôt que mélangée"
+                f"{'s' if _immatures > 1 else ''} : les inclure gonflerait "
+                f"mécaniquement la moyenne, car une entrée récente n'a pas eu "
+                f"le temps de mal tourner."
+            )
+        # MOYENNE CONTRE MEDIANE. Sur ACHAT FORT a 30 jours, la moyenne sort a
+        # +12,6 % pour une mediane de +1,1 % : une entree tire tout le reste.
+        # L'ecart entre les deux est l'information — la page Risque le dit
+        # deja de la cote entiere, il vaut ici aussi, et sur si peu d'entrees
+        # il vaut meme davantage.
+        _moy, _med = result["mean_pct"], result["median_pct"]
+        if _med is not None and abs(_moy - _med) > max(3.0, abs(_med)):
+            _texte += (
+                f" <b>La moyenne et la médiane s'écartent de "
+                f"{abs(_moy - _med):.1f} points</b> : le résultat d'ensemble "
+                f"tient à quelques entrées, pas à la régularité du verdict. "
+                f"C'est la médiane qu'il faut lire ici."
+            )
+        _note("Lecture du backtest", _texte, ton="primary")
 
     details = result["details"]
     if details.empty:
