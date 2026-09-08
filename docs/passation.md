@@ -1,7 +1,7 @@
 # BRVM Analyzer — passation
 
 **Dépôt** `medeacesar-spec/brvm-analyzer` · `/Users/mdegbe/brvm-analyzer` · Streamlit + Supabase
-**État au 8 septembre 2026, fin de journée.**
+**État au 9 septembre 2026, après la nuit du 8 au 9.**
 
 ---
 
@@ -71,20 +71,88 @@ canevas en site statique local.
 
 ---
 
+## SEPT PULL REQUESTS ATTENDENT LA FUSION
+
+Rien n'a été fusionné depuis la #138. **À fusionner d'abord, avant tout
+nouveau travail** — plusieurs se touchent, et l'ordre compte :
+
+| PR | Contenu | Note |
+|---|---|---|
+| #135 | Screening : sans information sur un seuil, un titre est écarté | décision de fond |
+| #139 | Contrôles segmentés A2, A5 | `p2_stock_analysis.py` |
+| #140 | Onglet Technique A12-A16 | `p2_stock_analysis.py` — après #139 |
+| #141 | Barre signée P1, P2, F1 | débloque F2 |
+| #142 | Pages sous connexion T1, T2, H1 | |
+| #143 | Dashboard D2-D5 et finitions A9-A11 | |
+| #144 | Cahier des requêtes · Total Return | doc seule |
+
+Chaque PR décrit ce qu'elle corrige et ce qu'elle a trouvé en route. Toutes
+ont été vérifiées au rendu.
+
 ## Ce qui attend
 
-1. **Les écarts au canevas** — 31 au total, dans l'ordre donné par
-   `docs/redesign_v4_ecarts.md`. Commencer par les 7 cartes de KPI absentes.
-2. **Introduction d'une banque le 14 septembre** — nom à confirmer. L'ajouter
+1. **F2 — le tableau sectoriel de Performance des Titres.** Seul écart du
+   registre encore à faire. Il veut une colonne en barre signée : `barre_signee`
+   arrive avec la #141, d'où l'attente.
+2. **Cinq arbitrages**, tous écrits dans le registre avec leur raisonnement :
+   **A1** (sélecteur d'exercice — il gouvernerait toute la page, pas le seul
+   onglet Cours), **A6** (périodicité — `price_monthly` n'a pas d'OHLC, les
+   chandeliers deviendraient une courbe), **F3** (quatre blocs hors canevas de
+   Performance des Titres), **H3** (bouton « Colonnes » désactivé), et la
+   question du **Composite Total Return** portée au cahier (#26).
+3. **Introduction d'une banque le 14 septembre** — nom à confirmer. L'ajouter
    à `data/brvm_tickers.json` **et** à `TICKER_TO_BRVM_SLUG`, puis lancer
-   `collecter_historique_cours.py` en M et T.
-3. **Neuf dividendes en contradiction** avec l'avis BRVM — SOLIBRA 2020/2021
-   au dixième, Filtisac 2024 à 145 contre 1 320. Les avis moissonnés et les
-   états financiers des exercices contestés ont été mis en cache le 8/09.
-4. **SODECI affiche une marge nette de 24,62**, soit 2 462 %. Le ratio est
+   `collecter_historique_cours.py` en M et T. Attention : depuis la #135, un
+   titre sans historique est écarté du screening dès qu'un critère de marché
+   est réglé — la banque le sera pendant deux ans, comme BICI Bénin et la
+   Loterie du Bénin. La page le dit, ce n'est pas silencieux.
+4. **Neuf dividendes en contradiction** avec l'avis BRVM — SOLIBRA 2020/2021
+   au dixième, Filtisac 2024 à 145 contre 1 320.
+5. **SODECI affiche une marge nette de 24,62**, soit 2 462 %. Le ratio est
    faux, ce n'est pas un défaut d'affichage. À porter au cahier.
-5. **`market_data.dps` est vide** sur les 48 lignes, comme l'étaient beta et
+6. **`market_data.dps` est vide** sur les 48 lignes, comme l'étaient beta et
    rsi. Même traitement possible.
+
+---
+
+## Ce que la nuit du 8 au 9 a appris
+
+Trois leçons de méthode, chacune payée par une erreur.
+
+**Un onglet ne se juge pas à sa silhouette.** Le diagnostic du 8 septembre
+avait parcouru les 33 onglets et déclaré « Technique », « Performance des
+Titres » et « Signaux » conformes parce que leurs blocs existaient tous. Relus
+bloc par bloc, ils portaient **neuf écarts de plus** — dont un tableau de
+niveaux clés amputé de ses moyennes mobiles, et une barre rouge de 24 % pour
+un titre qui avait gagné 13,5 %.
+
+**Une capture d'écran ne tranche pas un signe.** Le tableau multi-périodes a
+paru vide, puis a paru porter des performances impossibles — « −118,8 % ». Les
+deux fois j'avais tort : il n'avait pas fini de se rendre, puis le « + » se
+lisait comme un « − » à l'échelle de l'image. **Ce qui se mesure se vérifie
+par le calcul**, en rejouant le formateur sur les valeurs de la base ou en
+lisant les styles calculés dans le DOM — pas à l'œil.
+
+**Une rangée pleine peut cacher une carte tombée.** Le Composite Total Return
+était collecté chaque jour, stocké, et affiché nulle part : la rangée des
+indices tenait quatre colonnes pour cinq cartes. Rien ne pouvait le laisser
+voir à l'écran. **Comparer ce que la base contient à ce que la page affiche**
+est un contrôle que le rendu seul ne remplace pas.
+
+---
+
+## Composants partagés — l'état au 9/09
+
+Dans `utils/ui_helpers.py`, tous nés d'un besoin répété : `status_strip`,
+`kpi_v4`, **`kpi_grille`** (la grille repliable — elle a corrigé la cause n° 4
+partout), `breadth_bar`, `heatmap`, `donut`, `note`, `plan_etapes`,
+**`cartes_constats`** (les constats en cartes : diagnostic du portefeuille,
+signaux techniques), **`barre_signee`** (positions, classement de performance,
+toutes les cotations), **`titre_admin`** (les deux pages réservées).
+
+La règle qui les a tous produits : **quand un motif apparaît une troisième
+fois, il devient un composant** — trois copies d'une même échelle finissent
+toujours par diverger.
 
 ---
 
@@ -95,5 +163,10 @@ canevas en site statique local.
 - `numpy<2`, `pandas<2.3` — des SIGSEGV ont été rapportés au-delà.
 - Une configuration de lancement `brvm-dev-admin` (port 8502, avec
   `BRVM_DEV_LOGIN=1`) est dans le `.claude/launch.json` local.
+- La session de test s'ouvre sur **`dev@local`**, dont le portefeuille a été
+  rempli le 08/09 d'une copie des 16 lots réels, des 5 dividendes et du cash :
+  sans lui, les pages sous connexion s'affichaient vides. Pour ouvrir un autre
+  compte, `BRVM_DEV_EMAIL=...` — le champ du formulaire ne se remplit pas
+  depuis l'extérieur de Streamlit.
 - La synchronisation quotidienne se déclenche au premier chargement du jour
   et prend plusieurs minutes : ne pas la confondre avec un blocage.
