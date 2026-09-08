@@ -97,12 +97,12 @@ Légende : **à faire** · *en cours* · fait (vu au rendu)
 
 | # | Onglet | Écart | État |
 |---|---|---|---|
-| A1 | Cours | Pas de sélecteur **Exercice** dans la barre d'outils | à faire |
-| A2 | Cours | Période affichée en menu déroulant ; le canevas met des **boutons segmentés** | à faire |
+| A1 | Cours | Pas de sélecteur **Exercice** dans la barre d'outils | **à trancher** — ce n'est pas un habillage : l'application choisit aujourd'hui *l'exercice le plus complet* toute seule (`_exercice_le_plus_complet`). Un sélecteur signifie rendre ce choix manuel, et il gouverne les ratios, les scores et le verdict de toute la page — pas seulement l'onglet Cours, où il n'a aucun effet sur les cours |
+| A2 | Cours | Période affichée en menu déroulant ; le canevas met des **boutons segmentés** | **fait** — vu au rendu le 08/09, les huit fenêtres visibles d'un coup |
 | A3 | Fondamentale | Les 4 sous-scores n'ont pas leur **sous-ligne explicative** (« ROE 28,4 % ») | **fait** — vu au rendu le 08/09. Chaque sous-ligne nomme les ratios qui alimentent réellement le barème, et dit « non applicable » pour l'endettement d'une banque |
 | A4 | Fondamentale | Libellés coupés (« ENDETTEMEN/T ») : 5 colonnes fixes au lieu d'une grille repliable | **fait** — vu au rendu le 08/09, à 1 440 px (5 colonnes) et à 1 000 px (2 colonnes), sans libellé coupé |
-| A5 | Technique | Période et surcouches en menu et cases à cocher ; le canevas met **segmentés et pastilles** | à faire |
-| A6 | Technique | Pas de sélecteur **Périodicité** (Journalière / Mensuelle) | à faire |
+| A5 | Technique | Période et surcouches en menu et cases à cocher ; le canevas met **segmentés et pastilles** | **fait** — vu au rendu le 08/09 (`st.segmented_control` et `st.pills`) |
+| A6 | Technique | Pas de sélecteur **Périodicité** (Journalière / Mensuelle) | **à trancher** — l'application *détecte* la périodicité de la série (`_detect_frequency`) au lieu de la laisser choisir. Offrir le choix veut dire lire `price_monthly` au lieu de `price_cache`, et cette table n'a **ni ouverture, ni plus haut, ni plus bas** : les chandeliers de l'onglet devraient devenir une courbe en mensuel. Décision de fond, pas de forme |
 | A7 | Recommandation | Manque les cartes **Prix actuel** et **Prix cible (modèle)** | **fait** — vu au rendu le 08/09, dans les deux cas : cible unique (BOAS.sn, « +9.5 % vs cours ») et méthodes divergentes (SNTS.sn, fourchette). Les deux tuiles qui répétaient ces chiffres plus bas ont été retirées |
 | A8 | Recommandation | Composition du score en barre empilée ; le canevas montre des **barres pondérées 60/40** | **refusé le 08/09** — voir ci-dessous |
 | A9 | Profil | Actionnariat en carte latérale ; le canevas en fait **3 cartes de KPI** | à faire |
@@ -158,9 +158,9 @@ trois autres.
 
 | # | Écart | État |
 |---|---|---|
-| G1 | **Le titre « Assistant Signaux » s'affiche deux fois** : `section_heading` puis `st.subheader`, l'un sous l'autre. Même défaut qu'A10 | à faire |
-| G2 | « Aucun désaccord : le bilan et le cours disent la même chose » passe par `st.info` — **la boîte bleue d'alerte que `note()` a précisément été écrit pour remplacer**. Un état normal se lit comme un avertissement | à faire |
-| G3 | Le bloc **Assistant Signaux** n'est pas au canevas. Le titre de page est « Signaux d'achat / vente » là où le canevas dit « Signaux » | à arbitrer (ajouts de l'app) |
+| G1 | **Le titre « Assistant Signaux » s'affiche deux fois** : `section_heading` puis `st.subheader`, l'un sous l'autre. Même défaut qu'A10 | **sans objet** — le bloc a été retiré le 08/09 |
+| G2 | « Aucun désaccord : le bilan et le cours disent la même chose » passe par `st.info` — **la boîte bleue d'alerte que `note()` a précisément été écrit pour remplacer**. Un état normal se lit comme un avertissement | **fait** — vu au rendu le 08/09, note verte |
+| G3 | Le bloc **Assistant Signaux** n'est pas au canevas. Le titre de page est « Signaux d'achat / vente » là où le canevas dit « Signaux » | **arbitré le 08/09 : retirer l'assistant.** Fait, sur les deux pages. Le titre « Signaux d'achat / vente » reste — non arbitré |
 
 ### Trajectoires Recommandations — 3 onglets
 
@@ -257,7 +257,7 @@ signe** : le calcul, lui, tranche.
 
 1. ~~Les 7 cartes de KPI manquantes (P5, P3, A7)~~ — **fait le 08/09**.
 2. ~~Les sous-lignes des scores (A3) et la grille (A4)~~ — **fait le 08/09**.
-3. Les contrôles segmentés (A2, A5, A6) — ~~I1 fait le 08/09~~.
+3. ~~Les contrôles segmentés (A2, A5)~~ — **fait le 08/09** ; ~~I1 fait~~. A1 et A6 renvoyés à un arbitrage : ce sont des fonctions nouvelles, pas des habillages.
 4. ~~Les tableaux pédagogiques de Screening (S1, S2)~~ — **fait le 08/09**.
 5. ~~Les blocs à re-rendre : P4 et C1~~ — **fait le 08/09** ; ~~A8 refusé~~.
 6. La barre signée : les positions du portefeuille (P1) **et le classement de Performance des Titres (F1)** — le même composant répond aux deux.

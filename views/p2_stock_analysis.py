@@ -962,12 +962,14 @@ def _render_price_only(ticker, price_df):
         "1M": 30, "3M": 90, "6M": 180, "1A": 365,
         "2A": 730, "3A": 1095, "5A": 1825, "Max": 999999,
     }
-    selected_label = st.selectbox(
+    # Segmente, comme au canevas : les huit fenetres se voient d'un coup et
+    # s'echangent d'un clic, au lieu d'etre cachees derriere un menu.
+    selected_label = st.segmented_control(
         "Période affichée",
         list(period_options.keys()),
-        index=3,  # 1A par défaut
+        default="1A",
         key=f"price_only_period_{ticker}",
-    )
+    ) or "1A"
     days_back = period_options[selected_label]
 
     if days_back < 999999:
@@ -1196,20 +1198,32 @@ def _render_technical(ticker, price_df, result):
         st.markdown(_kpi_card("Volatilité 30j", vol_value_str, vol_sub, arrow_tone=vol_tone),
                     unsafe_allow_html=True)
 
-    # --- Period selector + chart options ---
-    col_period, col_opt1, col_opt2, col_opt3 = st.columns([2, 1, 1, 1])
+    # --- Periode et surcouches ---
+    # BOUTONS SEGMENTES ET PASTILLES, pas un menu et trois cases. Six periodes
+    # dans un menu deroulant demandent deux gestes pour en changer et cachent
+    # les cinq autres ; en boutons, l'eventail se voit et le choix se fait d'un
+    # clic. Les trois surcouches sont un choix multiple parmi trois, ce que des
+    # pastilles disent mieux que trois cases alignees sans lien apparent.
+    period_options = {"3M": 90, "6M": 180, "1A": 365, "2A": 730, "3A": 1095,
+                      "Max": 9999}
+    _defaut = "3A" if freq == "monthly" else "1A"
+    col_period, col_surcouches = st.columns([3, 4])
 
     with col_period:
-        period_options = {"3M": 90, "6M": 180, "1A": 365, "2A": 730, "3A": 1095, "Max": 9999}
-        selected_period = st.selectbox("Periode", list(period_options.keys()), index=4 if freq == "monthly" else 2)
+        selected_period = st.segmented_control(
+            "Période", list(period_options.keys()), default=_defaut,
+            key=f"tech_periode_{ticker}") or _defaut
         days_back = period_options[selected_period]
 
-    with col_opt1:
-        show_bb = st.checkbox("Bandes de Bollinger", value=False)
-    with col_opt2:
-        show_rsi = st.checkbox("RSI", value=True)
-    with col_opt3:
-        show_macd = st.checkbox("MACD", value=True)
+    with col_surcouches:
+        _surcouches = st.pills(
+            "Surcouches", ["Bandes de Bollinger", "RSI", "MACD"],
+            selection_mode="multi", default=["RSI", "MACD"],
+            key=f"tech_surcouches_{ticker}")
+    _surcouches = _surcouches or []
+    show_bb = "Bandes de Bollinger" in _surcouches
+    show_rsi = "RSI" in _surcouches
+    show_macd = "MACD" in _surcouches
 
     # Filter data to selected period
     if days_back < 9999 and not df.empty:
