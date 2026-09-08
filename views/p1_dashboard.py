@@ -1175,7 +1175,8 @@ def render():
             st.info("Prix historiques en cours de chargement...")
 
     # --- Indices (grille 4 colonnes fixe pour homogénéité des tailles) ---
-    st.subheader("Indices BRVM")
+    from utils.ui_helpers import section_heading as _titre, kpi_grille
+    _titre("Indices BRVM", spacing="loose")
     indices = _load_indices_from_db()
     if indices.empty:
         st.info("Indices non disponibles — lancez scripts/scrape_indices.py")
@@ -1186,15 +1187,25 @@ def render():
             """« BRVM - Composite » → « Composite ». Mais « BRVM-30 » reste
             « BRVM-30 » : retirer le prefixe n'y laissait que « 30 », ce qui
             ne nomme plus rien."""
-            court = (name or "").replace("BRVM - ", "").replace("BRVM-", "").strip()
+            # Le Composite Total Return s'ecrit avec un tiret DEMI-CADRATIN
+            # (« BRVM – COMPOSITE TOTAL RETURN »), pas un trait d'union : le
+            # prefixe n'etait pas coupe et la carte portait le nom entier
+            # quand ses voisines disaient « COMPOSITE » ou « PRESTIGE ».
+            court = (name or "")
+            for _prefixe in ("BRVM - ", "BRVM – ", "BRVM — ", "BRVM-", "BRVM–"):
+                court = court.replace(_prefixe, "")
+            court = court.strip()
             return name.strip() if court.isdigit() else court
 
-        def _render_idx_metric(idx):
+        def _carte_indice(idx):
             """Carte d'indice au modèle du canevas : la variation du jour ET
             le cumul depuis le 1er janvier sur la même ligne. Le YTD vivait
             dans une infobulle — invisible tant qu'on ne survolait pas, alors
-            que c'est lui qui dit la tendance de l'année."""
-            from utils.ui_helpers import kpi_v4
+            que c'est lui qui dit la tendance de l'année.
+
+            Renvoie les arguments de la carte plutôt que de la dessiner : la
+            grille a besoin de les recevoir tous ensemble.
+            """
             val = idx.get("value")
             var = idx.get("variation")
             ytd = idx.get("ytd_variation")
@@ -1204,6 +1215,8 @@ def render():
                 bouts.append(f"{var:+.2f} %")
             if pd.notna(ytd):
                 bouts.append(f"YTD {ytd:+.2f} %")
+            if not bouts:
+                bouts.append("variations non publiées séparément")
             # La couleur suit la variation du JOUR : c'est elle qui bouge.
             if pd.notna(var) and var > 0:
                 accent, teinte = "var(--up)", "var(--up)"
@@ -1211,8 +1224,9 @@ def render():
                 accent, teinte = "var(--down)", "var(--down)"
             else:
                 accent, teinte = "var(--ink-4)", ""
-            kpi_v4(_short_name(idx["name"]), val_str, " · ".join(bouts),
-                   accent=accent, sub_color=teinte)
+            return dict(label=_short_name(idx["name"]), value=val_str,
+                        sub=" · ".join(bouts), accent=accent,
+                        sub_color=teinte, taille="22px")
 
         # Sélection par catégorie
         if has_category:
@@ -1227,8 +1241,47 @@ def render():
             sectoriels = indices[~indices["name"].str.contains(
                 "COMPOSITE|BRVM-30|PRESTIGE|PRINCIPAL|TOTAL RETURN", case=False, na=False)]
 
-        # Rangée 1 : principaux + total return → toujours sur la même ligne
-        # (Composite, BRVM-30, Prestige, Total Return = max 4)
+        # UNE GRILLE QUI SE REPLIE, PAS QUATRE COLONNES FIXES.
+        #
+        # La rangee des indices principaux etait `st.columns(4)` suivi de
+        # `row1[:4]`, avec en commentaire « Composite, BRVM-30, Prestige,
+        # Total Return = max 4 ». La cote en compte QUATRE de principaux —
+        # Composite, BRVM-30, Prestige et Principal — plus le Composite Total
+        # Return : cinq cartes pour quatre places. La cinquieme tombait, et
+        # c'etait TOUJOURS le Total Return, seul indice qui compte les
+        # dividendes. Sur une place ou les rendements vont de cinq a sept pour
+        # cent, c'est precisement celui qui raconte une autre histoire que les
+        # autres : il est collecte, stocke, et n'etait affiche nulle part.
+        #
+        # Aucune troncature desormais, et la grille se replie au lieu
+        # d'imposer son compte de colonnes — meme correction que pour les
+        # cartes de KPI, appliquee ici a des cartes entieres plutot qu'a des
+        # libelles.
+        def _cartes_indices(lignes):
+            return [dict(_carte_indice(idx)) for _, idx in lignes]
+
+        # LE TOTAL RETURN PORTE LES VARIATIONS DU COMPOSITE. Sa valeur lui
+        # est propre (221,40 contre 550,08), mais sa variation du jour et son
+        # YTD sont, au centieme pres, ceux de l'indice de prix. C'est
+        # impossible : un indice de rendement TOTAL compte les dividendes, et
+        # sur une place qui rend cinq a sept pour cent, son cumul annuel ne
+        # peut pas egaler celui du Composite. La source ne les publie pas
+        # separement, ou la collecte les recopie — a trancher au cahier.
+        #
+        # En attendant, on affiche la valeur et on TAIT les deux variations
+        # plutot que de montrer un chiffre qu'on sait faux.
+        _compo = principaux[principaux["name"].str.contains("COMPOSITE", na=False)]
+        if not total_return.empty and not _compo.empty:
+            _c = _compo.iloc[0]
+            _suspects = total_return.apply(
+                lambda r: (pd.notna(r.get("variation"))
+                           and pd.notna(r.get("ytd_variation"))
+                           and abs((r["variation"] or 0) - (_c["variation"] or 0)) < 0.005
+                           and abs((r["ytd_variation"] or 0) - (_c["ytd_variation"] or 0)) < 0.005),
+                axis=1)
+            total_return = total_return.copy()
+            total_return.loc[_suspects, ["variation", "ytd_variation"]] = None
+
         row1 = list(principaux.iterrows()) + list(total_return.iterrows())
         if row1:
             st.markdown(
@@ -1236,28 +1289,15 @@ def render():
                 'Indices principaux</div>',
                 unsafe_allow_html=True,
             )
-            cols = st.columns(4)  # grille fixe 4 colonnes
-            for i, (_, idx) in enumerate(row1[:4]):
-                with cols[i]:
-                    _render_idx_metric(idx)
+            kpi_grille(_cartes_indices(row1), mini="200px")
 
-        # Sectoriels : grille fixe 4 colonnes, padded avec empty slots
         if not sectoriels.empty:
             st.markdown(
                 '<div class="label-xs" style="margin:10px 0 4px 2px;">'
                 'Indices sectoriels</div>',
                 unsafe_allow_html=True,
             )
-            sect_list = list(sectoriels.iterrows())
-            # Par rangées de 4 — toujours 4 colonnes même si la dernière en a moins
-            for start in range(0, len(sect_list), 4):
-                chunk = sect_list[start:start + 4]
-                cols_s = st.columns(4)
-                for i in range(4):
-                    with cols_s[i]:
-                        if i < len(chunk):
-                            _render_idx_metric(chunk[i][1])
-                        # else : colonne vide → largeur préservée, pas de reflow
+            kpi_grille(_cartes_indices(sectoriels.iterrows()), mini="200px")
 
     _render_sector_heatmap(quotes, perf)
 
