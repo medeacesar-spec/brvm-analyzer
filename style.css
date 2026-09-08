@@ -669,3 +669,29 @@ section[data-testid="stSidebar"] [role="radiogroup"] label {
 section[data-testid="stSidebar"] hr {
   margin: 8px 0 !important;
 }
+
+/* ── Bouton « + n » du tableau des cotations ──
+   Il prolonge une carte : il en reprend le filet et le rayon, en mono pour
+   que le nombre s'aligne sur les colonnes chiffrees du tableau. Discret au
+   repos, navy au survol — comme les autres commandes du canevas. */
+.st-key-dash_cotations_plus button,
+.st-key-dash_cotations_moins button {
+  font-family: var(--font-mono) !important;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+  color: var(--primary) !important;
+  background: var(--bg-elev) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px !important;
+  padding: 6px 10px !important;
+  letter-spacing: 0.06em;
+  /* Sans cela, « +39 » se coupait en deux lignes dans une colonne étroite. */
+  white-space: nowrap !important;
+  min-width: 72px;
+}
+.st-key-dash_cotations_plus button:hover,
+.st-key-dash_cotations_moins button:hover {
+  background: var(--bg-sunken) !important;
+  border-color: var(--primary) !important;
+  color: var(--primary-2) !important;
+}

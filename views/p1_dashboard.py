@@ -1279,6 +1279,17 @@ def render():
         display_df = display_df.sort_values(_col, ascending=_asc,
                                             na_position="last")
 
+    # Quarante-sept lignes d'un bloc noient la fin de page : on ne les lit
+    # pas, on les fait defiler. Le canevas lui-meme n'en montre que huit et
+    # annonce le reste en pied. Le tri s'applique AVANT la coupe — les huit
+    # premieres sont donc les huit qui comptent selon le critere choisi, pas
+    # les huit premieres de l'alphabet.
+    APERCU = 8
+    _tout = st.session_state.get("dash_cotations_tout", False)
+    _total_lignes = len(display_df)
+    _visible = display_df if _tout else display_df.head(APERCU)
+    _restantes = _total_lignes - len(_visible)
+
     def _barre_signee(v):
         """Barre centrée sur un axe : à droite si positive, à gauche sinon.
 
@@ -1332,7 +1343,7 @@ def render():
         f"<th style='{_th}text-align:right;'>RSI</th>"
         "</tr>"
     )
-    for _, r in display_df.iterrows():
+    for _, r in _visible.iterrows():
         _v = r.get("variation")
         _cv = ("var(--up)" if _v and _v > 0 else
                "var(--down)" if _v and _v < 0 else "var(--ink-3)")
@@ -1377,6 +1388,9 @@ def render():
         f"{_lignes}</table></div>"
         "<div style='padding:10px 12px;background:var(--bg-footer);"
         "font-size:11.5px;color:var(--ink-3);'>"
+        + (f"{len(_visible)} lignes sur {_total_lignes}, triées par "
+           f"{_tri.lower()}. " if _restantes > 0 else
+           f"{_total_lignes} lignes, triées par {_tri.lower()}. ") +
         "Barre signée : variation sur 30 jours, échelle ±40 % autour de l'axe "
         "central ; au-delà, la barre sature. Une barre absente est un titre "
         "sans historique mensuel suffisant. Bêta mensuel contre le BRVM "
@@ -1387,6 +1401,34 @@ def render():
         "</div></div>",
         unsafe_allow_html=True,
     )
+
+    # Un seul bouton, compact et centré sous la carte : « + 39 » déplie,
+    # « − » replie. Une bande pleine largeur aurait pesé autant que le
+    # tableau qu'elle prolonge ; le signe et le nombre suffisent à dire ce
+    # qui reste.
+    # `on_click` plutôt qu'un `st.rerun()` écrit à la main : le rappel s'exécute
+    # AVANT le rerun, donc l'état est déjà posé quand la page se redessine.
+    # Avec le rerun manuel, l'écriture se perdait — le tableau restait à huit
+    # lignes alors que le clic partait bien.
+    def _deplier():
+        st.session_state["dash_cotations_tout"] = True
+
+    def _replier():
+        st.session_state["dash_cotations_tout"] = False
+
+    if _restantes > 0 or (_tout and _total_lignes > APERCU):
+        _g, _milieu, _d = st.columns([4, 1.4, 4])
+        with _milieu:
+            if _restantes > 0:
+                # Sans espace apres le plus : « + 39 » est une puce de
+                # liste en Markdown, et Streamlit avalait le signe.
+                st.button(f"+{_restantes}", key="dash_cotations_plus",
+                          help=f"Afficher les {_restantes} lignes restantes",
+                          on_click=_deplier, use_container_width=True)
+            else:
+                st.button("−", key="dash_cotations_moins",
+                          help="Revenir à l'aperçu",
+                          on_click=_replier, use_container_width=True)
 
     # Accès direct à l'analyse depuis le tableau
     picker_options = [
