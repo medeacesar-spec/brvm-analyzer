@@ -91,7 +91,8 @@ def _refresh_news():
 
 def render():
     st.title("Infos Marché")
-    st.caption("Actualités et revue de presse BRVM")
+    st.caption("Chaque dépêche croise un chiffre calculé par l'app et une "
+               "citation textuelle de la source. Rien n'est reformulé.")
 
     tab0, tab1 = st.tabs([
         "Revue de presse",
@@ -119,8 +120,10 @@ def _render_revue():
 
     col_j, col_p = st.columns([1, 3])
     with col_j:
-        jours = st.selectbox("Période", [7, 15, 30], index=1,
-                             format_func=lambda j: f"{j} derniers jours")
+        jours = st.segmented_control(
+            "Période", [7, 15, 30], default=15,
+            format_func=lambda j: f"{j} j", key="revue_periode",
+        ) or 15
 
     try:
         df_pf = get_portfolio()
@@ -146,31 +149,102 @@ def _render_revue():
         entrees = rubriques.get(cle) or []
         if not entrees:
             continue
-        st.markdown(f"#### {titre}  ·  {len(entrees)}")
+        st.markdown(
+            "<div style='display:flex;align-items:baseline;gap:10px;"
+            "margin:26px 0 12px;'>"
+            "<h2 style='font-size:17px;font-weight:600;margin:0;"
+            f"letter-spacing:-0.015em;'>{titre}</h2>"
+            "<span style='font-family:var(--font-mono);font-size:11.5px;"
+            f"color:var(--ink-3);'>{len(entrees)} dépêche"
+            f"{'s' if len(entrees) > 1 else ''}</span></div>",
+            unsafe_allow_html=True,
+        )
         for e in entrees:
-            badges = " ".join(f"`{t}`" for t, _ in e["sujets"])
-            etoile = ("  ★ " + ", ".join(n for _, n in e["portefeuille"])
-                      if e["portefeuille"] else "")
-            st.markdown(
-                f"<div style='border-left:2px solid var(--border);padding:2px 0 10px 12px;"
-                f"margin-bottom:10px;'>"
-                f"<div style='font-size:11px;color:var(--ink-3);'>{e['date']}{etoile}</div>"
-                f"<div style='font-size:14px;font-weight:600;margin:2px 0 4px;'>"
-                f"<a href='{e['url']}' target='_blank' style='color:inherit;"
-                f"text-decoration:none;'>{e['titre']}</a></div>"
-                + (f"<div style='font-size:12px;color:var(--ink-2);'>{e['chiffres']}</div>"
-                   if e["chiffres"] else "")
-                + (f"<div style='font-size:12px;color:var(--ink-3);'>Vos lignes exposées : "
-                   f"{', '.join(n for _, n in e['exposees'])}</div>"
-                   if e.get("exposees") and not e["portefeuille"] else "")
-                + f"<div style='font-size:12.5px;color:var(--ink-2);margin-top:4px;'>"
-                f"{e['texte']}</div>"
-                + (f"<div style='font-size:11px;color:var(--ink-3);margin-top:3px;'>"
-                   f"{badges}</div>" if badges else "")
-                + "</div>",
-                unsafe_allow_html=True,
-            )
+            st.markdown(_carte_depeche(e), unsafe_allow_html=True)
 
+
+def _carte_depeche(e: dict) -> str:
+    """Carte de depeche au modele du canevas v4.
+
+    Filet lateral navy, puce du titre en mono, citation entre guillemets, et
+    les chiffres poste par poste sous un filet — chaque variation coloree se
+    lit sans parcourir la phrase. On ne reformule toujours rien : le titre et
+    la citation viennent de la source, les chiffres de l'app.
+    """
+    chip = ""
+    if e.get("sujets"):
+        chip = (
+            "<span style='font-family:var(--font-mono);font-size:10.5px;"
+            "font-weight:600;padding:2px 6px;border-radius:4px;"
+            "background:var(--bg-sunken);color:var(--ink-2);'>"
+            f"{e['sujets'][0][0]}</span>"
+        )
+    etoile = ""
+    if e.get("portefeuille"):
+        noms = ", ".join(n for _, n in e["portefeuille"])
+        etoile = (
+            "<span style='font-size:11.5px;font-weight:600;color:var(--warn);'>"
+            f"★ {noms} en portefeuille</span>"
+        )
+    elif e.get("exposees"):
+        noms = ", ".join(n for _, n in e["exposees"])
+        etoile = (
+            "<span style='font-size:11.5px;color:var(--ink-3);'>"
+            f"Vos lignes exposées : {noms}</span>"
+        )
+
+    tetes = [x for x in (chip,
+                         f"<span style='font-size:12px;color:var(--ink-3);'>"
+                         f"{e.get('source', '')}</span>" if e.get("source") else "",
+                         f"<span style='font-family:var(--font-mono);font-size:11px;"
+                         f"color:var(--ink-4);'>{e.get('date', '')}</span>"
+                         if e.get("date") else "",
+                         etoile) if x]
+    entete = (
+        "<div style='display:flex;align-items:center;gap:8px;flex-wrap:wrap;"
+        f"margin-bottom:8px;'>{''.join(tetes)}</div>" if tetes else ""
+    )
+
+    tons = {"up": "var(--up)", "down": "var(--down)", "neutre": "var(--ink)"}
+    postes = e.get("chiffres_detail") or []
+    if postes:
+        cases = "".join(
+            "<div style='display:flex;flex-direction:column;gap:1px;'>"
+            "<span style='font-size:10px;font-weight:600;color:var(--ink-3);"
+            f"letter-spacing:0.08em;text-transform:uppercase;'>{libelle}</span>"
+            "<span style='font-family:var(--font-mono);font-size:14px;"
+            f"font-weight:600;color:{tons.get(ton, 'var(--ink)')};'>{valeur}</span>"
+            "</div>"
+            for libelle, valeur, ton in postes
+        )
+        pied = (
+            "<div style='display:flex;gap:22px;margin-top:10px;padding-top:10px;"
+            "border-top:1px solid var(--border-soft);flex-wrap:wrap;'>"
+            f"{cases}</div>"
+        )
+    elif e.get("chiffres"):
+        # Repli : la forme en phrase, quand le detail poste par poste manque.
+        pied = ("<div style='font-size:12px;color:var(--ink-2);margin-top:8px;"
+                f"padding-top:8px;border-top:1px solid var(--border-soft);'>"
+                f"{e['chiffres']}</div>")
+    else:
+        pied = ""
+
+    citation = (f"<div style='font-size:13px;color:var(--ink-2);line-height:1.55;"
+                f"max-width:76ch;text-wrap:pretty;'>« {e['texte']} »</div>"
+                if e.get("texte") else "")
+
+    return (
+        "<div style='background:var(--bg-elev);border:1px solid var(--border);"
+        "border-left:2px solid var(--primary);border-radius:0 12px 12px 0;"
+        "padding:14px 18px;margin-bottom:12px;'>"
+        f"{entete}"
+        "<div style='font-size:14.5px;font-weight:600;margin-bottom:6px;"
+        "text-wrap:pretty;'>"
+        f"<a href='{e['url']}' target='_blank' style='color:inherit;"
+        f"text-decoration:none;border-bottom:none;'>{e['titre']}</a></div>"
+        f"{citation}{pied}</div>"
+    )
 
 # ════════════════════════════════════════════════════════════════════
 # Tab 1 : Fil d'actualités
