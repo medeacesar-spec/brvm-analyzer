@@ -267,15 +267,26 @@ def render():
             sub = f"{n} signaux" if n else "Aucun échantillon"
             avg_html = delta(avg * 100, with_arrow=True) if avg is not None else ""
             avg_line = f"{avg_html} moy." if avg is not None else ""
-            accent = {"up": "var(--up)", "down": "var(--down)", "ocre": "var(--ocre)"}.get(tone, "var(--primary)")
+            accent = {"up": "var(--up)", "down": "var(--down)",
+                      "ocre": "var(--warn)"}.get(tone, "var(--primary)")
+            # Filet SUPERIEUR, comme toutes les cartes du canevas : le filet
+            # lateral y est reserve aux notes, qui disent une lecture et non
+            # un chiffre.
             st.markdown(
-                f"<div style='border:1px solid var(--border);border-left:3px solid {accent};"
-                f"border-radius:12px;padding:14px 16px;background:var(--bg-elev);min-height:138px;'>"
-                f"<div class='label-xs' style='color:var(--ink-3);margin-bottom:6px;'>{label}</div>"
-                f"<div style='font-size:28px;font-weight:600;font-variant-numeric:tabular-nums;'>{pct_txt}</div>"
-                f"<div style='font-size:12px;color:var(--ink-2);margin-top:2px;'>{sub}</div>"
-                f"<div style='font-size:12px;margin-top:6px;'>{avg_line}</div>"
-                f"<div style='font-size:11.5px;color:var(--ink-3);margin-top:8px;'>{footer}</div>"
+                f"<div style='border:1px solid var(--border);"
+                f"border-top:2px solid {accent};border-radius:12px;"
+                f"padding:15px 17px;background:var(--bg-elev);min-height:138px;"
+                f"display:flex;flex-direction:column;gap:4px;'>"
+                f"<span style='font-size:10.5px;font-weight:600;"
+                f"letter-spacing:0.09em;text-transform:uppercase;"
+                f"color:var(--ink-3);'>{label}</span>"
+                f"<span style='font-size:27px;font-weight:600;"
+                f"letter-spacing:-0.015em;line-height:1.05;"
+                f"font-variant-numeric:tabular-nums;'>{pct_txt}</span>"
+                f"<span style='font-size:11.5px;color:var(--ink-2);'>{sub}</span>"
+                f"<span style='font-size:12px;'>{avg_line}</span>"
+                f"<span style='font-size:11.5px;color:var(--ink-3);"
+                f"margin-top:auto;'>{footer}</span>"
                 f"</div>",
                 unsafe_allow_html=True,
             )
@@ -752,6 +763,75 @@ def render():
             st.caption("Poids neutres (1.0×) appliqués d'ici là.")
 
         st.markdown("</div>", unsafe_allow_html=True)
+
+        # ── Hit rate par verdict et par horizon ──
+        # Le tableau des poids dit CE QUE le modèle fait ; celui-ci dit s'il a
+        # eu raison. La nuance qui compte : un verdict négatif n'est pas jugé
+        # sur sa capacité à annoncer une hausse mais une baisse — sans quoi
+        # « ÉVITER » paraîtrait toujours mauvais.
+        _horizons = [("1 mois", "perf_1m"), ("3 mois", "perf_3m"),
+                     ("6 mois", "perf_6m"), ("12 mois", "perf_1a")]
+        _reco_cal = df[df["entry_type"] == "recommendation"].copy()
+        # Un horizon dont AUCUN verdict n'a cinq observations donnerait une
+        # colonne entièrement vide : l'historique des signaux est trop jeune
+        # pour six et douze mois. On l'écarte plutôt que de l'afficher creux.
+        def _horizon_utile(col):
+            if col not in _reco_cal.columns:
+                return False
+            _v = _reco_cal["verdict"].astype(str).str.upper().str.strip()
+            return any(len(_reco_cal[_v == _val][col].dropna()) >= 5
+                       for _val in _v.unique())
+
+        _dispo = [(lib, col) for lib, col in _horizons if _horizon_utile(col)]
+        if not _reco_cal.empty and "verdict" in _reco_cal.columns and _dispo:
+            _ordre = ["ACHAT FORT", "ACHAT", "CONSERVER", "NEUTRE",
+                      "PRUDENCE", "VENTE", "EVITER"]
+            _negatifs = ("VENTE", "EVITER", "PRUDENCE")
+            _lignes_cal, _effectifs = [], {}
+            _reco_cal["_v"] = (_reco_cal["verdict"].astype(str).str.upper()
+                               .str.strip())
+            for _v in _ordre:
+                _part = _reco_cal[_reco_cal["_v"] == _v]
+                if _part.empty:
+                    continue
+                _negatif = any(_n in _v for _n in _negatifs)
+                _vals = []
+                for _, _col in _dispo:
+                    _serie = _part[_col].dropna()
+                    if len(_serie) < 5:
+                        # Sous cinq observations, un taux n'est pas un taux :
+                        # la case reste vide plutôt que de mentir.
+                        _vals.append(None)
+                        continue
+                    _reussi = (_serie < 0) if _negatif else (_serie > 0)
+                    _vals.append(float(_reussi.mean() * 100))
+                if any(v is not None for v in _vals):
+                    _lignes_cal.append((_v.capitalize(), _vals))
+                    _effectifs[_v] = len(_part)
+            if _lignes_cal:
+                from utils.ui_helpers import heatmap as _heatmap_cal
+                st.markdown(
+                    "<div style='display:flex;align-items:baseline;gap:10px;"
+                    "margin:26px 0 12px;'>"
+                    "<h2 style='font-size:17px;font-weight:600;margin:0;"
+                    "letter-spacing:-0.015em;'>Hit rate par verdict et par "
+                    "horizon</h2>"
+                    "<span style='font-family:var(--font-mono);"
+                    "font-size:11.5px;color:var(--ink-3);'>"
+                    "% DE CAS CONFORMES</span></div>",
+                    unsafe_allow_html=True,
+                )
+                _heatmap_cal(
+                    _lignes_cal, [lib for lib, _ in _dispo],
+                    echelle=100, mode="intensite", intitule_colonne="Verdict",
+                    formatter=lambda v: f"{v:.0f} %",
+                    footer="Un verdict positif est jugé sur sa capacité à "
+                           "annoncer une hausse, un verdict négatif une "
+                           "baisse. Sous cinq observations, la case reste "
+                           "vide — un taux sur trois cas n'est pas un taux. "
+                           "Les horizons absents de ce tableau sont ceux que "
+                           "l'historique ne couvre pas encore.",
+                )
 
         # --- Monthly review ---
         section_heading(

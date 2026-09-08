@@ -380,7 +380,9 @@ def render():
 
         c1, c2, c3, c4 = st.columns(4)
         with c1:
-            st.markdown(_kpi_card("Valeur totale", f"{total_portfolio:,.0f}", CURRENCY),
+            st.markdown(_kpi_card("Valeur totale",
+                                  f"{total_portfolio:,.0f}".replace(",", " "),
+                                  CURRENCY),
                          unsafe_allow_html=True)
         with c2:
             ret_sign = "−" if total_return < 0 else "+"
@@ -813,6 +815,73 @@ def render():
                         delete_account_fee(int(fee["id"]))
                         st.rerun()
 
+        # ── Performance mensuelle des lignes ──
+        # Le tableau des positions donne le gain DEPUIS l'achat : un chiffre
+        # unique, qui ne dit pas si la ligne monte régulièrement ou si elle a
+        # tout pris en un mois. La carte de chaleur étale les douze derniers
+        # mois — en ligne, la régularité d'un titre ; en colonne, un mois où
+        # tout le portefeuille a bougé ensemble.
+        try:
+            from analysis.risque import series_mensuelles as _series_m
+            from utils.ui_helpers import heatmap as _heatmap_p
+            _series = _series_m()
+        except Exception:                                       # noqa: BLE001
+            _series = {}
+
+        if _series:
+            _MOIS_COURT = ["janv.", "févr.", "mars", "avr.", "mai", "juin",
+                           "juil.", "août", "sept.", "oct.", "nov.", "déc."]
+            _FENETRE = 12
+
+            # Les mois affichés sont ceux de la série la plus longue parmi les
+            # lignes détenues : une position récente laisse des cases vides à
+            # gauche, ce qui est la vérité et non un défaut.
+            _par_titre = {}
+            for _, _pos in portfolio.iterrows():
+                _t = _pos.get("ticker")
+                if _t not in _series:
+                    continue
+                _rend, _points = _series[_t]
+                _par_titre[_t] = {
+                    (p[0].year, p[0].month): r
+                    for p, r in zip(_points[1:], _rend)
+                }
+
+            _mois = sorted({m for d in _par_titre.values() for m in d})[-_FENETRE:]
+            _lignes_pf = []
+            if _mois:
+                # Une ligne par TITRE, pas par lot : un portefeuille qui
+                # détient trois fois Ecobank à des prix différents n'a qu'une
+                # seule série de cours. Trois lignes identiques n'apprenaient
+                # rien et faisaient croire à trois sociétés.
+                _vus = set()
+                for _, _pos in portfolio.iterrows():
+                    _t = _pos.get("ticker")
+                    if _t not in _par_titre or _t in _vus:
+                        continue
+                    _vals = [_par_titre[_t].get(m) for m in _mois]
+                    if all(v is None for v in _vals):
+                        continue
+                    _vus.add(_t)
+                    _lignes_pf.append((
+                        _pos.get("company_name") or _t,
+                        [None if v is None else v * 100 for v in _vals],
+                    ))
+
+            if _lignes_pf:
+                _colonnes = [f"{_MOIS_COURT[m - 1]} {str(a)[2:]}"
+                             for a, m in _mois]
+                section_heading("Performance mensuelle des lignes",
+                                spacing="loose")
+                _heatmap_p(
+                    _lignes_pf, _colonnes, intitule_colonne="Ligne",
+                    footer="Rendement total mensuel, dividende compris et "
+                           "compté au mois de son versement réel. Lecture en "
+                           "ligne : la régularité d'un titre. En colonne : un "
+                           "mois où tout le portefeuille a bougé ensemble. "
+                           "Une case vide est un mois sans cotation connue.",
+                )
+
         # ── Allocation : anneaux à figure centrale (canevas v4) ──
         # Le camembert obligeait à survoler chaque part pour en connaître la
         # valeur. L'anneau porte le total en son centre et la légende donne le
@@ -836,12 +905,15 @@ def render():
                 "<div class='label-xs' style='margin-bottom:6px;'>Par titre</div>",
                 unsafe_allow_html=True,
             )
-            _seg = list(zip(portfolio["company_name"].tolist(),
-                            portfolio["current_value"].tolist()))
+            # « Par titre » veut dire par titre : les lots d'une même société
+            # se cumulent, sinon Ecobank apparaissait en trois parts distinctes.
+            _par_soc = (portfolio.groupby("company_name")["current_value"]
+                        .sum().sort_values(ascending=False))
+            _seg = list(zip(_par_soc.index.tolist(), _par_soc.values.tolist()))
             if cash > 0:
                 _seg.append(("Cash", cash))
             donut(_seg, _mds(total_portfolio),
-                  f"{len(portfolio)} lignes", montant_fmt=_mds)
+                  f"{len(_par_soc)} titres", montant_fmt=_mds)
 
         with col_pie2:
             st.markdown(
@@ -1351,6 +1423,62 @@ def _render_position_recommendations(portfolio, total_value, cash,
         col_new = None
     else:                                   # « tout » : les trois cotes a cote
         col_sell, col_reinforce, col_new = st.columns(3)
+
+    # ── Ce qu'il faut faire, dans cet ordre ──
+    # Trois tableaux côte à côte posent tous la même question implicite : par
+    # quoi je commence ? La réponse tient dans un rang. L'ordre n'est pas
+    # arbitraire — on libère d'abord, on réemploie ensuite, on élargit enfin.
+    from utils.ui_helpers import plan_etapes
+    _etapes = []
+    if volet != "nouveaux" and sells:
+        _poids = sum(x.get("weight", 0) or 0 for x in sells[:5])
+        _etapes.append({
+            "accent": "var(--down)", "rang_libelle": "libérer", "genre": "vente",
+            "action": "Sortir ou alléger les lignes passées à la vente",
+            "lignes": [(x["ticker"], x.get("name", ""), "") for x in sells[:5]],
+            "motif": "Le verdict est passé au négatif sur ces lignes. Une "
+                     "position en perte n'est pas une raison de la garder : "
+                     "c'est souvent la raison pour laquelle le verdict a "
+                     "basculé.",
+            "impact_libelle": "Libère", "impact": f"{_poids:.1f} %",
+            "impact_part": min(100, _poids * 2),
+            "impact_sub": "du portefeuille",
+        })
+    if volet != "nouveaux" and reinforce:
+        _poids_r = sum(x.get("weight", 0) or 0 for x in reinforce[:5])
+        _etapes.append({
+            "accent": "var(--up)", "rang_libelle": "réemployer", "genre": "renfort",
+            "action": "Renforcer ce qui est déjà détenu et bien noté",
+            "lignes": [(x["ticker"], x.get("name", ""), "") for x in reinforce[:5]],
+            "motif": "Renforcer coûte moins de frais qu'ouvrir une ligne, et "
+                     "ne rajoute pas de société à suivre. C'est la voie la "
+                     "moins chère avant d'élargir.",
+            "impact_libelle": "Poids actuel", "impact": f"{_poids_r:.1f} %",
+            "impact_part": min(100, _poids_r * 2),
+            "impact_sub": "avant renforcement",
+        })
+    if volet != "detenus" and new_buys:
+        _etapes.append({
+            "accent": "var(--primary)", "rang_libelle": "élargir", "genre": "achat",
+            "action": "Ouvrir de nouvelles lignes",
+            "lignes": [(x["ticker"], x.get("name", ""), "") for x in new_buys[:5]],
+            "motif": "Une ligne de plus est une société de plus à suivre. "
+                     "Elle se justifie quand elle apporte un secteur ou un "
+                     "profil que le portefeuille n'a pas.",
+        })
+    if _etapes:
+        # L'étiquette suit le RANG réel, pas le genre de l'action : quand il
+        # n'y a rien à vendre, la première étape ne doit pas s'annoncer
+        # « ensuite ».
+        _rangs = ["D'ABORD", "ENSUITE", "ENFIN"]
+        for _i, _e in enumerate(_etapes):
+            _e["tag"] = _rangs[_i] if _i < len(_rangs) else "PUIS"
+        _urgentes = sum(1 for e in _etapes if e.get("genre") == "vente")
+        plan_etapes(
+            "Ce qu'il faut faire, dans cet ordre", _etapes,
+            f"{len(_etapes)} ÉTAPE{'S' if len(_etapes) > 1 else ''}"
+            + (f" · {_urgentes} URGENTE" if _urgentes else ""),
+        )
 
     if volet != "nouveaux":
         with col_sell:

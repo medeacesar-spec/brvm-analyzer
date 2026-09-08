@@ -184,6 +184,7 @@ def render():
             f"text-transform:uppercase;color:var(--ink-3);'>{label}</span>"
             f"<span style='font-variant-numeric:tabular-nums;font-size:{taille};"
             f"font-weight:600;letter-spacing:-0.015em;line-height:1.15;"
+            f"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
             f"color:var(--ink);'>{value}</span>"
             f"<span style='font-size:11.5px;font-weight:600;color:{teinte};'>"
             f"{arrow + ' ' if arrow else ''}{sub}</span></div>"
