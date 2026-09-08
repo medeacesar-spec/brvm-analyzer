@@ -813,39 +813,48 @@ def render():
                         delete_account_fee(int(fee["id"]))
                         st.rerun()
 
-        # Allocation
+        # ── Allocation : anneaux à figure centrale (canevas v4) ──
+        # Le camembert obligeait à survoler chaque part pour en connaître la
+        # valeur. L'anneau porte le total en son centre et la légende donne le
+        # montant ET le pourcentage : la part et la masse se lisent ensemble.
+        from utils.ui_helpers import donut
         section_heading("Allocation", spacing="loose")
-        col_pie1, col_pie2 = st.columns(2)
 
+        def _mds(v):
+            """Un portefeuille se lit en millions, pas en francs."""
+            return (f"{v / 1e9:.2f} Md" if abs(v) >= 1e9
+                    else f"{v / 1e6:.1f} M" if abs(v) >= 1e6
+                    else f"{v:,.0f}".replace(",", " "))
+
+        tickers_data = load_tickers()
+        ticker_to_sector = {t["ticker"]: t["sector"] for t in tickers_data}
+        portfolio["sector"] = portfolio["ticker"].map(ticker_to_sector).fillna("Autre")
+
+        col_pie1, col_pie2 = st.columns(2)
         with col_pie1:
             st.markdown(
                 "<div class='label-xs' style='margin-bottom:6px;'>Par titre</div>",
                 unsafe_allow_html=True,
             )
-            labels = portfolio["company_name"].tolist()
-            values = portfolio["current_value"].tolist()
+            _seg = list(zip(portfolio["company_name"].tolist(),
+                            portfolio["current_value"].tolist()))
             if cash > 0:
-                labels.append("Cash")
-                values.append(cash)
-            fig = pie_chart(labels, values, "")
-            st.plotly_chart(fig, use_container_width=True)
+                _seg.append(("Cash", cash))
+            donut(_seg, _mds(total_portfolio),
+                  f"{len(portfolio)} lignes", montant_fmt=_mds)
 
         with col_pie2:
             st.markdown(
                 "<div class='label-xs' style='margin-bottom:6px;'>Par secteur</div>",
                 unsafe_allow_html=True,
             )
-            tickers_data = load_tickers()
-            ticker_to_sector = {t["ticker"]: t["sector"] for t in tickers_data}
-            portfolio["sector"] = portfolio["ticker"].map(ticker_to_sector).fillna("Autre")
             sector_alloc = portfolio.groupby("sector")["current_value"].sum()
-            sec_labels = sector_alloc.index.tolist()
-            sec_values = sector_alloc.values.tolist()
+            _seg_s = list(zip(sector_alloc.index.tolist(),
+                              sector_alloc.values.tolist()))
             if cash > 0:
-                sec_labels.append("Cash")
-                sec_values.append(cash)
-            fig = pie_chart(sec_labels, sec_values, "")
-            st.plotly_chart(fig, use_container_width=True)
+                _seg_s.append(("Cash", cash))
+            donut(_seg_s, f"{len(sector_alloc)}", "secteurs",
+                  montant_fmt=_mds)
 
 
     with onglet_reco:

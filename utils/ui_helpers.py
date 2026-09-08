@@ -360,3 +360,79 @@ def note(titre: str, texte: str, ton: str = "primary"):
         f"max-width:76ch;text-wrap:pretty;'>{texte}</div></div>",
         unsafe_allow_html=True,
     )
+
+
+# Séquence de teintes du canevas v4, pour les blocs à catégories.
+TEINTES_V4 = ["#1B3A6B", "#8A5A00", "#0E7A54", "#5A7CA8", "#A8C4EA",
+              "#6E7581", "#C0392B", "#12294B", "#AEB4BE"]
+
+
+def donut(segments, grand: str, sous_titre: str = "", montant_fmt=None):
+    """Anneau à figure centrale, avec sa légende chiffrée.
+
+    Le canevas préfère l'anneau au camembert plein, et pour une raison
+    lisible : le centre porte le total, si bien que la part et la masse se
+    lisent d'un seul regard. La légende donne le montant ET le pourcentage —
+    un camembert seul oblige à survoler chaque part pour connaître sa valeur.
+
+    `segments` : liste de (libellé, montant). Les teintes suivent la séquence
+    du canevas ; au-delà de neuf catégories, elle se répète — c'est le signe
+    qu'il faut regrouper, pas ajouter des couleurs.
+    """
+    segments = [(str(l), float(v)) for l, v in segments if v and float(v) > 0]
+    if not segments:
+        return
+    total = sum(v for _, v in segments)
+    if total <= 0:
+        return
+    if montant_fmt is None:
+        def montant_fmt(v):
+            return f"{v:,.0f}".replace(",", " ")
+
+    RAYON = 66
+    CIRCONFERENCE = 2 * 3.141592653589793 * RAYON
+    arcs, lignes, decalage = "", "", 0.0
+    for i, (libelle, valeur) in enumerate(segments):
+        part = valeur / total
+        longueur = part * CIRCONFERENCE
+        couleur = TEINTES_V4[i % len(TEINTES_V4)]
+        arcs += (
+            f"<circle cx='90' cy='90' r='{RAYON}' fill='none' "
+            f"stroke='{couleur}' stroke-width='26' "
+            f"stroke-dasharray='{longueur:.2f} {CIRCONFERENCE - longueur:.2f}' "
+            f"stroke-dashoffset='{-decalage:.2f}'></circle>"
+        )
+        decalage += longueur
+        lignes += (
+            "<div style='display:flex;align-items:center;gap:10px;"
+            "padding-bottom:7px;border-bottom:1px solid var(--border-soft);'>"
+            f"<span style='width:10px;height:10px;border-radius:3px;"
+            f"flex-shrink:0;background:{couleur};'></span>"
+            "<span style='font-size:13px;flex:1;min-width:0;"
+            "white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>"
+            f"{libelle}</span>"
+            "<span style='font-family:var(--font-mono);font-size:12px;"
+            f"color:var(--ink-3);'>{montant_fmt(valeur)}</span>"
+            "<span style='font-size:12.5px;font-weight:600;"
+            "font-variant-numeric:tabular-nums;width:52px;text-align:right;'>"
+            f"{part * 100:.1f} %</span></div>"
+        )
+    st.markdown(
+        "<div style='background:var(--bg-elev);border:1px solid var(--border);"
+        "border-radius:12px;padding:20px 22px;display:flex;align-items:center;"
+        "gap:30px;flex-wrap:wrap;'>"
+        "<div style='position:relative;width:180px;height:180px;flex:0 0 auto;'>"
+        "<svg viewBox='0 0 180 180' style='width:180px;height:180px;"
+        f"transform:rotate(-90deg);'>{arcs}</svg>"
+        "<div style='position:absolute;inset:0;display:flex;"
+        "flex-direction:column;align-items:center;justify-content:center;"
+        "gap:2px;'>"
+        "<span style='font-size:22px;font-weight:600;letter-spacing:-0.02em;"
+        f"font-variant-numeric:tabular-nums;'>{grand}</span>"
+        "<span style='font-size:10.5px;font-weight:600;color:var(--ink-3);"
+        f"letter-spacing:0.08em;text-transform:uppercase;'>{sous_titre}</span>"
+        "</div></div>"
+        "<div style='flex:1;min-width:220px;display:flex;"
+        f"flex-direction:column;gap:8px;'>{lignes}</div></div>",
+        unsafe_allow_html=True,
+    )
