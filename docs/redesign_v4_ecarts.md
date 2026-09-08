@@ -92,7 +92,7 @@ Légende : **à faire** · *en cours* · fait (vu au rendu)
 | A4 | Fondamentale | Libellés coupés (« ENDETTEMEN/T ») : 5 colonnes fixes au lieu d'une grille repliable | à faire |
 | A5 | Technique | Période et surcouches en menu et cases à cocher ; le canevas met **segmentés et pastilles** | à faire |
 | A6 | Technique | Pas de sélecteur **Périodicité** (Journalière / Mensuelle) | à faire |
-| A7 | Recommandation | Manque les cartes **Prix actuel** et **Prix cible (modèle)** | à faire |
+| A7 | Recommandation | Manque les cartes **Prix actuel** et **Prix cible (modèle)** | **fait** — vu au rendu le 08/09, dans les deux cas : cible unique (BOAS.sn, « +9.5 % vs cours ») et méthodes divergentes (SNTS.sn, fourchette). Les deux tuiles qui répétaient ces chiffres plus bas ont été retirées |
 | A8 | Recommandation | Composition du score en barre empilée ; le canevas montre des **barres pondérées 60/40** | à faire |
 | A9 | Profil | Actionnariat en carte latérale ; le canevas en fait **3 cartes de KPI** | à faire |
 | A10 | Profil | Le nom de la société est répété en titre de section | à faire |
@@ -124,9 +124,9 @@ Conforme sur les quatre onglets.
 |---|---|---|---|
 | P1 | Performance | Le tableau des positions n'a pas la **barre signée** de variation | à faire |
 | P2 | Performance | L'intro omet « frais d'achat inclus dans le coût de revient » | à faire |
-| P3 | Recommandations | Manque la carte **Concentration 3 lignes** (seuil de vigilance 50 %) | à faire |
+| P3 | Recommandations | Manque la carte **Concentration 3 lignes** (seuil de vigilance 50 %) | **fait** — vu au rendu le 08/09. La rangée passe de trois à quatre cartes et au gabarit v4 |
 | P4 | Recommandations | Diagnostic en tableau ; le canevas en fait des **cartes** à filet et pastille | à faire |
-| P5 | Risque | Manque les **4 cartes de risque** : volatilité du portefeuille, **bêta agrégé**, perte maximale simulée, rendement par unité de risque | à faire |
+| P5 | Risque | Manque les **4 cartes de risque** : volatilité du portefeuille, **bêta agrégé**, perte maximale simulée, rendement par unité de risque | **fait** — vu au rendu le 08/09. Trois des quatre mesures n'existaient pas : elles sont calculées sur la série du portefeuille reconstituée aux poids d'aujourd'hui |
 
 ### Signaux — Synthèse · Contradictions
 
@@ -161,14 +161,17 @@ que corriger les symptômes un à un.
    canevas met des boutons segmentés et des pastilles (A2, A5, A6, I1).
 4. **Colonnes fixes au lieu de grilles repliables** — `st.columns` impose N
    colonnes quelle que soit la largeur, d'où les libellés coupés (A4). Le
-   canevas emploie `repeat(auto-fit, minmax(...))` ; `kpi_grille` le fait déjà.
+   canevas emploie `repeat(auto-fit, minmax(...))`. `kpi_grille` le fait —
+   le composant était annoncé par la passation mais n'avait jamais été
+   écrit ; il l'est depuis le 08/09, et les trois rangées corrigées
+   ci-dessus passent par lui.
 5. **Blocs rendus autrement** — tableau au lieu de cartes (P4), barre empilée
    au lieu de barres pondérées (A8), barres au lieu d'axes parallèles (C1),
    champs nus au lieu de tableaux pédagogiques (S1, S2).
 
 ## Ordre de correction proposé
 
-1. Les 7 cartes de KPI manquantes (P5, P3, A7) — le plus visible.
+1. ~~Les 7 cartes de KPI manquantes (P5, P3, A7)~~ — **fait le 08/09**.
 2. Les sous-lignes des scores (A3) et la grille (A4).
 3. Les contrôles segmentés (A2, A5, A6, I1).
 4. Les tableaux pédagogiques de Screening (S1, S2).

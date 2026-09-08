@@ -280,10 +280,15 @@ def status_strip(statut: str, seance: str, maj: str = "",
     )
 
 
-def kpi_v4(label: str, value: str, sub: str = "", accent: str = "var(--ink-4)",
-           sub_color: str = "", dark: bool = False, bar_pct: float = None,
-           taille: str = "27px", couleur_valeur: str = ""):
-    """Carte de KPI au modèle du canevas v4.
+def _carte_kpi_html(label: str, value: str, sub: str = "",
+                    accent: str = "var(--ink-4)", sub_color: str = "",
+                    dark: bool = False, bar_pct: float = None,
+                    taille: str = "27px", couleur_valeur: str = "") -> str:
+    """Le HTML d'une carte de KPI au modèle du canevas v4.
+
+    Rendu séparé de l'écriture : `kpi_v4` en pose une, `kpi_grille` en pose
+    une rangée dans une grille qui se replie. Les deux doivent produire
+    exactement la même carte, d'où ce gabarit unique.
 
     `st.metric` ne sait pas teinter une carte : toutes portent le même filet
     neutre. Or le canevas donne à chacune la couleur de ce qu'elle dit — les
@@ -314,7 +319,7 @@ def kpi_v4(label: str, value: str, sub: str = "", accent: str = "var(--ink-4)",
             f"border-radius:999px;background:{barre};'></div></div>"
         )
     poids_sub = 600 if sub_color else 400
-    st.markdown(
+    return (
         f"<div style='background:{fond};border:1px solid {bord};"
         f"border-top:{filet};border-radius:12px;padding:15px 17px;"
         "display:flex;flex-direction:column;gap:5px;height:100%;'>"
@@ -329,7 +334,34 @@ def kpi_v4(label: str, value: str, sub: str = "", accent: str = "var(--ink-4)",
         f"color:{c_val};'>{value}</span>"
         f"{html_barre}"
         f"<span style='font-size:11.5px;font-weight:{poids_sub};"
-        f"line-height:1.3;color:{c_sub};'>{sub}</span></div>",
+        f"line-height:1.3;color:{c_sub};'>{sub}</span></div>"
+    )
+
+
+def kpi_v4(*args, **kwargs):
+    """Une carte de KPI, posée seule dans la colonne courante."""
+    st.markdown(_carte_kpi_html(*args, **kwargs), unsafe_allow_html=True)
+
+
+def kpi_grille(cartes, mini: str = "210px"):
+    """Une rangée de cartes de KPI dans une grille qui se replie.
+
+    `st.columns(N)` impose N colonnes quelle que soit la largeur : à quatre
+    cartes sur un écran de portable, les libellés se brisent au milieu d'un
+    mot — « ENDETTEMEN / T ». Le canevas emploie partout
+    `repeat(auto-fit, minmax(...))`, qui passe de quatre colonnes à deux puis
+    à une selon la place, sans jamais couper un libellé.
+
+    `cartes` est une liste de dictionnaires aux arguments de `kpi_v4`.
+    """
+    cartes = [c for c in cartes if c]
+    if not cartes:
+        return
+    st.markdown(
+        f"<div style='display:grid;gap:12px;margin:2px 0 6px;"
+        f"grid-template-columns:repeat(auto-fit,minmax({mini},1fr));'>"
+        + "".join(_carte_kpi_html(**c) for c in cartes)
+        + "</div>",
         unsafe_allow_html=True,
     )
 

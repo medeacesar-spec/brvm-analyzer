@@ -26,7 +26,7 @@ import statistics as st
 from typing import Optional
 
 from analysis.risque import (series_mensuelles, toutes_les_mesures,
-                             TAUX_SANS_RISQUE)
+                             _serie_marche, MINIMUM_MOIS, TAUX_SANS_RISQUE)
 from data.db import get_connection
 from data.storage import _maybe_cache_data
 
@@ -41,6 +41,103 @@ def _covariance(serie_a: list, serie_b: list) -> float:
     n = len(serie_a)
     ma, mb = st.mean(serie_a), st.mean(serie_b)
     return sum((x - ma) * (y - mb) for x, y in zip(serie_a, serie_b)) / (n - 1)
+
+
+# En deça de ce coefficient de correlation, le beta est juste mais sa portee
+# est nulle : le portefeuille ne suit pas assez le marche pour qu'une
+# sensibilite au marche veuille dire quelque chose. Meme seuil que pour un
+# titre seul — sur cette place, dix-huit titres sur quarante-cinq sont sous
+# cette barre.
+CORRELATION_SIGNIFIANTE = 0.30
+
+
+def _mois_alignes(series: dict, suivis: list, n: int) -> Optional[list]:
+    """Les n derniers mois, s'ils sont les MEMES pour toutes les lignes.
+
+    La covariance se calcule en tronquant les series a la meme longueur, ce
+    qui suppose qu'elles finissent au meme mois. C'est le cas courant, mais
+    ce n'est pas garanti : un titre suspendu s'arrete plus tot. Quand la
+    grille differe d'une ligne a l'autre, on ne date rien plutot que de dater
+    faux — une perte maximale attribuee au mauvais mois serait pire que pas
+    de mois du tout.
+    """
+    grilles = {tuple((p[0].year, p[0].month) for p in series[t][1][1:][-n:])
+               for t in suivis}
+    return list(next(iter(grilles))) if len(grilles) == 1 else None
+
+
+def _mesures_trajectoire(rendements: list, mois: Optional[list],
+                         marche: dict) -> dict:
+    """Ce que le portefeuille aurait vecu, aux poids d'aujourd'hui.
+
+    Trois mesures ne se lisent que sur la serie de l'ENSEMBLE : la pire chute
+    qu'il aurait subie, sa sensibilite au marche, et ce qu'il rapporte par
+    unite de risque. Aucune ligne prise a part ne les porte, et la moyenne des
+    lignes ne les donne pas — c'est tout l'objet de la diversification.
+
+    Reconstitution aux poids d'AUJOURD'HUI : ce n'est pas l'historique du
+    compte, qui a connu d'autres poids et d'autres lignes, mais ce que le
+    portefeuille tel qu'il est aurait traverse. D'ou « simulee ».
+    """
+    mensuel_sans_risque = (1 + TAUX_SANS_RISQUE) ** (1 / 12) - 1
+    exces = [r - mensuel_sans_risque for r in rendements]
+
+    # Perte maximale : la plus forte chute d'un sommet a un creux, et le temps
+    # qu'il a fallu pour retrouver ce sommet. « Combien j'ai perdu » et
+    # « combien de temps » sont deux questions.
+    trajectoire, valeur = [], 1.0
+    for r in rendements:
+        valeur *= (1 + r)
+        trajectoire.append(valeur)
+    sommet, pire, creux_a = trajectoire[0], 0.0, 0
+    sommet_de_la_pire = trajectoire[0]
+    for i, v in enumerate(trajectoire):
+        if v > sommet:
+            sommet = v
+        chute = v / sommet - 1
+        if chute < pire:
+            pire, creux_a, sommet_de_la_pire = chute, i, sommet
+    recuperation = None
+    for i in range(creux_a + 1, len(trajectoire)):
+        if trajectoire[i] >= sommet_de_la_pire:
+            recuperation = i - creux_a
+            break
+
+    # BETA AGREGE. Mesure par regression de la serie du portefeuille sur le
+    # Composite, et non par moyenne des betas des lignes : la moyenne suppose
+    # que chaque ligne a ete mesuree sur la meme fenetre que les autres, ce
+    # qui est faux — chaque titre a l'historique qu'il a.
+    beta = correlation = None
+    observations_beta = 0
+    if mois and marche:
+        paires = [(r, marche[m]) for r, m in zip(rendements, mois)
+                  if m in marche]
+        if len(paires) >= MINIMUM_MOIS:
+            observations_beta = len(paires)
+            portefeuille = [a for a, _ in paires]
+            indice = [b for _, b in paires]
+            var_m = st.pvariance(indice)
+            if var_m:
+                moy_p, moy_i = st.mean(portefeuille), st.mean(indice)
+                cov = sum((a - moy_p) * (b - moy_i)
+                          for a, b in paires) / len(paires)
+                beta = cov / var_m
+                ec_p, ec_i = st.pstdev(portefeuille), st.pstdev(indice)
+                if ec_p and ec_i:
+                    correlation = cov / (ec_p * ec_i)
+
+    ecart = st.stdev(exces) if len(exces) > 1 else 0
+    return {
+        "perte_maximale": pire,
+        "mois_recuperation": recuperation,
+        "creux": mois[creux_a] if mois else None,
+        "sharpe": (st.mean(exces) / ecart * math.sqrt(12)) if ecart else None,
+        "beta": beta,
+        "correlation_marche": correlation,
+        "observations_beta": observations_beta,
+        "beta_significatif": (correlation is not None
+                              and abs(correlation) >= CORRELATION_SIGNIFIANTE),
+    }
 
 
 @_maybe_cache_data(ttl=300)
@@ -113,9 +210,25 @@ def mesures_portefeuille(positions: tuple) -> Optional[dict]:
             "sharpe": (mesures_titres.get(t) or {}).get("sharpe"),
         })
 
+    # La serie du portefeuille lui-meme, mois par mois : la somme ponderee des
+    # rendements des lignes. Sa variance est exactement celle calculee plus
+    # haut par la matrice de covariance — c'est la meme grandeur ecrite
+    # autrement, et la page n'affichera donc jamais deux volatilites qui se
+    # contredisent.
+    composite = [sum(part[t] * rendements[t][i] for t in suivis)
+                 for i in range(n)]
+    sharpes = [m.get("sharpe") for m in mesures_titres.values()
+               if m.get("sharpe") is not None]
+
     herfindahl = sum(p ** 2 for p in poids.values())
     return {
         "total": total,
+        "trajectoire": {
+            **_mesures_trajectoire(composite,
+                                   _mois_alignes(series, suivis, n),
+                                   _serie_marche(series)),
+            "sharpe_median_cote": st.median(sharpes) if sharpes else None,
+        },
         "volatilite": volatilite,
         "volatilite_sans_diversification": moyenne_ponderee,
         "gain_diversification": (1 - volatilite / moyenne_ponderee

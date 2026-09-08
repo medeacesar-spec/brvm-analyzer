@@ -213,8 +213,13 @@ def _render_dev_login(container, key_prefix: str):
             "Identité de test, posée dans cette session uniquement. Aucun "
             "compte n'est créé, aucun mot de passe n'est vérifié."
         )
-        courriel = st.text_input("Adresse", value="dev@local",
-                                 key=f"dev_email_{key_prefix}")
+        # L'adresse par defaut est pilotable par l'environnement : les pages
+        # sous connexion sont scopees par courriel, et verifier le rendu du
+        # portefeuille REEL demandait de retaper l'adresse a chaque session.
+        # `BRVM_DEV_EMAIL=...` a cote de `BRVM_DEV_LOGIN=1` suffit desormais.
+        courriel = st.text_input(
+            "Adresse", value=os.environ.get("BRVM_DEV_EMAIL", "dev@local"),
+            key=f"dev_email_{key_prefix}")
         admin = st.checkbox("Droits administrateur", value=True,
                             key=f"dev_admin_{key_prefix}")
         if st.button("Ouvrir la session de test",

@@ -965,7 +965,8 @@ def _render_risque_ensemble(portfolio):
     Aucune mesure titre par titre ne peut le dire : cela ne se voit que dans
     l'ensemble.
     """
-    from utils.ui_helpers import section_heading
+    from utils.ui_helpers import section_heading, kpi_grille
+    from analysis.risque import formater
     try:
         from analysis.portefeuille_risque import (mesures_portefeuille,
                                                   lecture_portefeuille)
@@ -992,6 +993,8 @@ def _render_risque_ensemble(portfolio):
                 f"color:var(--ink-2);margin-bottom:6px;'>· "
                 f"{_gras_html(ph)}</div>" for ph in phrases)
             + "</div>", unsafe_allow_html=True)
+
+    _cartes_risque_ensemble(p, formater, kpi_grille)
 
     entete = ("font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;"
               "color:var(--ink-3);font-weight:500;padding:9px 10px;"
@@ -1032,10 +1035,86 @@ def _render_risque_ensemble(portfolio):
         f"</div>", unsafe_allow_html=True)
     st.caption(
         f"Volatilité mesurée sur **{p['observations']} mois**, dividendes "
-        f"compris. La **part du risque** tient compte des liens entre les "
+        f"compris. Les quatre cartes reconstituent le portefeuille **aux "
+        f"poids d'aujourd'hui** sur ces mêmes mois : ce n'est pas "
+        f"l'historique du compte, qui a connu d'autres lignes, mais ce que "
+        f"le portefeuille tel qu'il est aurait traversé. "
+        f"La **part du risque** tient compte des liens entre les "
         f"lignes : elle diffère du poids, et c'est tout l'intérêt. La colonne "
         f"**Sortie** estime le temps de vente au rythme d'échange habituel du "
         f"titre.")
+
+
+MOIS_COURTS = ("janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.",
+               "août", "sept.", "oct.", "nov.", "déc.")
+
+
+def _cartes_risque_ensemble(p, formater, kpi_grille):
+    """Les quatre mesures que porte l'ensemble, et qu'aucune ligne ne donne.
+
+    Le canevas ouvre l'onglet par cette rangee : la volatilite reellement
+    subie face a celle qu'on aurait en additionnant les lignes, la
+    sensibilite au marche, la pire chute, et ce que tout cela rapporte. Une
+    carte dont la donnee manque n'est pas posee — une case vide vaut mieux
+    qu'un chiffre fabrique.
+    """
+    t = p.get("trajectoire") or {}
+    cartes = []
+
+    vol = p.get("volatilite")
+    if vol is not None:
+        somme = p.get("volatilite_sans_diversification")
+        gain = p.get("gain_diversification")
+        cartes.append(dict(
+            label="Volatilité du portefeuille",
+            value=formater("volatilite", vol),
+            sub=(f"somme des lignes : {formater('volatilite', somme)}"
+                 if somme else "une seule ligne mesurable"),
+            accent="var(--up)" if (gain or 0) > 0 else "var(--ink-4)"))
+
+    beta = t.get("beta")
+    if beta is not None:
+        # Un beta dont la correlation est faible est juste et ne veut rien
+        # dire : le portefeuille ne suit pas assez le marche pour qu'une
+        # sensibilite au marche ait un sens. On le dit plutot que de le taire.
+        if not t.get("beta_significatif"):
+            sous = (f"lien au marché trop faible "
+                    f"(r = {t['correlation_marche']:.2f})"
+                    if t.get("correlation_marche") is not None else
+                    "lien au marché non mesurable")
+        else:
+            sous = ("plus calme que la cote" if beta < 0.90 else
+                    "plus nerveux que la cote" if beta > 1.10 else
+                    "au rythme de la cote")
+        cartes.append(dict(label="Bêta agrégé", value=f"{beta:.2f}",
+                           sub=sous, accent="var(--ink-4)"))
+
+    pire = t.get("perte_maximale")
+    if pire:
+        creux = t.get("creux")
+        quand = (f"{MOIS_COURTS[creux[1] - 1]} {creux[0]}, " if creux else "")
+        recup = t.get("mois_recuperation")
+        cartes.append(dict(
+            label="Perte maximale simulée",
+            value=formater("perte_maximale", pire),
+            sub=(quand + (f"effacée en {recup} mois" if recup
+                          else "pas encore effacée")),
+            accent="var(--ink-4)", couleur_valeur="var(--down)"))
+
+    sharpe = t.get("sharpe")
+    if sharpe is not None:
+        mediane = t.get("sharpe_median_cote")
+        cartes.append(dict(
+            label="Rendement par unité de risque",
+            value=formater("sharpe", sharpe),
+            sub=(f"médiane de la cote : {formater('sharpe', mediane)}"
+                 if mediane is not None
+                 else "rendement en excès du sans-risque"),
+            accent=("var(--up)" if mediane is not None and sharpe > mediane
+                    else "var(--ink-4)"),
+            taille="22px"))
+
+    kpi_grille(cartes)
 
 
 def _gras_html(texte):
@@ -1045,9 +1124,14 @@ def _gras_html(texte):
 
 
 
+# Au-dela, les trois premieres lignes font le resultat a elles seules : c'est
+# le seuil que le canevas porte sous la carte.
+SEUIL_CONCENTRATION_TROIS = 50.0
+
+
 def _render_portfolio_analysis(portfolio, cash, total_value, total_portfolio, ticker_to_sector):
     """Analyse l'équilibre du portefeuille et identifie les points d'attention."""
-    from utils.ui_helpers import section_heading, kpi_card
+    from utils.ui_helpers import section_heading, kpi_grille
     section_heading("Analyse d'équilibre", spacing="loose")
 
     if total_portfolio <= 0:
@@ -1078,18 +1162,33 @@ def _render_portfolio_analysis(portfolio, cash, total_value, total_portfolio, ti
     sect_tone = "down" if nb_sectors == 1 else ("ocre" if top_sector_pct > 70 else "up")
     titr_tone = "down" if top_ticker_pct > 50 else ("ocre" if top_ticker_pct > 35 else "up")
 
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        kpi_card("Ratio Cash", f"{cash_pct:.1f}", unit="%",
-                 sub="Part liquidités / total", tone=cash_tone)
-    with col2:
-        kpi_card("Secteurs", str(nb_sectors),
-                 sub=(f"Top · {top_sector} {top_sector_pct:.0f}%" if top_sector else "—"),
-                 tone=sect_tone)
-    with col3:
-        kpi_card("Titres", str(nb_titres),
-                 sub=(f"Top · {top_ticker} {top_ticker_pct:.0f}%" if top_ticker else "—"),
-                 tone=titr_tone)
+    # CONCENTRATION DES TROIS PREMIERES LIGNES. Le nombre de titres ne dit rien
+    # de l'equilibre : sept lignes dont trois pesent 70 % est un portefeuille
+    # de trois titres avec quatre figurants. Au-dela de la moitie, le resultat
+    # d'ensemble depend de trois paris.
+    top3_pct = title_pcts.head(3).sum() if not title_pcts.empty else 0
+    conc_tone = "down" if top3_pct > SEUIL_CONCENTRATION_TROIS else "up"
+    conc_sub = (f"seuil de vigilance {SEUIL_CONCENTRATION_TROIS:.0f} %"
+                if nb_titres >= 3 else
+                f"{nb_titres} ligne{'s' if nb_titres > 1 else ''} en tout")
+
+    _accent = {"up": "var(--up)", "down": "var(--down)",
+               "ocre": "var(--ocre)"}
+    kpi_grille([
+        dict(label="Ratio Cash", value=f"{cash_pct:.1f} %",
+             sub="Part liquidités / total",
+             accent=_accent.get(cash_tone, "var(--ink-4)")),
+        dict(label="Secteurs", value=str(nb_sectors),
+             sub=(f"Top · {top_sector} {top_sector_pct:.0f} %"
+                  if top_sector else "—"),
+             accent=_accent.get(sect_tone, "var(--ink-4)")),
+        dict(label="Titres", value=str(nb_titres),
+             sub=(f"Top · {top_ticker} {top_ticker_pct:.0f} %"
+                  if top_ticker else "—"),
+             accent=_accent.get(titr_tone, "var(--ink-4)")),
+        dict(label="Concentration 3 lignes", value=f"{top3_pct:.1f} %",
+             sub=conc_sub, accent=_accent[conc_tone]),
+    ])
 
     # ─── Construction des diagnostics (status: ok | warn | risk) ───
     if cash_pct > 50:
