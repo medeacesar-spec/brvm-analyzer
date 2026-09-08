@@ -380,7 +380,9 @@ def render():
 
         c1, c2, c3, c4 = st.columns(4)
         with c1:
-            st.markdown(_kpi_card("Valeur totale", f"{total_portfolio:,.0f}", CURRENCY),
+            st.markdown(_kpi_card("Valeur totale",
+                                  f"{total_portfolio:,.0f}".replace(",", " "),
+                                  CURRENCY),
                          unsafe_allow_html=True)
         with c2:
             ret_sign = "−" if total_return < 0 else "+"
@@ -848,13 +850,19 @@ def render():
             _mois = sorted({m for d in _par_titre.values() for m in d})[-_FENETRE:]
             _lignes_pf = []
             if _mois:
+                # Une ligne par TITRE, pas par lot : un portefeuille qui
+                # détient trois fois Ecobank à des prix différents n'a qu'une
+                # seule série de cours. Trois lignes identiques n'apprenaient
+                # rien et faisaient croire à trois sociétés.
+                _vus = set()
                 for _, _pos in portfolio.iterrows():
                     _t = _pos.get("ticker")
-                    if _t not in _par_titre:
+                    if _t not in _par_titre or _t in _vus:
                         continue
                     _vals = [_par_titre[_t].get(m) for m in _mois]
                     if all(v is None for v in _vals):
                         continue
+                    _vus.add(_t)
                     _lignes_pf.append((
                         _pos.get("company_name") or _t,
                         [None if v is None else v * 100 for v in _vals],
@@ -897,12 +905,15 @@ def render():
                 "<div class='label-xs' style='margin-bottom:6px;'>Par titre</div>",
                 unsafe_allow_html=True,
             )
-            _seg = list(zip(portfolio["company_name"].tolist(),
-                            portfolio["current_value"].tolist()))
+            # « Par titre » veut dire par titre : les lots d'une même société
+            # se cumulent, sinon Ecobank apparaissait en trois parts distinctes.
+            _par_soc = (portfolio.groupby("company_name")["current_value"]
+                        .sum().sort_values(ascending=False))
+            _seg = list(zip(_par_soc.index.tolist(), _par_soc.values.tolist()))
             if cash > 0:
                 _seg.append(("Cash", cash))
             donut(_seg, _mds(total_portfolio),
-                  f"{len(portfolio)} lignes", montant_fmt=_mds)
+                  f"{len(_par_soc)} titres", montant_fmt=_mds)
 
         with col_pie2:
             st.markdown(
@@ -1422,7 +1433,7 @@ def _render_position_recommendations(portfolio, total_value, cash,
     if volet != "nouveaux" and sells:
         _poids = sum(x.get("weight", 0) or 0 for x in sells[:5])
         _etapes.append({
-            "accent": "var(--down)", "tag": "D'ABORD", "rang_libelle": "libérer",
+            "accent": "var(--down)", "rang_libelle": "libérer", "genre": "vente",
             "action": "Sortir ou alléger les lignes passées à la vente",
             "lignes": [(x["ticker"], x.get("name", ""), "") for x in sells[:5]],
             "motif": "Le verdict est passé au négatif sur ces lignes. Une "
@@ -1436,7 +1447,7 @@ def _render_position_recommendations(portfolio, total_value, cash,
     if volet != "nouveaux" and reinforce:
         _poids_r = sum(x.get("weight", 0) or 0 for x in reinforce[:5])
         _etapes.append({
-            "accent": "var(--up)", "tag": "ENSUITE", "rang_libelle": "réemployer",
+            "accent": "var(--up)", "rang_libelle": "réemployer", "genre": "renfort",
             "action": "Renforcer ce qui est déjà détenu et bien noté",
             "lignes": [(x["ticker"], x.get("name", ""), "") for x in reinforce[:5]],
             "motif": "Renforcer coûte moins de frais qu'ouvrir une ligne, et "
@@ -1448,7 +1459,7 @@ def _render_position_recommendations(portfolio, total_value, cash,
         })
     if volet != "detenus" and new_buys:
         _etapes.append({
-            "accent": "var(--primary)", "tag": "ENFIN", "rang_libelle": "élargir",
+            "accent": "var(--primary)", "rang_libelle": "élargir", "genre": "achat",
             "action": "Ouvrir de nouvelles lignes",
             "lignes": [(x["ticker"], x.get("name", ""), "") for x in new_buys[:5]],
             "motif": "Une ligne de plus est une société de plus à suivre. "
@@ -1456,7 +1467,13 @@ def _render_position_recommendations(portfolio, total_value, cash,
                      "profil que le portefeuille n'a pas.",
         })
     if _etapes:
-        _urgentes = sum(1 for e in _etapes if e["tag"] == "D'ABORD")
+        # L'étiquette suit le RANG réel, pas le genre de l'action : quand il
+        # n'y a rien à vendre, la première étape ne doit pas s'annoncer
+        # « ensuite ».
+        _rangs = ["D'ABORD", "ENSUITE", "ENFIN"]
+        for _i, _e in enumerate(_etapes):
+            _e["tag"] = _rangs[_i] if _i < len(_rangs) else "PUIS"
+        _urgentes = sum(1 for e in _etapes if e.get("genre") == "vente")
         plan_etapes(
             "Ce qu'il faut faire, dans cet ordre", _etapes,
             f"{len(_etapes)} ÉTAPE{'S' if len(_etapes) > 1 else ''}"

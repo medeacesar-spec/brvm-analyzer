@@ -17,6 +17,8 @@ Le module expose :
     - `get_user_email()` / `get_user_name()` / `is_logged_in()`
 """
 
+import os
+
 import streamlit as st
 
 
@@ -178,6 +180,49 @@ def _render_login_buttons(container=st.sidebar, key_prefix: str = "sidebar"):
             "OAuth Google non configuré. Mode local actif — toutes "
             "les fonctions admin sont disponibles sans login."
         )
+
+    _render_dev_login(container, key_prefix)
+
+
+def dev_login_autorise() -> bool:
+    """Le raccourci développeur n'existe que si on l'a explicitement demandé.
+
+    `dev_user_email` et `dev_is_admin` sont LUS partout dans ce module depuis
+    l'origine, et n'ont jamais eu d'interface pour les écrire : impossible de
+    voir les pages réservées à l'administrateur sans un vrai compte Google,
+    donc impossible de les vérifier en développement.
+
+    Ce raccourci comble le manque, et il est fermé par défaut. Il n'apparaît
+    que si la variable d'environnement `BRVM_DEV_LOGIN` vaut « 1 ». Streamlit
+    Cloud ne la définit pas ; il faudrait l'ajouter délibérément aux réglages
+    du déploiement pour l'ouvrir en ligne — ce qu'il ne faut pas faire.
+
+    Il ne crée aucun compte et ne vérifie aucun mot de passe : il pose une
+    identité de test dans la session en cours, et rien d'autre. Fermer
+    l'onglet l'efface.
+    """
+    return os.environ.get("BRVM_DEV_LOGIN") == "1"
+
+
+def _render_dev_login(container, key_prefix: str):
+    """Formulaire d'identité de test — visible seulement en mode développeur."""
+    if not dev_login_autorise() or is_logged_in():
+        return
+    with container.expander("Accès développeur", expanded=False):
+        st.caption(
+            "Identité de test, posée dans cette session uniquement. Aucun "
+            "compte n'est créé, aucun mot de passe n'est vérifié."
+        )
+        courriel = st.text_input("Adresse", value="dev@local",
+                                 key=f"dev_email_{key_prefix}")
+        admin = st.checkbox("Droits administrateur", value=True,
+                            key=f"dev_admin_{key_prefix}")
+        if st.button("Ouvrir la session de test",
+                     key=f"dev_login_{key_prefix}",
+                     use_container_width=True):
+            st.session_state["dev_user_email"] = courriel or "dev@local"
+            st.session_state["dev_is_admin"] = bool(admin)
+            st.rerun()
 
 
 def render_auth_widget():
