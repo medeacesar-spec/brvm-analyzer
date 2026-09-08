@@ -142,14 +142,24 @@ def render():
         # est plus lisible que le radar pour des valeurs chiffrées.
 
         import plotly.graph_objects as go
+        def _borne(v):
+            """Un score sur cent ne descend pas sous zéro.
+
+            Sans borne basse, un ROE négatif sortait à −154 : absurde sur une
+            échelle 0-100, et franchement trompeur dans la carte de chaleur,
+            dont l'intensité suit la valeur ABSOLUE — la pire société y
+            paraissait la plus forte.
+            """
+            return max(0.0, min(100.0, float(v)))
+
         bar_metrics = [
-            ("ROE", lambda r: min((r.get("roe") or 0) / 0.30 * 100, 100)),
-            ("Marge", lambda r: min((r.get("net_margin") or 0) / 0.25 * 100, 100)),
-            ("Yield", lambda r: min((r.get("dividend_yield") or 0) / 0.10 * 100, 100)),
-            ("Valorisation", lambda r: max(0, min(100, (20 - (r.get("per") or 0)) / 20 * 100))
-                              if (r.get("per") or 0) > 0 else 0),
-            ("Croissance", lambda r: min(max(((r.get("revenue_growth") or 0)) / 0.15 * 100, 0), 100)),
-            ("Score global", lambda r: (r.get("fundamental_score") or 0) / 50 * 100),
+            ("ROE", lambda r: _borne((r.get("roe") or 0) / 0.30 * 100)),
+            ("Marge", lambda r: _borne((r.get("net_margin") or 0) / 0.25 * 100)),
+            ("Yield", lambda r: _borne((r.get("dividend_yield") or 0) / 0.10 * 100)),
+            ("Valorisation", lambda r: _borne((20 - (r.get("per") or 0)) / 20 * 100)
+                              if (r.get("per") or 0) > 0 else 0.0),
+            ("Croissance", lambda r: _borne((r.get("revenue_growth") or 0) / 0.15 * 100)),
+            ("Score global", lambda r: _borne((r.get("fundamental_score") or 0) / 50 * 100)),
         ]
         # Palette monochrome (design v3) — deep green + accent ocre + neutre
         mono_palette = [
@@ -210,7 +220,9 @@ def render():
             formatter=lambda v: f"{v:.0f}",
             footer="Lecture en ligne : qui gagne sur ce critère. En colonne : "
                    "le profil d'ensemble d'un titre. Les scores sont bornés à "
-                   "100 — au-delà du seuil de chaque critère, la case sature.",
+                   "[0, 100] : au-delà du seuil du critère la case sature, et "
+                   "une valeur négative (ROE ou marge en perte) vaut zéro — "
+                   "elle ne se compare pas sur une échelle de mérite.",
         )
 
 
