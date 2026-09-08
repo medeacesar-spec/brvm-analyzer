@@ -356,17 +356,26 @@ def render():
         MARKET_YIELD_REF = 4.1
 
         def _kpi_card(label, value, sub, tone="neutral"):
+            """Carte au gabarit du canevas v4."""
             arrow = {"up": "▲", "down": "▼"}.get(tone, "")
-            sub_color = {"up": "var(--up)", "down": "var(--down)"}.get(tone, "var(--ink-3)")
+            accent = {"up": "var(--up)", "down": "var(--down)",
+                      "warn": "var(--warn)"}.get(tone, "var(--ink-4)")
+            teinte = {"up": "var(--up)", "down": "var(--down)",
+                      "warn": "var(--warn)"}.get(tone, "var(--ink-3)")
+            poids = 600 if tone in ("up", "down", "warn") else 400
             return (
                 f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
-                f"border-radius:12px;padding:14px 16px;min-height:92px;'>"
-                f"<div class='label-xs' style='margin-bottom:6px;'>{label}</div>"
-                f"<div style='font-size:22px;font-weight:600;letter-spacing:-0.02em;"
-                f"color:var(--ink);font-variant-numeric:tabular-nums;line-height:1.15;'>{value}</div>"
-                f"<div style='font-size:11.5px;color:{sub_color};margin-top:6px;font-weight:500;'>"
-                f"{arrow + ' ' if arrow else '— '}{sub}</div>"
-                f"</div>"
+                f"border-top:2px solid {accent};border-radius:12px;padding:15px 17px;"
+                f"display:flex;flex-direction:column;gap:5px;height:100%;'>"
+                f"<span style='font-size:10.5px;font-weight:600;letter-spacing:0.09em;"
+                f"text-transform:uppercase;color:var(--ink-3);'>{label}</span>"
+                f"<span style='font-variant-numeric:tabular-nums;font-size:27px;"
+                f"font-weight:600;letter-spacing:-0.015em;line-height:1.05;"
+                f"color:var(--ink);'>{value}</span>"
+                + (f"<span style='font-size:11.5px;font-weight:{poids};"
+                   f"color:{teinte};'>{arrow + ' ' if arrow else ''}{sub}</span>"
+                   if sub else "")
+                + "</div>"
             )
 
         c1, c2, c3, c4 = st.columns(4)
@@ -804,39 +813,48 @@ def render():
                         delete_account_fee(int(fee["id"]))
                         st.rerun()
 
-        # Allocation
+        # ── Allocation : anneaux à figure centrale (canevas v4) ──
+        # Le camembert obligeait à survoler chaque part pour en connaître la
+        # valeur. L'anneau porte le total en son centre et la légende donne le
+        # montant ET le pourcentage : la part et la masse se lisent ensemble.
+        from utils.ui_helpers import donut
         section_heading("Allocation", spacing="loose")
-        col_pie1, col_pie2 = st.columns(2)
 
+        def _mds(v):
+            """Un portefeuille se lit en millions, pas en francs."""
+            return (f"{v / 1e9:.2f} Md" if abs(v) >= 1e9
+                    else f"{v / 1e6:.1f} M" if abs(v) >= 1e6
+                    else f"{v:,.0f}".replace(",", " "))
+
+        tickers_data = load_tickers()
+        ticker_to_sector = {t["ticker"]: t["sector"] for t in tickers_data}
+        portfolio["sector"] = portfolio["ticker"].map(ticker_to_sector).fillna("Autre")
+
+        col_pie1, col_pie2 = st.columns(2)
         with col_pie1:
             st.markdown(
                 "<div class='label-xs' style='margin-bottom:6px;'>Par titre</div>",
                 unsafe_allow_html=True,
             )
-            labels = portfolio["company_name"].tolist()
-            values = portfolio["current_value"].tolist()
+            _seg = list(zip(portfolio["company_name"].tolist(),
+                            portfolio["current_value"].tolist()))
             if cash > 0:
-                labels.append("Cash")
-                values.append(cash)
-            fig = pie_chart(labels, values, "")
-            st.plotly_chart(fig, use_container_width=True)
+                _seg.append(("Cash", cash))
+            donut(_seg, _mds(total_portfolio),
+                  f"{len(portfolio)} lignes", montant_fmt=_mds)
 
         with col_pie2:
             st.markdown(
                 "<div class='label-xs' style='margin-bottom:6px;'>Par secteur</div>",
                 unsafe_allow_html=True,
             )
-            tickers_data = load_tickers()
-            ticker_to_sector = {t["ticker"]: t["sector"] for t in tickers_data}
-            portfolio["sector"] = portfolio["ticker"].map(ticker_to_sector).fillna("Autre")
             sector_alloc = portfolio.groupby("sector")["current_value"].sum()
-            sec_labels = sector_alloc.index.tolist()
-            sec_values = sector_alloc.values.tolist()
+            _seg_s = list(zip(sector_alloc.index.tolist(),
+                              sector_alloc.values.tolist()))
             if cash > 0:
-                sec_labels.append("Cash")
-                sec_values.append(cash)
-            fig = pie_chart(sec_labels, sec_values, "")
-            st.plotly_chart(fig, use_container_width=True)
+                _seg_s.append(("Cash", cash))
+            donut(_seg_s, f"{len(sector_alloc)}", "secteurs",
+                  montant_fmt=_mds)
 
 
     with onglet_reco:

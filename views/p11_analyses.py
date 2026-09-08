@@ -66,21 +66,35 @@ def _render_cohort():
         st.caption(f"Aucun ticker actuellement en {verdict}.")
         return
 
-    # KPI row
+    # Rangée de KPI au gabarit du canevas : la couleur suit le signe de la
+    # performance, ce qui se lit avant le chiffre.
+    from utils.ui_helpers import kpi_v4
+    _a_perf = df["perf_pct"].notna().any()
+    _moy = df["perf_pct"].mean() if _a_perf else None
+    _med = df["perf_pct"].median() if _a_perf else None
+
+    def _ton(v):
+        if v is None:
+            return "var(--ink-4)", ""
+        return (("var(--up)", "var(--up)") if v >= 0
+                else ("var(--down)", "var(--down)"))
+
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Tickers en cohorte", f"{len(df)}")
-    col2.metric(
-        "Perf moyenne",
-        f"{df['perf_pct'].mean():+.1f} %" if df["perf_pct"].notna().any() else "—",
-    )
-    col3.metric(
-        "Perf médiane",
-        f"{df['perf_pct'].median():+.1f} %" if df["perf_pct"].notna().any() else "—",
-    )
-    col4.metric(
-        "Durée moyenne",
-        f"{df['days_in'].mean():.0f} j" if not df.empty else "—",
-    )
+    with col1:
+        kpi_v4("Tickers en cohorte", f"{len(df)}", f"verdict {verdict.lower()}",
+               accent="var(--primary)")
+    with col2:
+        _a, _t = _ton(_moy)
+        kpi_v4("Perf moyenne", f"{_moy:+.1f} %" if _moy is not None else "—",
+               "depuis l'entrée", accent=_a, sub_color=_t)
+    with col3:
+        _a, _t = _ton(_med)
+        kpi_v4("Perf médiane", f"{_med:+.1f} %" if _med is not None else "—",
+               "moins sensible aux extrêmes", accent=_a, sub_color=_t)
+    with col4:
+        kpi_v4("Durée moyenne",
+               f"{df['days_in'].mean():.0f} j" if not df.empty else "—",
+               "dans la cohorte", accent="var(--ink-4)")
 
     # Tableau
     display = df.copy()
@@ -134,15 +148,24 @@ def _render_trajectories():
     n_active = len(df[df["status"] == "en_cours"])
     n_closed = len(df[df["status"] == "terminee"])
     closed_perf = df[df["status"] == "terminee"]["gain_total_pct"]
+    from utils.ui_helpers import kpi_v4
+    _gain = (closed_perf.mean() if not closed_perf.empty
+             and closed_perf.notna().any() else None)
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Trajectoires", f"{len(df)}")
-    col2.metric("En cours", f"{n_active}")
-    col3.metric("Terminées", f"{n_closed}")
-    col4.metric(
-        "Gain moyen (terminées)",
-        f"{closed_perf.mean():+.1f} %" if not closed_perf.empty
-        and closed_perf.notna().any() else "—",
-    )
+    with col1:
+        kpi_v4("Trajectoires", f"{len(df)}", "suivies", accent="var(--primary)")
+    with col2:
+        kpi_v4("En cours", f"{n_active}", "position ouverte",
+               accent="var(--ink-4)")
+    with col3:
+        kpi_v4("Terminées", f"{n_closed}", "position soldée",
+               accent="var(--ink-4)")
+    with col4:
+        _a = ("var(--up)" if _gain is not None and _gain >= 0
+              else "var(--down)" if _gain is not None else "var(--ink-4)")
+        kpi_v4("Gain moyen", f"{_gain:+.1f} %" if _gain is not None else "—",
+               "sur les terminées",
+               accent=_a, sub_color=_a if _gain is not None else "")
 
     # Tableau
     display = df.copy()
@@ -202,19 +225,31 @@ def _render_backtest():
 
     result = compute_verdict_performance(verdict=verdict, horizon_days=horizon)
 
+    from utils.ui_helpers import kpi_v4
+    _moy_bt = result["mean_pct"]
+    _hit = result["hit_rate_pct"]
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Entrées détectées", f"{result['n_entries']}")
-    col2.metric("Évaluées", f"{result['n_evaluated']}",
-                help=f"Entrées avec horizon {horizon}j complet")
-    col3.metric(
-        "Perf moyenne",
-        f"{result['mean_pct']:+.1f} %" if result["mean_pct"] is not None else "—",
-    )
-    col4.metric(
-        "Hit rate",
-        f"{result['hit_rate_pct']:.0f} %" if result["hit_rate_pct"] is not None else "—",
-        help="% d'entrées avec gain > 0 à l'horizon",
-    )
+    with col1:
+        kpi_v4("Entrées détectées", f"{result['n_entries']}",
+               "signaux du verdict", accent="var(--primary)")
+    with col2:
+        kpi_v4("Évaluées", f"{result['n_evaluated']}",
+               f"horizon {horizon} j complet", accent="var(--ink-4)")
+    with col3:
+        _a = ("var(--up)" if _moy_bt is not None and _moy_bt >= 0
+              else "var(--down)" if _moy_bt is not None else "var(--ink-4)")
+        kpi_v4("Perf moyenne",
+               f"{_moy_bt:+.1f} %" if _moy_bt is not None else "—",
+               f"à {horizon} jours", accent=_a,
+               sub_color=_a if _moy_bt is not None else "")
+    with col4:
+        # 50 % est le partage : au-dessus, le verdict fait mieux que pile ou
+        # face ; en dessous, il fait moins bien.
+        _a = ("var(--up)" if _hit is not None and _hit >= 50
+              else "var(--down)" if _hit is not None else "var(--ink-4)")
+        kpi_v4("Hit rate", f"{_hit:.0f} %" if _hit is not None else "—",
+               "entrées gagnantes", accent=_a,
+               sub_color=_a if _hit is not None else "")
 
     if result["mean_pct"] is not None:
         st.caption(

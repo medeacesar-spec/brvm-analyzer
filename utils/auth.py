@@ -66,7 +66,7 @@ def require_admin(feature_name: str = "cette fonctionnalité") -> bool:
     if is_admin():
         return True
     st.warning(
-        f"🔒 **Accès administrateur requis** pour {feature_name}. "
+        f"**Accès administrateur requis** pour {feature_name}. "
         "Cette action est réservée au compte admin de l'application."
     )
     return False
@@ -145,7 +145,7 @@ def require_login(feature_name: str = "cette fonctionnalité") -> bool:
         return True
 
     st.markdown(
-        f'<div class="main-header">🔒 Connexion requise</div>',
+        f'<div class="main-header">Connexion requise</div>',
         unsafe_allow_html=True,
     )
     st.info(

@@ -454,7 +454,7 @@ def _render_pending_publications_alert():
     with st.expander(detail_label, expanded=False):
         if not admin:
             st.caption(
-                "🔒 Les actions (télécharger, ignorer, intégrer) sont réservées à l'administrateur."
+                "Les actions (télécharger, ignorer, intégrer) sont réservées à l'administrateur."
             )
 
         # ─── Helpers de rendu (utilisés dans les 2 blocs pending + gaps) ───

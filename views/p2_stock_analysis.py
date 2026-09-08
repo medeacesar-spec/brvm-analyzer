@@ -909,14 +909,25 @@ def _render_price_only(ticker, price_df):
 
     variations = [(label, _pct_change_since(dt)) for label, dt in periods]
 
-    # ── Affichage KPI compact : 7 colonnes ──
+    # ── Rangée de KPI : une fenêtre par carte, au gabarit du canevas ──
+    # Sept cartes dans une rangée : la valeur descend à 21 px, sinon
+    # « +123,45 % » se coupait en « +123… ». La couleur porte le signe, dans
+    # la valeur ET dans le filet.
+    from utils.ui_helpers import kpi_v4
+    _sous = {"1J": "vs veille", "1S": "7 jours", "1M": "30 jours",
+             "3M": "90 jours", "6M": "180 jours", "1A": "365 jours",
+             "YTD": "depuis le 1er janv."}
     cols = st.columns(len(variations))
     for col, (label, pct) in zip(cols, variations):
-        if pct is None:
-            col.metric(label, "—")
-        else:
-            sign = "+" if pct >= 0 else ""
-            col.metric(label, f"{sign}{pct:.2f}%")
+        with col:
+            if pct is None:
+                kpi_v4(label, "—", _sous.get(label, ""),
+                       accent="var(--ink-4)", taille="21px")
+            else:
+                _t = "var(--up)" if pct >= 0 else "var(--down)"
+                kpi_v4(label, f"{pct:+.2f} %", _sous.get(label, ""),
+                       accent=_t, sub_color=_t, taille="21px",
+                       couleur_valeur=_t)
 
     # ── Sélecteur période pour la courbe ──
     period_options = {
@@ -1082,23 +1093,27 @@ def _render_technical(ticker, price_df, result):
             vol_30 = None
 
     def _kpi_card(label, value, sub, arrow_tone="neutral"):
-        """Card compacte avec label + value + sub ligne (petit + coloré)."""
+        """Carte au gabarit du canevas v4 : filet supérieur coloré,
+        valeur en 27 px, sous-ligne dans la teinte du ton."""
         arrow = {"up": "▲", "down": "▼"}.get(arrow_tone, "")
-        sub_color = {"up": "var(--up)", "down": "var(--down)"}.get(arrow_tone, "var(--ink-3)")
-        sub_html = (
-            f"<div style='font-size:11.5px;margin-top:6px;color:{sub_color};font-weight:500;'>"
-            f"{arrow + ' ' if arrow else ''}{sub}</div>"
-            if sub else ""
-        )
+        accent = {"up": "var(--up)", "down": "var(--down)",
+                  "warn": "var(--warn)"}.get(arrow_tone, "var(--ink-4)")
+        teinte = {"up": "var(--up)", "down": "var(--down)",
+                  "warn": "var(--warn)"}.get(arrow_tone, "var(--ink-3)")
+        poids = 600 if arrow_tone in ("up", "down", "warn") else 400
         return (
             f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
-            f"border-radius:12px;padding:14px 16px;min-height:92px;'>"
-            f"<div class='label-xs' style='margin-bottom:6px;'>{label}</div>"
-            f"<div style='font-size:22px;font-weight:600;letter-spacing:-0.02em;"
-            f"color:var(--ink);font-variant-numeric:tabular-nums;line-height:1.15;'>"
-            f"{value}</div>"
-            f"{sub_html}"
-            f"</div>"
+            f"border-top:2px solid {accent};border-radius:12px;padding:15px 17px;"
+            f"display:flex;flex-direction:column;gap:5px;height:100%;'>"
+            f"<span style='font-size:10.5px;font-weight:600;letter-spacing:0.09em;"
+            f"text-transform:uppercase;color:var(--ink-3);'>{label}</span>"
+            f"<span style='font-variant-numeric:tabular-nums;font-size:27px;"
+            f"font-weight:600;letter-spacing:-0.015em;line-height:1.05;"
+            f"color:var(--ink);'>{value}</span>"
+            + (f"<span style='font-size:11.5px;font-weight:{poids};"
+               f"color:{teinte};'>{arrow + ' ' if arrow else ''}{sub}</span>"
+               if sub else "")
+            + "</div>"
         )
 
     # Tone tendance

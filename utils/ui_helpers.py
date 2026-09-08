@@ -146,28 +146,45 @@ def breadth_bar(up: int, flat: int, down: int, label: str = "Largeur du marché"
     )
 
 
-def heatmap(lignes, colonnes, echelle: float = None, footer: str = ""):
+def heatmap(lignes, colonnes, echelle: float = None, footer: str = "",
+            mode: str = "signe", intitule_colonne: str = "Secteur",
+            formatter=None):
     """Carte de chaleur : une ligne par entité, une colonne par fenêtre.
 
     `lignes` : liste de (libellé, [valeurs en %]) — une valeur par colonne,
     `None` pour une case sans donnée (rendue vide, jamais en zéro : un trou
     n'est pas une stabilité).
     `colonnes` : libellés des fenêtres, sans la première colonne du libellé.
-    `echelle` : variation en % qui sature la couleur. Par défaut, le plus
-    grand écart observé — ainsi la teinte reste lisible même un mois calme.
+    `echelle` : valeur qui sature la couleur. Par défaut, le plus grand écart
+    observé — ainsi la teinte reste lisible même un mois calme.
+    `mode` : « signe » colore en vert au-dessus de zéro et en rouge en
+    dessous — c'est la lecture d'une variation. « intensite » emploie une
+    seule teinte navy du clair au foncé : pour un score, où il n'y a pas de
+    négatif, deux couleurs feraient croire à un seuil qui n'existe pas.
     """
     valeurs = [v for _, vals in lignes for v in vals if v is not None]
     if not valeurs:
         return
     if not echelle:
-        echelle = max(abs(v) for v in valeurs) or 1.0
+        # Le maximum absolu comme échelle rendait la carte illisible dès
+        # qu'UNE case sortait du lot : sur les secteurs, la colonne « Max »
+        # à +903 % délavait les quarante autres cases. On sature au 85e
+        # centile — les extrêmes s'affichent à pleine teinte, le reste garde
+        # son contraste.
+        tries = sorted(abs(v) for v in valeurs)
+        rang = max(0, int(0.85 * (len(tries) - 1)))
+        echelle = tries[rang] or max(tries) or 1.0
 
     def _fond(v):
         if v is None:
             return "var(--bg-elev)"
         intensite = min(abs(v) / echelle, 1.0) * 0.85
-        # Teintes du canevas : vert #0E7A54 en hausse, rouge #C0392B en baisse.
-        r, g, b = (14, 122, 84) if v >= 0 else (192, 57, 43)
+        if mode == "intensite":
+            # Navy #1B3A6B, du clair au foncé.
+            r, g, b = (27, 58, 107)
+        else:
+            # Teintes du canevas : vert #0E7A54 en hausse, rouge #C0392B en baisse.
+            r, g, b = (14, 122, 84) if v >= 0 else (192, 57, 43)
         return f"rgba({r},{g},{b},{intensite:.3f})"
 
     def _encre(v):
@@ -179,7 +196,7 @@ def heatmap(lignes, colonnes, echelle: float = None, footer: str = ""):
         "<div style='padding:9px 10px;background:var(--bg-sunken);"
         "border-bottom:1px solid var(--border);font-size:10px;font-weight:600;"
         "color:var(--ink-3);letter-spacing:0.09em;text-transform:uppercase;"
-        "white-space:nowrap;'>Secteur</div>"
+        f"white-space:nowrap;'>{intitule_colonne}</div>"
         + "".join(
             "<div style='padding:9px 10px;background:var(--bg-sunken);"
             "border-bottom:1px solid var(--border);font-size:10px;font-weight:600;"
@@ -196,7 +213,12 @@ def heatmap(lignes, colonnes, echelle: float = None, footer: str = ""):
             f"font-weight:500;color:var(--ink);white-space:nowrap;'>{libelle}</div>"
         )
         for v in vals:
-            texte = "—" if v is None else f"{v:+.2f} %"
+            if v is None:
+                texte = "—"
+            elif formatter is not None:
+                texte = formatter(v)
+            else:
+                texte = f"{v:+.2f} %"
             cellules += (
                 "<div style='padding:9px 10px;border-bottom:1px solid var(--bg-elev);"
                 "border-right:1px solid var(--bg-elev);text-align:right;"
@@ -259,7 +281,8 @@ def status_strip(statut: str, seance: str, maj: str = "",
 
 
 def kpi_v4(label: str, value: str, sub: str = "", accent: str = "var(--ink-4)",
-           sub_color: str = "", dark: bool = False, bar_pct: float = None):
+           sub_color: str = "", dark: bool = False, bar_pct: float = None,
+           taille: str = "27px", couleur_valeur: str = ""):
     """Carte de KPI au modèle du canevas v4.
 
     `st.metric` ne sait pas teinter une carte : toutes portent le même filet
@@ -277,7 +300,8 @@ def kpi_v4(label: str, value: str, sub: str = "", accent: str = "var(--ink-4)",
         filet = f"1px solid {bord}"
     else:
         fond, bord, c_label = "var(--bg-elev)", "var(--border)", "var(--ink-3)"
-        c_val, c_sub = "var(--ink)", (sub_color or "var(--ink-3)")
+        c_val = couleur_valeur or "var(--ink)"
+        c_sub = sub_color or "var(--ink-3)"
         piste, barre = "var(--bg-sunken)", accent
         filet = f"2px solid {accent}"
 
@@ -296,11 +320,119 @@ def kpi_v4(label: str, value: str, sub: str = "", accent: str = "var(--ink-4)",
         "display:flex;flex-direction:column;gap:5px;height:100%;'>"
         "<span style='font-size:10.5px;font-weight:600;letter-spacing:0.09em;"
         f"text-transform:uppercase;color:{c_label};'>{label}</span>"
-        "<span style='font-variant-numeric:tabular-nums;font-size:27px;"
+        # nowrap : dans une rangée de sept cartes sur écran étroit, « +1,92 % »
+        # se brisait en trois lignes, un caractère par ligne. Mieux vaut
+        # écourter que d'empiler.
+        f"<span style='font-variant-numeric:tabular-nums;font-size:{taille};"
         f"font-weight:600;letter-spacing:-0.015em;line-height:1.05;"
+        f"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
         f"color:{c_val};'>{value}</span>"
         f"{html_barre}"
         f"<span style='font-size:11.5px;font-weight:{poids_sub};"
-        f"color:{c_sub};'>{sub}</span></div>",
+        f"line-height:1.3;color:{c_sub};'>{sub}</span></div>",
+        unsafe_allow_html=True,
+    )
+
+
+def note(titre: str, texte: str, ton: str = "primary"):
+    """Encart à filet latéral : une lecture, pas une donnée.
+
+    Le canevas s'en sert partout où l'application doit DIRE quelque chose —
+    pourquoi deux colonnes ne se contredisent pas, ce qu'un chiffre ne dit
+    pas, quelle hypothèse a été prise. `st.info` mettait ces phrases dans une
+    boîte bleue d'alerte, ce qui les faisait lire comme des avertissements.
+
+    `ton` : primary (lecture), warn (vigilance), up, down.
+    """
+    accents = {"primary": "var(--primary)", "warn": "var(--warn)",
+               "up": "var(--up)", "down": "var(--down)"}
+    accent = accents.get(ton, "var(--primary)")
+    entete = (
+        f"<div style='font-size:14.5px;font-weight:600;margin-bottom:6px;'>"
+        f"{titre}</div>" if titre else ""
+    )
+    st.markdown(
+        "<div style='background:var(--bg-elev);border:1px solid var(--border);"
+        f"border-left:2px solid {accent};border-radius:0 12px 12px 0;"
+        "padding:14px 18px;margin:12px 0;'>"
+        f"{entete}"
+        "<div style='font-size:13px;color:var(--ink-2);line-height:1.55;"
+        f"max-width:76ch;text-wrap:pretty;'>{texte}</div></div>",
+        unsafe_allow_html=True,
+    )
+
+
+# Séquence de teintes du canevas v4, pour les blocs à catégories.
+TEINTES_V4 = ["#1B3A6B", "#8A5A00", "#0E7A54", "#5A7CA8", "#A8C4EA",
+              "#6E7581", "#C0392B", "#12294B", "#AEB4BE"]
+
+
+def donut(segments, grand: str, sous_titre: str = "", montant_fmt=None):
+    """Anneau à figure centrale, avec sa légende chiffrée.
+
+    Le canevas préfère l'anneau au camembert plein, et pour une raison
+    lisible : le centre porte le total, si bien que la part et la masse se
+    lisent d'un seul regard. La légende donne le montant ET le pourcentage —
+    un camembert seul oblige à survoler chaque part pour connaître sa valeur.
+
+    `segments` : liste de (libellé, montant). Les teintes suivent la séquence
+    du canevas ; au-delà de neuf catégories, elle se répète — c'est le signe
+    qu'il faut regrouper, pas ajouter des couleurs.
+    """
+    segments = [(str(l), float(v)) for l, v in segments if v and float(v) > 0]
+    if not segments:
+        return
+    total = sum(v for _, v in segments)
+    if total <= 0:
+        return
+    if montant_fmt is None:
+        def montant_fmt(v):
+            return f"{v:,.0f}".replace(",", " ")
+
+    RAYON = 66
+    CIRCONFERENCE = 2 * 3.141592653589793 * RAYON
+    arcs, lignes, decalage = "", "", 0.0
+    for i, (libelle, valeur) in enumerate(segments):
+        part = valeur / total
+        longueur = part * CIRCONFERENCE
+        couleur = TEINTES_V4[i % len(TEINTES_V4)]
+        arcs += (
+            f"<circle cx='90' cy='90' r='{RAYON}' fill='none' "
+            f"stroke='{couleur}' stroke-width='26' "
+            f"stroke-dasharray='{longueur:.2f} {CIRCONFERENCE - longueur:.2f}' "
+            f"stroke-dashoffset='{-decalage:.2f}'></circle>"
+        )
+        decalage += longueur
+        lignes += (
+            "<div style='display:flex;align-items:center;gap:10px;"
+            "padding-bottom:7px;border-bottom:1px solid var(--border-soft);'>"
+            f"<span style='width:10px;height:10px;border-radius:3px;"
+            f"flex-shrink:0;background:{couleur};'></span>"
+            "<span style='font-size:13px;flex:1;min-width:0;"
+            "white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>"
+            f"{libelle}</span>"
+            "<span style='font-family:var(--font-mono);font-size:12px;"
+            f"color:var(--ink-3);'>{montant_fmt(valeur)}</span>"
+            "<span style='font-size:12.5px;font-weight:600;"
+            "font-variant-numeric:tabular-nums;width:52px;text-align:right;'>"
+            f"{part * 100:.1f} %</span></div>"
+        )
+    st.markdown(
+        "<div style='background:var(--bg-elev);border:1px solid var(--border);"
+        "border-radius:12px;padding:20px 22px;display:flex;align-items:center;"
+        "gap:30px;flex-wrap:wrap;'>"
+        "<div style='position:relative;width:180px;height:180px;flex:0 0 auto;'>"
+        "<svg viewBox='0 0 180 180' style='width:180px;height:180px;"
+        f"transform:rotate(-90deg);'>{arcs}</svg>"
+        "<div style='position:absolute;inset:0;display:flex;"
+        "flex-direction:column;align-items:center;justify-content:center;"
+        "gap:2px;'>"
+        "<span style='font-size:22px;font-weight:600;letter-spacing:-0.02em;"
+        f"font-variant-numeric:tabular-nums;'>{grand}</span>"
+        "<span style='font-size:10.5px;font-weight:600;color:var(--ink-3);"
+        f"letter-spacing:0.08em;text-transform:uppercase;'>{sous_titre}</span>"
+        "</div></div>"
+        "<div style='flex:1;min-width:220px;display:flex;"
+        f"flex-direction:column;gap:8px;'>{lignes}</div></div>",
         unsafe_allow_html=True,
     )
