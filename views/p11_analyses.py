@@ -147,7 +147,7 @@ def _render_trajectories():
     # Tableau
     display = df.copy()
     display["status_emoji"] = display["status"].map({
-        "en_cours": "🟢 En cours", "terminee": "✅ Terminée",
+        "en_cours": "En cours", "terminee": "Terminée",
     })
     for col in ("gain_achat_fort_pct", "gain_achat_pct", "gain_total_pct"):
         display[col] = display[col].apply(

@@ -132,7 +132,21 @@ def _mediane(valeurs):
     return st.median(valeurs) if valeurs else None
 
 
-def _mesures(rendements: list, points: list) -> dict:
+def _serie_marche(series: dict) -> dict:
+    """Rendement mensuel du BRVM Composite, indexe par (annee, mois).
+
+    Le beta se mesure contre un marche ; sur cette place, c'est le Composite.
+    Le BRVM-30 ne remonte qu'a 2023 et ne couvre que trente valeurs — il
+    ferait un repere plus court et plus etroit.
+    """
+    if "BRVMC" not in series:
+        return {}
+    rendements, points = series["BRVMC"]
+    return {(points[i + 1][0].year, points[i + 1][0].month): r
+            for i, r in enumerate(rendements)}
+
+
+def _mesures(rendements: list, points: list, marche: dict = None) -> dict:
     mensuel_sans_risque = (1 + TAUX_SANS_RISQUE) ** (1 / 12) - 1
     n = len(rendements)
     volatilite = st.stdev(rendements) * math.sqrt(12)
@@ -164,6 +178,34 @@ def _mesures(rendements: list, points: list) -> dict:
 
     immobiles = sum(1 for r in rendements if r == 0) / n
     echange_median = _mediane([v * p for _, p, v in points[1:]])
+
+    # BETA. La sensibilite au marche : de combien bouge le titre quand le
+    # Composite bouge d'un point. Mesure sur les rendements MENSUELS, pas
+    # quotidiens — sur cette place, un titre qui ne cote pas garde son cours,
+    # et une serie quotidienne serait surtout faite de zeros.
+    #
+    # Le meme piege demeure au mois, en plus doux : les mois immobiles tirent
+    # le beta vers zero et la correlation avec. `part_mois_immobiles` est donc
+    # publiee a cote, et un titre au-dela du seuil doit se lire avec elle.
+    beta = correlation = None
+    observations_beta = 0
+    if marche:
+        paires = [(r, marche[(points[i + 1][0].year, points[i + 1][0].month)])
+                  for i, r in enumerate(rendements)
+                  if (points[i + 1][0].year, points[i + 1][0].month) in marche]
+        if len(paires) >= MINIMUM_MOIS:
+            observations_beta = len(paires)
+            titre = [a for a, _ in paires]
+            indice = [b for _, b in paires]
+            var_m = st.pvariance(indice)
+            if var_m:
+                moy_t, moy_i = st.mean(titre), st.mean(indice)
+                cov = sum((a - moy_t) * (b - moy_i)
+                          for a, b in paires) / len(paires)
+                beta = cov / var_m
+                ec_t, ec_i = st.pstdev(titre), st.pstdev(indice)
+                if ec_t and ec_i:
+                    correlation = cov / (ec_t * ec_i)
     return {
         "volatilite": volatilite,
         "semi_volatilite": semi,
@@ -189,6 +231,9 @@ def _mesures(rendements: list, points: list) -> dict:
              if points[i + 1][2] and points[i + 1][1]]),
         "part_mois_immobiles": immobiles,
         "observations": n,
+        "beta": beta,
+        "correlation_marche": correlation,
+        "observations_beta": observations_beta,
         # `peu_liquide` se pose plus tard, une fois toute la cote mesuree : il
         # designe le quart le moins echange, ce qu'un titre seul ne peut pas
         # savoir. L'immobilite, elle, se lit sur la seule serie du titre — et
@@ -564,7 +609,8 @@ def toutes_les_mesures() -> dict:
     titres, et fausseraient les medianes.
     """
     series = series_mensuelles()
-    mesures = {t: _mesures(*v) for t, v in series.items()
+    marche = _serie_marche(series)
+    mesures = {t: _mesures(*v, marche=marche) for t, v in series.items()
                if t not in ("BRVMC", "BRVM30")}
     seuil = _seuil_illiquidite(m.get("montant_echange") for m in mesures.values())
     for m in mesures.values():
@@ -598,7 +644,9 @@ def profil_de_risque(ticker: str, secteur: Optional[str] = None) -> Optional[dic
 
     secteur = secteur or secteurs.get(ticker)
     indices = {"BRVMC", "BRVM30"}
-    tous = {t: _mesures(*v) for t, v in series.items() if t not in indices}
+    marche = _serie_marche(series)
+    tous = {t: _mesures(*v, marche=marche) for t, v in series.items()
+            if t not in indices}
     seuil = _seuil_illiquidite(m.get("montant_echange") for m in tous.values())
     for m in tous.values():
         echange = m.get("montant_echange")

@@ -1943,14 +1943,14 @@ def _render_cash_recommendations(portfolio, cash, total_portfolio, ticker_to_sec
             "Renforcer mes meilleures positions",
         ]
         for i, sug in enumerate(suggestions):
-            if cols[i].button(f"💡 {sug}", key=f"sug_{i}"):
+            if cols[i].button(f"{sug}", key=f"sug_{i}"):
                 # Stash the pending prompt so it's picked up after rerun
                 st.session_state["pf_pending_prompt"] = sug
                 st.rerun()
 
     # Display chat history
     for msg in st.session_state.pf_chat_history:
-        with st.chat_message(msg["role"], avatar="🧑‍💼" if msg["role"] == "user" else "📊"):
+        with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
     # Chat input
@@ -1968,7 +1968,7 @@ def _render_cash_recommendations(portfolio, cash, total_portfolio, ticker_to_sec
         with st.chat_message("user", avatar="🧑‍💼"):
             st.markdown(prompt)
 
-        with st.chat_message("assistant", avatar="📊"):
+        with st.chat_message("assistant"):
             with st.spinner("Analyse en cours..."):
                 response = chat(
                     query=prompt,
@@ -2003,7 +2003,7 @@ def _render_info_box():
     col1, col2 = st.columns(2)
     with col1:
         st.markdown(
-            "**📌 Rappels importants**\n"
+            "**Rappels importants**\n"
             "- Les dividendes BRVM sont généralement versés en **mai-juin**\n"
             "- Les publications annuelles sont attendues en **mars-avril**\n"
             "- Le marché est ouvert du **lundi au vendredi, 9h-15h30 GMT**"
@@ -2155,7 +2155,7 @@ def _render_batch_input(tickers_data):
                     ticker = sel.split(" - ")[0]
                     name = sel.split(" - ")[1] if " - " in sel else ""
                     save_position(ticker, name, qty, pru)
-                st.success(f"✅ {len(positions)} position(s) importée(s) !")
+                st.success(f"{len(positions)} position(s) importée(s).")
                 st.rerun()
             else:
                 st.warning("Aucune position valide à importer")

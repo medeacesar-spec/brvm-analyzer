@@ -21,7 +21,8 @@ from utils.ui_helpers import section_heading
 def render():
     # Hiérarchie v3 : Title + caption → sélecteur → tableau → charts
     st.title("Comparateur")
-    st.caption("Comparer les titres d'un secteur ou une sélection libre")
+    st.caption("Comparer les titres d'un secteur, ou une sélection libre "
+               "de 2 à 5 titres.")
 
     analyzable = get_analyzable_tickers()
     all_stocks = get_all_stocks_for_analysis()
@@ -30,7 +31,11 @@ def render():
         st.warning("Aucune donnée disponible.")
         return
 
-    mode = st.radio("Mode de comparaison", ["Par secteur", "Sélection libre"], horizontal=True)
+    # Boutons segmentés plutôt que radio : le canevas montre une bascule
+    # à deux positions, pas une liste à cocher.
+    mode = st.segmented_control(
+        "Mode", ["Par secteur", "Sélection libre"],
+        default="Par secteur", key="cmp_mode") or "Par secteur"
 
     if mode == "Par secteur":
         sectors = sorted(set(t["sector"] for t in analyzable if t.get("sector")))
@@ -52,16 +57,6 @@ def render():
     if len(tickers) < 2:
         st.info("Sélectionnez au moins 2 titres pour comparer.")
         return
-
-    # Boutons "Ouvrir" pour chaque ticker sélectionné
-    if tickers:
-        btn_cols = st.columns(len(tickers))
-        for i, ticker in enumerate(tickers):
-            with btn_cols[i]:
-                ticker_analyze_button(
-                    ticker, label=ticker,
-                    key=f"cmp_goto_{ticker}", use_container_width=True,
-                )
 
     # Load data for selected tickers — depuis all_stocks (1 requête cachée)
     # au lieu de N appels get_fundamentals (N round-trips Supabase).
@@ -85,107 +80,122 @@ def render():
         st.warning("Données insuffisantes pour au moins 2 titres. Importez des données fondamentales.")
         return
 
-    # --- Tableau comparatif ---
-    section_heading("Tableau comparatif", spacing="loose")
+    onglet_tableau, onglet_profil, onglet_perf = st.tabs(
+        ["Tableau comparatif", "Profil comparatif", "Performance comparée"])
 
-    metrics = [
-        ("Prix (FCFA)",       "price",              "number"),
-        ("ROE",               "roe",                "pct"),
-        ("Marge nette",       "net_margin",         "pct"),
-        ("PER",               "per",                "decimal"),
-        ("Dividend Yield",    "dividend_yield",     "pct"),
-        ("Payout ratio",      "payout_ratio",       "pct"),
-        ("Dette/Equity",      "debt_equity",        "x"),
-        ("P/B",               "pb",                 "x"),
-        ("EPS (FCFA)",        "eps",                "number"),
-        ("DPS (FCFA)",        "dps",                "number"),
-        ("Checklist V&D",     "_checklist",         "text"),
-        ("Score fondamental", "fundamental_score",  "decimal"),
-    ]
+    with onglet_tableau:
+        # --- Tableau comparatif ---
 
-    comp_data = {"Indicateur": [m[0] for m in metrics]}
-    for ticker, data in stocks.items():
-        name = data["fundamentals"].get("company_name") or ticker
-        values = []
-        for _, key, fmt in metrics:
-            if key == "price":
-                val = data["fundamentals"].get("price")
-                values.append(format_ratio(val, fmt))
-            elif key == "_checklist":
-                cl = data["ratios"].get("checklist", [])
-                passed = sum(1 for c in cl if c["passed"] is True)
-                total = len(cl)
-                values.append(f"{passed} / {total}" if total else "—")
-            elif key == "fundamental_score":
-                val = data["ratios"].get("fundamental_score")
-                values.append(format_ratio(val, fmt))
-            else:
-                val = data["ratios"].get(key)
-                values.append(format_ratio(val, fmt))
-        comp_data[f"{name} · {ticker}"] = values
+        metrics = [
+            ("Prix (FCFA)",       "price",              "number"),
+            ("ROE",               "roe",                "pct"),
+            ("Marge nette",       "net_margin",         "pct"),
+            ("PER",               "per",                "decimal"),
+            ("Dividend Yield",    "dividend_yield",     "pct"),
+            ("Payout ratio",      "payout_ratio",       "pct"),
+            ("Dette/Equity",      "debt_equity",        "x"),
+            ("P/B",               "pb",                 "x"),
+            ("EPS (FCFA)",        "eps",                "number"),
+            ("DPS (FCFA)",        "dps",                "number"),
+            ("Checklist V&D",     "_checklist",         "text"),
+            ("Score fondamental", "fundamental_score",  "decimal"),
+        ]
 
-    comp_df = pd.DataFrame(comp_data)
-    st.dataframe(comp_df, use_container_width=True, hide_index=True)
+        comp_data = {"Indicateur": [m[0] for m in metrics]}
+        for ticker, data in stocks.items():
+            name = data["fundamentals"].get("company_name") or ticker
+            values = []
+            for _, key, fmt in metrics:
+                if key == "price":
+                    val = data["fundamentals"].get("price")
+                    values.append(format_ratio(val, fmt))
+                elif key == "_checklist":
+                    cl = data["ratios"].get("checklist", [])
+                    passed = sum(1 for c in cl if c["passed"] is True)
+                    total = len(cl)
+                    values.append(f"{passed} / {total}" if total else "—")
+                elif key == "fundamental_score":
+                    val = data["ratios"].get("fundamental_score")
+                    values.append(format_ratio(val, fmt))
+                else:
+                    val = data["ratios"].get(key)
+                    values.append(format_ratio(val, fmt))
+            comp_data[f"{name} · {ticker}"] = values
 
-    # --- Bar chart horizontal monochrome (remplace le radar arc-en-ciel) ---
-    # Principe design v3 #07 : dataviz monochrome. Bar horizontal groupé
-    # est plus lisible que le radar pour des valeurs chiffrées.
-    section_heading("Profil comparatif", spacing="loose")
+        comp_df = pd.DataFrame(comp_data)
+        st.dataframe(comp_df, use_container_width=True, hide_index=True)
 
-    import plotly.graph_objects as go
-    bar_metrics = [
-        ("ROE", lambda r: min((r.get("roe") or 0) / 0.30 * 100, 100)),
-        ("Marge", lambda r: min((r.get("net_margin") or 0) / 0.25 * 100, 100)),
-        ("Yield", lambda r: min((r.get("dividend_yield") or 0) / 0.10 * 100, 100)),
-        ("Valorisation", lambda r: max(0, min(100, (20 - (r.get("per") or 0)) / 20 * 100))
-                          if (r.get("per") or 0) > 0 else 0),
-        ("Croissance", lambda r: min(max(((r.get("revenue_growth") or 0)) / 0.15 * 100, 0), 100)),
-        ("Score global", lambda r: (r.get("fundamental_score") or 0) / 50 * 100),
-    ]
-    # Palette monochrome (design v3) — deep green + accent ocre + neutre
-    mono_palette = [
-        COLORS["primary"], COLORS["accent"], COLORS["secondary"],
-        "#4A8A5F", "#D97E4F", "#A69D8D",  # variantes
-    ]
+        # Boutons "Ouvrir" pour chaque ticker sélectionné
+        if tickers:
+            btn_cols = st.columns(len(tickers))
+            for i, ticker in enumerate(tickers):
+                with btn_cols[i]:
+                    ticker_analyze_button(
+                        ticker, label=ticker,
+                        key=f"cmp_goto_{ticker}", use_container_width=True,
+                    )
 
-    fig = go.Figure()
-    for i, (ticker, data) in enumerate(stocks.items()):
-        r = data["ratios"]
-        name = data["fundamentals"].get("company_name") or ticker
-        values = [fn(r) for _, fn in bar_metrics]
-        fig.add_trace(go.Bar(
-            y=[m[0] for m in bar_metrics],
-            x=values,
-            name=name,
-            orientation="h",
-            marker_color=mono_palette[i % len(mono_palette)],
-            text=[f"{v:.0f}" for v in values],
-            textposition="auto",
-        ))
-    fig.update_layout(
-        barmode="group", height=380,
-        template="plotly_white",
-        paper_bgcolor=COLORS["bg"], plot_bgcolor=COLORS["bg"],
-        font=dict(color=COLORS["text"], family="ui-sans-serif, -apple-system, sans-serif", size=12),
-        xaxis=dict(title="Score (0-100)", range=[0, 100], gridcolor=COLORS["border"]),
-        yaxis=dict(autorange="reversed"),
-        margin=dict(l=10, r=10, t=10, b=40),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
-                    font=dict(size=11, color=COLORS["text_secondary"])),
-    )
-    st.plotly_chart(fig, use_container_width=True)
 
-    # --- Performance Chart ---
-    section_heading("Performance comparée des prix", spacing="loose")
+    with onglet_profil:
+        # --- Bar chart horizontal monochrome (remplace le radar arc-en-ciel) ---
+        # Principe design v3 #07 : dataviz monochrome. Bar horizontal groupé
+        # est plus lisible que le radar pour des valeurs chiffrées.
 
-    price_data = {}
-    for ticker in tickers:
-        prices = get_cached_prices(ticker)
-        if not prices.empty and "close" in prices.columns:
-            price_data[ticker] = prices.set_index("date")["close"]
+        import plotly.graph_objects as go
+        bar_metrics = [
+            ("ROE", lambda r: min((r.get("roe") or 0) / 0.30 * 100, 100)),
+            ("Marge", lambda r: min((r.get("net_margin") or 0) / 0.25 * 100, 100)),
+            ("Yield", lambda r: min((r.get("dividend_yield") or 0) / 0.10 * 100, 100)),
+            ("Valorisation", lambda r: max(0, min(100, (20 - (r.get("per") or 0)) / 20 * 100))
+                              if (r.get("per") or 0) > 0 else 0),
+            ("Croissance", lambda r: min(max(((r.get("revenue_growth") or 0)) / 0.15 * 100, 0), 100)),
+            ("Score global", lambda r: (r.get("fundamental_score") or 0) / 50 * 100),
+        ]
+        # Palette monochrome (design v3) — deep green + accent ocre + neutre
+        mono_palette = [
+            COLORS["primary"], COLORS["accent"], COLORS["secondary"],
+            "#4A8A5F", "#D97E4F", "#A69D8D",  # variantes
+        ]
 
-    if len(price_data) >= 2:
-        fig = performance_chart(price_data, "Performance normalisee (base 100)")
+        fig = go.Figure()
+        for i, (ticker, data) in enumerate(stocks.items()):
+            r = data["ratios"]
+            name = data["fundamentals"].get("company_name") or ticker
+            values = [fn(r) for _, fn in bar_metrics]
+            fig.add_trace(go.Bar(
+                y=[m[0] for m in bar_metrics],
+                x=values,
+                name=name,
+                orientation="h",
+                marker_color=mono_palette[i % len(mono_palette)],
+                text=[f"{v:.0f}" for v in values],
+                textposition="auto",
+            ))
+        fig.update_layout(
+            barmode="group", height=380,
+            template="plotly_white",
+            paper_bgcolor=COLORS["bg"], plot_bgcolor=COLORS["bg"],
+            font=dict(color=COLORS["text"], family="ui-sans-serif, -apple-system, sans-serif", size=12),
+            xaxis=dict(title="Score (0-100)", range=[0, 100], gridcolor=COLORS["border"]),
+            yaxis=dict(autorange="reversed"),
+            margin=dict(l=10, r=10, t=10, b=40),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
+                        font=dict(size=11, color=COLORS["text_secondary"])),
+        )
         st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("Pas assez de données de prix pour comparer les performances. Chargez les prix depuis la page Analyse.")
+
+
+    with onglet_perf:
+        # --- Performance Chart ---
+
+        price_data = {}
+        for ticker in tickers:
+            prices = get_cached_prices(ticker)
+            if not prices.empty and "close" in prices.columns:
+                price_data[ticker] = prices.set_index("date")["close"]
+
+        if len(price_data) >= 2:
+            fig = performance_chart(price_data, "Performance normalisee (base 100)")
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Pas assez de données de prix pour comparer les performances. Chargez les prix depuis la page Analyse.")

@@ -434,7 +434,7 @@ if not st.session_state.get("db_verified"):
         # Sync incrémental optionnel, seulement si vraiment pas frais
         if not is_fresh and not st.session_state.get("sync_done"):
             # Page de garde pendant la mise à jour quotidienne.
-            st.markdown("## 📊 BRVM Analyzer")
+            st.markdown("## BRVM Analyzer")
             st.info(
                 "⏳ **Mise à jour quotidienne en cours — durée estimée ~1 minute**\n\n"
                 "Récupération des cotations du jour et des prix manquants pour "
@@ -465,13 +465,13 @@ if not st.session_state.get("db_verified"):
         # On tente un sync complet MAIS on ne boucle pas indéfiniment
         if st.session_state.get("full_sync_attempted"):
             st.error(
-                "⚠️ Impossible de charger les données. "
+                "Impossible de charger les données. "
                 "Problème de connexion à la base ? Rechargez la page ou contactez l'admin."
             )
             st.stop()
         st.session_state.full_sync_attempted = True
 
-        st.markdown("## 📊 BRVM Analyzer")
+        st.markdown("## BRVM Analyzer")
         st.markdown("### Premier lancement — Initialisation")
         st.info(
             "⏳ **Durée estimée : ~2 minutes**\n\n"
@@ -485,7 +485,7 @@ if not st.session_state.get("db_verified"):
         with st.spinner("Téléchargement des 48 titres BRVM…"):
             try:
                 result = _sync_full_details()
-                st.success(f"✅ {result} titres chargés !")
+                st.success(f"{result} titres chargés.")
             except Exception as e:
                 st.error(f"Erreur scraping : {e}")
                 st.stop()
@@ -766,14 +766,14 @@ if "confirm_shutdown" not in st.session_state:
     st.session_state.confirm_shutdown = False
 
 if is_admin() and _is_logged_in() and not st.session_state.confirm_shutdown:
-    if st.sidebar.button("🛑 Arrêter l'application", use_container_width=True):
+    if st.sidebar.button("Arrêter l'application", use_container_width=True):
         st.session_state.confirm_shutdown = True
         st.rerun()
 elif st.session_state.confirm_shutdown:
     st.sidebar.warning("Confirmer l'arrêt ?")
     col_yes, col_no = st.sidebar.columns(2)
     with col_yes:
-        if st.button("✅ Oui", key="shutdown_yes", use_container_width=True):
+        if st.button("Oui", key="shutdown_yes", use_container_width=True):
             import os, subprocess
             st.sidebar.success("Arrêt en cours… vous pouvez fermer cet onglet.")
             # Kill THIS process (the Streamlit server itself) from a detached
@@ -787,7 +787,7 @@ elif st.session_state.confirm_shutdown:
             )
             st.stop()
     with col_no:
-        if st.button("❌ Non", key="shutdown_no", use_container_width=True):
+        if st.button("Non", key="shutdown_no", use_container_width=True):
             st.session_state.confirm_shutdown = False
             st.rerun()
 

@@ -137,10 +137,11 @@ def render():
     col_sub, col_period = st.columns([3, 2])
 
     with col_period:
-        period = st.radio(
-            "Période", list(PERIODS.keys()),
-            horizontal=True, index=2, label_visibility="collapsed",
-        )
+        _periodes = list(PERIODS.keys())
+        period = st.segmented_control(
+            "Période", _periodes, default=_periodes[2],
+            label_visibility="collapsed", key="perf_periode",
+        ) or _periodes[2]
 
     col_perf = period
     valid = perf_df.dropna(subset=[col_perf]).copy()
@@ -150,10 +151,11 @@ def render():
     valid_sorted = valid.sort_values(col_perf, ascending=False)
 
     with col_sub:
-        st.caption(f"Classement sur {period.lower()} · {len(valid)} titres")
+        st.caption(f"Classement sur {period.lower()} · {len(valid)} titres "
+                   f"avec historique suffisant.")
 
     if not from_snapshot and is_admin():
-        st.caption("⚠️ Snapshot vide — clic Regénérer snapshots admin pour accélérer.")
+        st.caption("Snapshot vide — « Regénérer snapshots » dans la barre latérale.")
 
     # ─── 4 KPI cards ──────────────────────────────────────────────────
     best = valid_sorted.iloc[0]
@@ -164,19 +166,27 @@ def render():
     pct_market = positive_count / total * 100 if total else 0
 
     def _kpi(label, value, sub, arrow_tone="neutral"):
+        """Carte au gabarit du canevas : filet superieur colore, valeur en
+        19 px quand c'est un NOM (les deux extremes) plutot qu'un nombre —
+        « Coris Bank International » en 27 px deborderait."""
         arrow = {"up": "▲", "down": "▼"}.get(arrow_tone, "")
-        sub_color = {"up": "var(--up)", "down": "var(--down)"}.get(
-            arrow_tone, "var(--ink-3)"
-        )
+        accent = {"up": "var(--up)", "down": "var(--down)"}.get(
+            arrow_tone, "var(--ink-4)")
+        teinte = {"up": "var(--up)", "down": "var(--down)"}.get(
+            arrow_tone, "var(--ink-3)")
+        nombre = str(value).replace(" ", "").replace("+", "").replace("-", "")
+        taille = "27px" if nombre[:1].isdigit() else "19px"
         return (
             f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
-            f"border-radius:12px;padding:14px 16px;min-height:92px;'>"
-            f"<div class='label-xs' style='margin-bottom:6px;'>{label}</div>"
-            f"<div style='font-size:22px;font-weight:600;letter-spacing:-0.02em;"
-            f"color:var(--ink);line-height:1.15;'>{value}</div>"
-            f"<div style='font-size:11.5px;color:{sub_color};margin-top:6px;"
-            f"font-weight:500;'>{arrow + ' ' if arrow else ''}{sub}</div>"
-            f"</div>"
+            f"border-top:2px solid {accent};border-radius:12px;padding:15px 17px;"
+            f"display:flex;flex-direction:column;gap:5px;height:100%;'>"
+            f"<span style='font-size:10.5px;font-weight:600;letter-spacing:0.09em;"
+            f"text-transform:uppercase;color:var(--ink-3);'>{label}</span>"
+            f"<span style='font-variant-numeric:tabular-nums;font-size:{taille};"
+            f"font-weight:600;letter-spacing:-0.015em;line-height:1.15;"
+            f"color:var(--ink);'>{value}</span>"
+            f"<span style='font-size:11.5px;font-weight:600;color:{teinte};'>"
+            f"{arrow + ' ' if arrow else ''}{sub}</span></div>"
         )
 
     k1, k2, k3, k4 = st.columns(4)
@@ -578,7 +588,7 @@ def _display_perf_table(df: pd.DataFrame, col_perf: str):
         if val is None or pd.isna(val):
             icon = "⬜"
         elif val >= 0.2:
-            icon = "🚀"
+            icon = ""
         elif val >= 0:
             icon = "🟢"
         elif val >= -0.2:

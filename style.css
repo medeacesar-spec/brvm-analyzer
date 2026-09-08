@@ -193,29 +193,90 @@ section[data-testid="stSidebar"] [role="radiogroup"] label > div:last-child {
   color: inherit !important;
 }
 
-/* Buttons — défaut ghost/outline, primary deep green */
+/* ── Boutons — gabarit exact du canevas v4 ──
+   Secondaire : fond blanc, filet --border-strong, 500. Primaire : navy plein,
+   600. Au survol, le filet passe au navy — le fond ne bouge pas, c'est le
+   contour qui repond. */
 .stButton > button, .stDownloadButton > button, .stFormSubmitButton > button {
   background: var(--bg-elev);
   color: var(--ink);
   border: 1px solid var(--border-strong);
   border-radius: 8px;
-  padding: 5px 12px;
+  padding: 7px 13px;
   font-weight: 500;
-  font-size: 13px;
-  transition: all 120ms;
+  font-size: 12.5px;
+  line-height: 1.25;
+  transition: border-color 120ms, background 120ms;
 }
-.stButton > button:hover, .stDownloadButton > button:hover {
-  background: var(--bg-hover);
-  border-color: var(--ink-3);
+.stButton > button:hover, .stDownloadButton > button:hover,
+.stFormSubmitButton > button:hover {
+  background: var(--bg-elev);
+  border-color: var(--primary);
+  color: var(--ink);
 }
-.stButton > button[kind="primary"], .stFormSubmitButton > button[kind="primary"] {
+.stButton > button[kind="primary"], .stFormSubmitButton > button[kind="primary"],
+.stDownloadButton > button[kind="primary"] {
   background: var(--primary);
   color: #fff;
   border-color: var(--primary);
+  font-weight: 600;
 }
-.stButton > button[kind="primary"]:hover {
+.stButton > button[kind="primary"]:hover,
+.stFormSubmitButton > button[kind="primary"]:hover {
   background: var(--primary-2);
   border-color: var(--primary-2);
+  color: #fff;
+}
+
+/* ── Boutons segmentés — la barre du canevas ──
+   Un cadre creux gris, des pastilles dedans, et l'active en blanc surelevee.
+   Streamlit rend un groupe de <button kind="segmented_control">. */
+[data-testid="stButtonGroup"] {
+  display: inline-flex;
+  gap: 3px;
+  padding: 3px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  flex-wrap: wrap;
+}
+[data-testid="stButtonGroup"] button[kind="segmented_control"],
+[data-testid="stButtonGroup"] button[kind="segmented_controlActive"],
+[data-testid="stButtonGroup"] button[kind="pills"],
+[data-testid="stButtonGroup"] button[kind="pillsActive"] {
+  border: none !important;
+  border-radius: 6px !important;
+  padding: 5px 12px !important;
+  font-size: 12.5px !important;
+  min-height: 0 !important;
+  transition: background 120ms;
+}
+[data-testid="stButtonGroup"] button[kind="segmented_control"],
+[data-testid="stButtonGroup"] button[kind="pills"] {
+  background: transparent !important;
+  color: var(--ink-2) !important;
+  font-weight: 400 !important;
+  box-shadow: none !important;
+}
+[data-testid="stButtonGroup"] button[kind="segmented_controlActive"],
+[data-testid="stButtonGroup"] button[kind="pillsActive"] {
+  background: var(--bg-elev) !important;
+  color: var(--ink) !important;
+  font-weight: 600 !important;
+  box-shadow: 0 1px 2px rgba(20, 23, 28, 0.08) !important;
+}
+[data-testid="stButtonGroup"] button p {
+  font-size: 12.5px !important;
+  margin: 0 !important;
+}
+
+/* ── Libellés de widget — la casse du canevas ── */
+[data-testid="stWidgetLabel"] p, .label-xs {
+  font-size: 10.5px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-3) !important;
 }
 
 /* Metric cards — densifiées (padding 12 au lieu de 16, label 10px) */
@@ -270,9 +331,11 @@ section[data-testid="stSidebar"] [role="radiogroup"] label > div:last-child {
   border-bottom: 2px solid var(--primary);
 }
 
-/* Inputs — subtils */
+/* Inputs — gabarit `sel()` du canevas : fond blanc, filet fin, rayon 9 */
 .stTextInput input, .stNumberInput input, .stSelectbox > div > div {
   background: var(--bg-elev) !important;
+  border-radius: 9px !important;
+  font-size: 12.5px !important;
   border: 1px solid var(--border) !important;
   border-radius: 8px !important;
   font-size: 13px;
@@ -569,4 +632,40 @@ code, kbd, pre {
   border-radius: 12px;
   padding: 15px 17px;
   border-top: 2px solid var(--ink-4);
+}
+
+/* ── Barre latérale : la densité du canevas ──
+   Le canevas la dessine à 238 px, contenu à 18/14/22, groupes espacés de
+   quelques pixels seulement. Streamlit la sert à 256 px, avec 16 px entre
+   CHAQUE élément et 96 px de vide en pied — d'où une colonne nettement plus
+   aérée que le modèle, et un menu repoussé vers le bas. */
+section[data-testid="stSidebar"] {
+  width: 238px !important;
+  min-width: 238px !important;
+  max-width: 238px !important;
+}
+section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {
+  padding: 4px 14px 22px !important;
+}
+section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"]
+  [data-testid="stVerticalBlock"] {
+  gap: 8px !important;
+}
+/* L'en-tête ne porte que le bouton de repli : 60 px de haut le sur-dotent. */
+section[data-testid="stSidebar"] [data-testid="stSidebarHeader"] {
+  height: 34px !important;
+  min-height: 34px !important;
+  padding: 0 8px !important;
+}
+/* Les titres de section n'ont plus besoin de leur marge haute : le gap la
+   donne déjà. Sans ça, chaque section coûtait 18 px de plus. */
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] > div[style*="text-transform:uppercase"] {
+  margin: 10px 0 2px 2px !important;
+}
+section[data-testid="stSidebar"] [role="radiogroup"] label {
+  padding: 7px 10px !important;
+}
+/* Le pied et les cartes de session se resserrent d'autant. */
+section[data-testid="stSidebar"] hr {
+  margin: 8px 0 !important;
 }

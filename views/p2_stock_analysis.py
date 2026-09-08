@@ -2771,7 +2771,7 @@ def _render_input_form(ticker, tickers_data):
                 "dps": dps,
             }
             save_fundamentals(data)
-            st.success("✅ Données enregistrées !")
+            st.success("Données enregistrées.")
             st.rerun()
 
 

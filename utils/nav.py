@@ -17,6 +17,17 @@ def goto_ticker(ticker: str) -> None:
     st.rerun()
 
 
+def goto_analyse() -> None:
+    """Ouvre « Analyse d'un Titre » sans imposer de titre.
+
+    `goto_ticker` sert quand on sait lequel ; celle-ci sert aux bandes
+    d'acces qui closent une liste — la page arrive avec son propre selecteur
+    et garde le dernier titre consulte.
+    """
+    st.session_state["pending_page"] = PAGE_STOCK_ANALYSIS
+    st.rerun()
+
+
 def goto_revue() -> None:
     """Ouvre Infos Marché sur l'onglet Revue de presse."""
     st.session_state["pending_page"] = PAGE_INFOS_MARCHE

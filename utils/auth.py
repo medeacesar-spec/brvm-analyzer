@@ -175,7 +175,7 @@ def _render_login_buttons(container=st.sidebar, key_prefix: str = "sidebar"):
                 st.error(f"Erreur de connexion : {e}")
     else:
         container.caption(
-            "⚠️ OAuth Google non configuré. Mode local actif — toutes "
+            "OAuth Google non configuré. Mode local actif — toutes "
             "les fonctions admin sont disponibles sans login."
         )
 
