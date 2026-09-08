@@ -1041,16 +1041,32 @@ def render():
     negative = quotes[quotes["variation"] < -0.01] if "variation" in quotes.columns else pd.DataFrame()
     total_mcap = quotes["market_cap"].sum() if "market_cap" in quotes.columns else 0
 
+    from utils.ui_helpers import kpi_v4
+    _stables = len(quotes) - len(positive) - len(negative)
+    _cote = len(quotes) or 1
+
+    # Chaque carte porte la couleur de ce qu'elle dit : la rangee se lit avant
+    # meme d'avoir lu un chiffre. Le sous-titre donne la part de la cote —
+    # « 18 hausses » ne veut pas dire la meme chose sur 48 titres ou sur 20.
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Hausses", f"{len(positive)}")
-    col2.metric("Baisses", f"{len(negative)}")
-    col3.metric("Stables", f"{len(quotes) - len(positive) - len(negative)}")
-    # La capitalisation est stockee en FRANCS : diviser par 1e3 affichait
-    # 18 390 570 100 "Mds" au lieu de 18 391 Mds.
-    col4.metric(
-        "Capitalisation",
-        f"{total_mcap/1e9:,.0f} Mds" if total_mcap > 0 else "—",
-    )
+    with col1:
+        kpi_v4("Hausses", f"{len(positive)}",
+               f"{len(positive) / _cote * 100:.0f} % de la cote",
+               accent="var(--up)", sub_color="var(--up)")
+    with col2:
+        kpi_v4("Baisses", f"{len(negative)}",
+               f"{len(negative) / _cote * 100:.0f} % de la cote",
+               accent="var(--down)", sub_color="var(--down)")
+    with col3:
+        kpi_v4("Stables", f"{_stables}",
+               f"{_stables / _cote * 100:.0f} % de la cote",
+               accent="var(--ink-4)")
+    with col4:
+        # La capitalisation est stockee en FRANCS : diviser par 1e3 affichait
+        # 18 390 570 100 "Mds" au lieu de 18 391 Mds.
+        kpi_v4("Capitalisation",
+               f"{total_mcap / 1e9:,.0f}".replace(",", " ") if total_mcap > 0 else "—",
+               "Mds FCFA", accent="var(--primary)")
 
     # ── Bulletin Officiel de la Cote ──
     # Chiffres officiels de la BRVM et, surtout, les operations a venir : le
@@ -1125,14 +1141,36 @@ def render():
         has_category = "category" in indices.columns
 
         def _short_name(name: str) -> str:
-            return (name or "").replace("BRVM - ", "").replace("BRVM-", "").strip()
+            """« BRVM - Composite » → « Composite ». Mais « BRVM-30 » reste
+            « BRVM-30 » : retirer le prefixe n'y laissait que « 30 », ce qui
+            ne nomme plus rien."""
+            court = (name or "").replace("BRVM - ", "").replace("BRVM-", "").strip()
+            return name.strip() if court.isdigit() else court
 
         def _render_idx_metric(idx):
-            val_str = f"{idx['value']:,.2f}" if pd.notna(idx.get("value")) else "—"
-            delta_str = f"{idx['variation']:.2f}%" if pd.notna(idx.get("variation")) else None
-            ytd = f" | YTD: {idx['ytd_variation']:+.2f}%" if pd.notna(idx.get("ytd_variation")) else ""
-            help_txt = f"Variation depuis le 31 déc{ytd}" if ytd else None
-            st.metric(_short_name(idx["name"]), val_str, delta=delta_str, help=help_txt)
+            """Carte d'indice au modèle du canevas : la variation du jour ET
+            le cumul depuis le 1er janvier sur la même ligne. Le YTD vivait
+            dans une infobulle — invisible tant qu'on ne survolait pas, alors
+            que c'est lui qui dit la tendance de l'année."""
+            from utils.ui_helpers import kpi_v4
+            val = idx.get("value")
+            var = idx.get("variation")
+            ytd = idx.get("ytd_variation")
+            val_str = f"{val:,.2f}".replace(",", " ") if pd.notna(val) else "—"
+            bouts = []
+            if pd.notna(var):
+                bouts.append(f"{var:+.2f} %")
+            if pd.notna(ytd):
+                bouts.append(f"YTD {ytd:+.2f} %")
+            # La couleur suit la variation du JOUR : c'est elle qui bouge.
+            if pd.notna(var) and var > 0:
+                accent, teinte = "var(--up)", "var(--up)"
+            elif pd.notna(var) and var < 0:
+                accent, teinte = "var(--down)", "var(--down)"
+            else:
+                accent, teinte = "var(--ink-4)", ""
+            kpi_v4(_short_name(idx["name"]), val_str, " · ".join(bouts),
+                   accent=accent, sub_color=teinte)
 
         # Sélection par catégorie
         if has_category:

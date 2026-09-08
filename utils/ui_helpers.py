@@ -256,3 +256,51 @@ def status_strip(statut: str, seance: str, maj: str = "",
         f"</div>{droite}</div>",
         unsafe_allow_html=True,
     )
+
+
+def kpi_v4(label: str, value: str, sub: str = "", accent: str = "var(--ink-4)",
+           sub_color: str = "", dark: bool = False, bar_pct: float = None):
+    """Carte de KPI au modèle du canevas v4.
+
+    `st.metric` ne sait pas teinter une carte : toutes portent le même filet
+    neutre. Or le canevas donne à chacune la couleur de ce qu'elle dit — les
+    hausses en vert, les baisses en rouge — et c'est ce filet qui rend la
+    rangée lisible avant qu'on ait lu un seul chiffre.
+
+    `dark` rend la carte navy pleine, réservée à la valeur qui domine les
+    autres (un score total, un univers de départ) plutôt qu'à leur égale.
+    """
+    if dark:
+        fond, bord, c_label = "var(--primary-2)", "var(--primary-2)", "var(--on-dark-3)"
+        c_val, c_sub, piste = "var(--on-dark)", "var(--on-dark-2)", "rgba(255,255,255,0.18)"
+        barre = "var(--primary-soft)"
+        filet = f"1px solid {bord}"
+    else:
+        fond, bord, c_label = "var(--bg-elev)", "var(--border)", "var(--ink-3)"
+        c_val, c_sub = "var(--ink)", (sub_color or "var(--ink-3)")
+        piste, barre = "var(--bg-sunken)", accent
+        filet = f"2px solid {accent}"
+
+    html_barre = ""
+    if bar_pct is not None:
+        html_barre = (
+            f"<div style='height:4px;background:{piste};border-radius:999px;"
+            f"overflow:hidden;margin:3px 0 1px;'>"
+            f"<div style='width:{max(0, min(100, bar_pct)):.0f}%;height:100%;"
+            f"border-radius:999px;background:{barre};'></div></div>"
+        )
+    poids_sub = 600 if sub_color else 400
+    st.markdown(
+        f"<div style='background:{fond};border:1px solid {bord};"
+        f"border-top:{filet};border-radius:12px;padding:15px 17px;"
+        "display:flex;flex-direction:column;gap:5px;height:100%;'>"
+        "<span style='font-size:10.5px;font-weight:600;letter-spacing:0.09em;"
+        f"text-transform:uppercase;color:{c_label};'>{label}</span>"
+        "<span style='font-variant-numeric:tabular-nums;font-size:27px;"
+        f"font-weight:600;letter-spacing:-0.015em;line-height:1.05;"
+        f"color:{c_val};'>{value}</span>"
+        f"{html_barre}"
+        f"<span style='font-size:11.5px;font-weight:{poids_sub};"
+        f"color:{c_sub};'>{sub}</span></div>",
+        unsafe_allow_html=True,
+    )
