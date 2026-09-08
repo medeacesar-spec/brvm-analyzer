@@ -227,7 +227,7 @@ def _render_top5(df: pd.DataFrame, label: str):
         if rows.empty:
             st.markdown(
                 f"<div style='padding:20px 14px;background:var(--bg-elev);"
-                f"border:1px solid var(--border);border-radius:10px;"
+                f"border:1px solid var(--border);border-radius:12px;"
                 f"color:var(--ink-3);font-size:13px;text-align:center;'>"
                 f"{empty_msg}</div>",
                 unsafe_allow_html=True,
@@ -267,7 +267,7 @@ def _render_top5(df: pd.DataFrame, label: str):
         # Card bordée
         st.markdown(
             f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
-            f"border-radius:10px;overflow:hidden;'>{inner}</div>",
+            f"border-radius:12px;overflow:hidden;'>{inner}</div>",
             unsafe_allow_html=True,
         )
 

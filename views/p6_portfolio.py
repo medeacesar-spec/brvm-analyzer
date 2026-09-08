@@ -127,7 +127,7 @@ def render():
         with st.container():
             st.markdown(
                 "<div style='background:var(--bg-elev);border:1px solid var(--border);"
-                "border-radius:10px;padding:14px 16px;margin:10px 0;'>",
+                "border-radius:12px;padding:14px 16px;margin:10px 0;'>",
                 unsafe_allow_html=True,
             )
             tickers_data = load_tickers()
@@ -194,7 +194,7 @@ def render():
         current_cash = st.session_state.get("portfolio_cash", 0) or 0
         st.markdown(
             "<div style='background:var(--bg-elev);border:1px solid var(--border);"
-            "border-radius:10px;padding:14px 16px;margin:10px 0;'>"
+            "border-radius:12px;padding:14px 16px;margin:10px 0;'>"
             "<div style='font-size:14px;font-weight:600;margin-bottom:4px;'>Cash disponible</div>"
             "<div style='font-size:12.5px;color:var(--ink-3);margin-bottom:10px;'>"
             f"Solde courant : {current_cash:,.0f} {CURRENCY}. Ajoutez un montant (positif pour "
@@ -253,7 +253,7 @@ def render():
         st.session_state["pf_import_open"] = True
         st.markdown(
             "<div style='background:var(--bg-elev);border:1px solid "
-            "var(--border);border-radius:10px;padding:14px 16px;margin:10px 0;'>"
+            "var(--border);border-radius:12px;padding:14px 16px;margin:10px 0;'>"
             "<div style='font-size:14px;font-weight:600;margin-bottom:8px;'>"
             "Saisir plusieurs positions</div>"
             "<div style='font-size:12.5px;color:var(--ink-3);"
@@ -360,7 +360,7 @@ def render():
             sub_color = {"up": "var(--up)", "down": "var(--down)"}.get(tone, "var(--ink-3)")
             return (
                 f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
-                f"border-radius:10px;padding:14px 16px;min-height:92px;'>"
+                f"border-radius:12px;padding:14px 16px;min-height:92px;'>"
                 f"<div class='label-xs' style='margin-bottom:6px;'>{label}</div>"
                 f"<div style='font-size:22px;font-weight:600;letter-spacing:-0.02em;"
                 f"color:var(--ink);font-variant-numeric:tabular-nums;line-height:1.15;'>{value}</div>"
@@ -409,7 +409,7 @@ def render():
             "color:var(--ink-3);font-weight:500;padding:9px 10px;"
             "border-bottom:1px solid var(--border);background:var(--bg-sunken);"
         )
-        cell_style = "padding:10px;font-size:13px;border-bottom:1px solid var(--border);"
+        cell_style = "padding:10px;font-size:13px;border-bottom:1px solid var(--border-soft);"
         num_style = cell_style + "text-align:right;font-variant-numeric:tabular-nums;"
 
         rows_html = (
@@ -454,7 +454,7 @@ def render():
             )
 
         st.markdown(
-            f"<div style='border:1px solid var(--border);border-radius:10px;"
+            f"<div style='border:1px solid var(--border);border-radius:12px;"
             f"overflow:hidden;background:var(--bg-elev);margin-bottom:16px;'>"
             f"<table style='width:100%;border-collapse:collapse;'>{rows_html}</table></div>",
             unsafe_allow_html=True,
@@ -488,7 +488,7 @@ def render():
                 if st.session_state.get(edit_flag_key):
                     st.markdown(
                         "<div style='background:var(--bg-elev);border:1px solid var(--border);"
-                        "border-radius:10px;padding:12px 14px;margin:6px 0 10px 0;'>",
+                        "border-radius:12px;padding:12px 14px;margin:6px 0 10px 0;'>",
                         unsafe_allow_html=True,
                     )
                     with st.form(f"edit_form_{pid}"):
@@ -551,7 +551,7 @@ def render():
         if st.session_state[_add_key]:
             st.markdown(
                 "<div style='background:var(--bg-elev);border:1px solid var(--border);"
-                "border-radius:10px;padding:14px 16px;margin:10px 0;'>",
+                "border-radius:12px;padding:14px 16px;margin:10px 0;'>",
                 unsafe_allow_html=True,
             )
             tickers_data = load_tickers()
@@ -620,7 +620,7 @@ def render():
             )
             html = (
                 "<table style='width:100%;border-collapse:collapse;"
-                "background:var(--bg-elev);border-radius:10px;overflow:hidden;"
+                "background:var(--bg-elev);border-radius:12px;overflow:hidden;"
                 "border:1px solid var(--border);'>"
                 "<thead><tr>"
                 f"<th style='{header_style};text-align:left;'>Date</th>"
@@ -681,7 +681,7 @@ def render():
         if st.session_state[_add_fee_key]:
             st.markdown(
                 "<div style='background:var(--bg-elev);border:1px solid var(--border);"
-                "border-radius:10px;padding:14px 16px;margin:10px 0;'>",
+                "border-radius:12px;padding:14px 16px;margin:10px 0;'>",
                 unsafe_allow_html=True,
             )
             CATEGORY_LABEL = {
@@ -763,7 +763,7 @@ def render():
             )
             html = (
                 "<table style='width:100%;border-collapse:collapse;"
-                "background:var(--bg-elev);border-radius:10px;overflow:hidden;"
+                "background:var(--bg-elev);border-radius:12px;overflow:hidden;"
                 "border:1px solid var(--border);'>"
                 "<thead><tr>"
                 f"<th style='{header_style};text-align:left;'>Date</th>"
@@ -896,7 +896,7 @@ def _render_risque_ensemble(portfolio):
         st.markdown(
             "<div style='background:var(--bg-elev);border:1px solid "
             "var(--border);border-left:3px solid var(--ocre);"
-            "border-radius:10px;padding:16px 18px;'>"
+            "border-radius:12px;padding:16px 18px;'>"
             + "".join(
                 f"<div style='font-size:13.5px;line-height:1.65;"
                 f"color:var(--ink-2);margin-bottom:6px;'>· "
@@ -936,7 +936,7 @@ def _render_risque_ensemble(portfolio):
             f"{'—' if l['volatilite'] is None else format(l['volatilite'], '.1%')}</td>"
             f"<td style='{nb};color:var(--ink-3);'>{sortie}</td></tr>")
     st.markdown(
-        f"<div style='border:1px solid var(--border);border-radius:10px;"
+        f"<div style='border:1px solid var(--border);border-radius:12px;"
         f"overflow:hidden;background:var(--bg-elev);margin-top:14px;'>"
         f"<table style='width:100%;border-collapse:collapse;'>{html}</table>"
         f"</div>", unsafe_allow_html=True)
@@ -1081,16 +1081,16 @@ def _render_portfolio_analysis(portfolio, cash, total_value, total_portfolio, ti
         tone = dot_tone_map.get(status, "neutral")
         rows.append(
             f"<tr>"
-            f"<td style='padding:10px 12px;border-bottom:1px solid var(--border);width:18px;'>"
+            f"<td style='padding:10px 12px;border-bottom:1px solid var(--border-soft);width:18px;'>"
             f"<span class='dot {tone}'></span></td>"
-            f"<td style='padding:10px 12px;border-bottom:1px solid var(--border);"
+            f"<td style='padding:10px 12px;border-bottom:1px solid var(--border-soft);"
             f"font-weight:600;font-size:13px;white-space:nowrap;'>{label}</td>"
-            f"<td style='padding:10px 12px;border-bottom:1px solid var(--border);"
+            f"<td style='padding:10px 12px;border-bottom:1px solid var(--border-soft);"
             f"color:var(--ink-2);font-size:13px;'>{detail}</td>"
             f"</tr>"
         )
     st.markdown(
-        f"<div style='border:1px solid var(--border);border-radius:10px;"
+        f"<div style='border:1px solid var(--border);border-radius:12px;"
         f"overflow:hidden;background:var(--bg-elev);margin-bottom:14px;'>"
         f"<table style='width:100%;border-collapse:collapse;'>{''.join(rows)}</table></div>",
         unsafe_allow_html=True,
@@ -1171,7 +1171,7 @@ def _table_suggestions(liste, intitule, action, tone, montrer_poids=True):
               f"<td style='{cell};color:var(--ink-3);font-size:12px;'>"
               f"{s.get('signals_top') or '—'}</td></tr>")
     st.markdown(
-        f"<div style='border:1px solid var(--border);border-radius:10px;"
+        f"<div style='border:1px solid var(--border);border-radius:12px;"
         f"overflow:hidden;background:var(--bg-elev);'>"
         f"<table style='width:100%;border-collapse:collapse;'>{html}</table>"
         f"</div>", unsafe_allow_html=True)
@@ -1311,7 +1311,7 @@ def _render_position_recommendations(portfolio, total_value, cash,
     if volet != "nouveaux":
         st.markdown(
         f"<div style='border:1px solid var(--border);border-left:4px solid {global_color};"
-        f"border-radius:10px;padding:16px 18px;background:var(--bg-elev);margin-bottom:18px;'>"
+        f"border-radius:12px;padding:16px 18px;background:var(--bg-elev);margin-bottom:18px;'>"
         f"<div class='label-xs' style='margin-bottom:4px;'>Verdict portefeuille</div>"
         f"<div style='font-size:17px;font-weight:600;color:var(--ink);"
         f"letter-spacing:-0.01em;'>{global_action}</div>"
@@ -1642,7 +1642,7 @@ def _render_recommandations_ajustees(portfolio):
             f"{' · '.join(motifs) if motifs else '—'}</td></tr>")
 
     st.markdown(
-        f"<div style='border:1px solid var(--border);border-radius:10px;"
+        f"<div style='border:1px solid var(--border);border-radius:12px;"
         f"overflow:hidden;background:var(--bg-elev);'>"
         f"<table style='width:100%;border-collapse:collapse;'>{html}</table>"
         f"</div>", unsafe_allow_html=True)
@@ -1752,7 +1752,7 @@ def _render_optimisation(portfolio, cash):
                 f"<td style='{nb};color:var(--ink-3);'>"
                 f"{formater('montant_echange', c['taille_max'])}</td></tr>")
         st.markdown(
-            f"<div style='border:1px solid var(--border);border-radius:10px;"
+            f"<div style='border:1px solid var(--border);border-radius:12px;"
             f"overflow:hidden;background:var(--bg-elev);margin-top:10px;'>"
             f"<table style='width:100%;border-collapse:collapse;'>{html}</table>"
             f"</div>", unsafe_allow_html=True)
@@ -1818,7 +1818,7 @@ def _render_optimisation(portfolio, cash):
                     f"{l['verdict']} · score {l['score']:.0f}/100</td></tr>")
             st.markdown(
                 f"<div style='border:1px solid var(--border);"
-                f"border-radius:10px;overflow:hidden;background:var(--bg-elev);'>"
+                f"border-radius:12px;overflow:hidden;background:var(--bg-elev);'>"
                 f"<table style='width:100%;border-collapse:collapse;'>{html}"
                 f"</table></div>", unsafe_allow_html=True)
 
@@ -1843,7 +1843,7 @@ def _render_optimisation(portfolio, cash):
                     with col:
                         st.markdown(
                             f"<div style='background:var(--bg-elev);border:1px "
-                            f"solid var(--border);border-radius:10px;"
+                            f"solid var(--border);border-radius:12px;"
                             f"padding:12px 14px;'>"
                             f"<div class='label-xs'>{intitule}</div>"
                             f"<div style='font-size:18px;font-weight:600;"
@@ -1878,7 +1878,7 @@ def _render_optimisation(portfolio, cash):
                             f"<td style='{nb}'>{e['rendement']:.1%}</td></tr>")
                 st.markdown(
                     f"<div style='border:1px solid var(--border);"
-                    f"border-radius:10px;overflow:hidden;'>"
+                    f"border-radius:12px;overflow:hidden;'>"
                     f"<table style='width:100%;border-collapse:collapse;'>{h}"
                     f"</table></div>", unsafe_allow_html=True)
 
@@ -1909,7 +1909,7 @@ def _render_optimisation(portfolio, cash):
         "candidats à examiner ; il ne décide de rien.")
     st.markdown(
         "<div style='background:var(--bg-elev);border:1px solid var(--border);"
-        "border-left:3px solid var(--ocre);border-radius:10px;"
+        "border-left:3px solid var(--ocre);border-radius:12px;"
         "padding:14px 16px;margin-top:14px;'>"
         + "".join(f"<div style='font-size:12.5px;line-height:1.6;"
                   f"color:var(--ink-2);margin-bottom:6px;'>· {_gras_html(a)}</div>"

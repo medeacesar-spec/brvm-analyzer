@@ -270,7 +270,7 @@ def render():
             accent = {"up": "var(--up)", "down": "var(--down)", "ocre": "var(--ocre)"}.get(tone, "var(--primary)")
             st.markdown(
                 f"<div style='border:1px solid var(--border);border-left:3px solid {accent};"
-                f"border-radius:10px;padding:14px 16px;background:var(--bg-elev);min-height:138px;'>"
+                f"border-radius:12px;padding:14px 16px;background:var(--bg-elev);min-height:138px;'>"
                 f"<div class='label-xs' style='color:var(--ink-3);margin-bottom:6px;'>{label}</div>"
                 f"<div style='font-size:28px;font-weight:600;font-variant-numeric:tabular-nums;'>{pct_txt}</div>"
                 f"<div style='font-size:12px;color:var(--ink-2);margin-top:2px;'>{sub}</div>"
@@ -315,7 +315,7 @@ def render():
                 "color:var(--ink-3);font-weight:500;padding:9px 10px;"
                 "border-bottom:1px solid var(--border);background:var(--bg-sunken);"
             )
-            cell_style = "padding:10px 12px;font-size:13px;border-bottom:1px solid var(--border);"
+            cell_style = "padding:10px 12px;font-size:13px;border-bottom:1px solid var(--border-soft);"
             num_style = cell_style + "text-align:right;font-variant-numeric:tabular-nums;"
 
             rows_html = (
@@ -361,7 +361,7 @@ def render():
                 )
 
             st.markdown(
-                f"<div style='border:1px solid var(--border);border-radius:10px;"
+                f"<div style='border:1px solid var(--border);border-radius:12px;"
                 f"overflow:hidden;background:var(--bg-elev);margin-bottom:16px;'>"
                 f"<table style='width:100%;border-collapse:collapse;'>{rows_html}</table></div>",
                 unsafe_allow_html=True,
@@ -527,7 +527,7 @@ def render():
                     "color:var(--ink-3);font-weight:500;padding:9px 10px;"
                     "border-bottom:1px solid var(--border);background:var(--bg-sunken);"
                 )
-                cell_style = "padding:10px 12px;font-size:13px;border-bottom:1px solid var(--border);"
+                cell_style = "padding:10px 12px;font-size:13px;border-bottom:1px solid var(--border-soft);"
                 num_style = cell_style + "text-align:right;font-variant-numeric:tabular-nums;"
 
                 rows_html = (
@@ -568,7 +568,7 @@ def render():
                         f"</tr>"
                     )
                 st.markdown(
-                    f"<div style='border:1px solid var(--border);border-radius:10px;"
+                    f"<div style='border:1px solid var(--border);border-radius:12px;"
                     f"overflow:hidden;background:var(--bg-elev);margin-bottom:16px;'>"
                     f"<table style='width:100%;border-collapse:collapse;'>{rows_html}</table></div>",
                     unsafe_allow_html=True,

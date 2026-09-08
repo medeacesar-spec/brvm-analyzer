@@ -376,7 +376,7 @@ def _render_news_feed():
         "color:var(--ink-3);font-weight:500;padding:9px 12px;"
         "border-bottom:1px solid var(--border);background:var(--bg-sunken);text-align:left;"
     )
-    cell_style = "padding:11px 12px;font-size:13px;border-bottom:1px solid var(--border);"
+    cell_style = "padding:11px 12px;font-size:13px;border-bottom:1px solid var(--border-soft);"
     num_style = cell_style + "font-variant-numeric:tabular-nums;color:var(--ink-2);"
 
     tag_styles = {
@@ -437,7 +437,7 @@ def _render_news_feed():
         )
 
     st.markdown(
-        f"<div style='border:1px solid var(--border);border-radius:10px;"
+        f"<div style='border:1px solid var(--border);border-radius:12px;"
         f"overflow:hidden;background:var(--bg-elev);margin-top:10px;'>"
         f"<table style='width:100%;border-collapse:collapse;'>{''.join(rows)}</table></div>",
         unsafe_allow_html=True,

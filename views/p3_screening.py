@@ -95,7 +95,7 @@ def render():
         n_filtered = len([s for s in selected_tickers if s.split(" · ")[0] in target_tickers])
         st.markdown(
             f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
-            f"border-radius:10px;padding:14px 16px;min-height:76px;'>"
+            f"border-radius:12px;padding:14px 16px;min-height:76px;'>"
             f"<div class='label-xs' style='margin-bottom:4px;'>Univers filtré</div>"
             f"<div style='font-size:26px;font-weight:600;color:var(--ink);"
             f"letter-spacing:-0.02em;font-variant-numeric:tabular-nums;"
@@ -319,7 +319,7 @@ def render():
         "color:var(--ink-3);font-weight:500;padding:10px;"
         "border-bottom:1px solid var(--border);background:var(--bg-sunken);"
     )
-    cell_style = "padding:10px;font-size:13px;border-bottom:1px solid var(--border);"
+    cell_style = "padding:10px;font-size:13px;border-bottom:1px solid var(--border-soft);"
     num_style = cell_style + "text-align:right;font-variant-numeric:tabular-nums;"
 
     rows_html = (
@@ -362,7 +362,7 @@ def render():
         )
 
     st.markdown(
-        f"<div style='border:1px solid var(--border);border-radius:10px;"
+        f"<div style='border:1px solid var(--border);border-radius:12px;"
         f"overflow:hidden;background:var(--bg-elev);margin-bottom:16px;'>"
         f"<table style='width:100%;border-collapse:collapse;'>{rows_html}</table>"
         f"</div>",
