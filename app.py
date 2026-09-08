@@ -539,6 +539,10 @@ try:
 except Exception:
     count = 0
 try:
+    total_titres = conn.execute("SELECT COUNT(*) FROM market_data").fetchone()[0]
+except Exception:
+    total_titres = count
+try:
     _meta_rows = conn.execute(
         "SELECT key, value FROM snapshot_meta "
         "WHERE key IN ('last_session_date','last_session_time','last_session_is_open',"
@@ -579,55 +583,6 @@ _label = _build_label(
 )
 st.sidebar.caption(f"{count} titres · {_label.sidebar}")
 
-# Debug indices + daily sync (admin uniquement)
-_idx_err = st.session_state.get("indices_error")
-_sync_err = st.session_state.get("daily_sync_error")
-if (_idx_err or _sync_err) and is_admin():
-    if _idx_err:
-        st.sidebar.error(f"Indices : {_idx_err}")
-    if _sync_err:
-        st.sidebar.error(f"Sync : {_sync_err}")
-    if st.sidebar.button("Retenter", key="retry_all_btn"):
-        try:
-            _scrape_brvm_indices()
-            st.session_state.indices_error = None
-        except Exception as _e:
-            st.session_state.indices_error = f"{type(_e).__name__}: {_e}"
-        try:
-            _sync_daily_quotes()
-            _sync_incremental_prices()
-            st.session_state.daily_sync_error = None
-        except Exception as _e:
-            st.session_state.daily_sync_error = f"{type(_e).__name__}: {_e}"
-        st.rerun()
-
-# Actions admin (connecté uniquement, pas en mode local implicite).
-# Les boutons "Cotations" et "Complet" ont été retirés : la sync quotidienne
-# se fait automatiquement via GitHub Actions (16h UTC) + sync auto au démarrage.
-# Le bouton snapshot reste utile pour accélérer les pages sans attendre le cron.
-from utils.auth import is_logged_in as _is_logged_in
-if is_admin() and _is_logged_in():
-    if st.sidebar.button("Regénérer snapshots", use_container_width=True,
-                          help="Précalcule les agrégats pour accélérer Signaux / Performance / Historique"):
-        from scripts.build_daily_snapshot import build_all
-        with st.spinner("Construction des snapshots…"):
-            res = build_all()
-        if res.get("status") == "ok":
-            st.sidebar.success(
-                f"Snapshots en {res['duration_sec']}s "
-                f"({res.get('scoring',0)} scoring, {res.get('ticker_perf',0)} perf, "
-                f"{res.get('signal_perf',0)} signaux)"
-            )
-            try:
-                st.cache_data.clear()
-            except Exception:
-                pass
-        else:
-            st.sidebar.error(f"Échec : {res.get('error','inconnu')}")
-        st.rerun()
-
-# Widget authentification (connexion Google OAuth ou mode dev)
-render_auth_widget()
 
 # ─── Navigation par sections (Marché / Analyse / Outils) ──────────────
 # Historique Signaux est reservé aux administrateurs.
@@ -693,6 +648,76 @@ if _clicked is not None:
     st.rerun()
 
 page = _current
+
+# ─── Administration (sous la navigation, comme au canevas) ────────────
+# Le canevas place ces commandes SOUS le menu, pas au-dessus : la
+# navigation est ce qu'on vient chercher, l'administration ce qu'on
+# consulte ensuite. Elles etaient en tete et repoussaient le menu.
+if is_admin():
+    st.sidebar.markdown(
+        "<div style='font-size:10px;font-weight:600;color:var(--on-dark-4);"
+        "letter-spacing:0.12em;text-transform:uppercase;"
+        "margin:18px 0 6px 2px;'>Administration</div>",
+        unsafe_allow_html=True,
+    )
+
+# Debug indices + daily sync (admin uniquement)
+_idx_err = st.session_state.get("indices_error")
+_sync_err = st.session_state.get("daily_sync_error")
+if (_idx_err or _sync_err) and is_admin():
+    if _idx_err:
+        st.sidebar.error(f"Indices : {_idx_err}")
+    if _sync_err:
+        st.sidebar.error(f"Sync : {_sync_err}")
+    if st.sidebar.button("Retenter", key="retry_all_btn"):
+        try:
+            _scrape_brvm_indices()
+            st.session_state.indices_error = None
+        except Exception as _e:
+            st.session_state.indices_error = f"{type(_e).__name__}: {_e}"
+        try:
+            _sync_daily_quotes()
+            _sync_incremental_prices()
+            st.session_state.daily_sync_error = None
+        except Exception as _e:
+            st.session_state.daily_sync_error = f"{type(_e).__name__}: {_e}"
+        st.rerun()
+
+# Actions admin (connecté uniquement, pas en mode local implicite).
+# Les boutons "Cotations" et "Complet" ont été retirés : la sync quotidienne
+# se fait automatiquement via GitHub Actions (16h UTC) + sync auto au démarrage.
+# Le bouton snapshot reste utile pour accélérer les pages sans attendre le cron.
+from utils.auth import is_logged_in as _is_logged_in
+if is_admin() and _is_logged_in():
+    if st.sidebar.button("Regénérer snapshots", use_container_width=True,
+                          help="Précalcule les agrégats pour accélérer Signaux / Performance / Historique"):
+        from scripts.build_daily_snapshot import build_all
+        with st.spinner("Construction des snapshots…"):
+            res = build_all()
+        if res.get("status") == "ok":
+            st.sidebar.success(
+                f"Snapshots en {res['duration_sec']}s "
+                f"({res.get('scoring',0)} scoring, {res.get('ticker_perf',0)} perf, "
+                f"{res.get('signal_perf',0)} signaux)"
+            )
+            try:
+                st.cache_data.clear()
+            except Exception:
+                pass
+        else:
+            st.sidebar.error(f"Échec : {res.get('error','inconnu')}")
+        st.rerun()
+
+# Widget authentification (connexion Google OAuth ou mode dev)
+render_auth_widget()
+
+
+# ─── Bandeau de séance ────────────────────────────────────────────────
+# Le canevas ouvre CHAQUE page par cette bande : de quelle séance parle-t-on,
+# et depuis quand la page est-elle à jour. Elle vit donc dans la coquille,
+# avant le routage, et non dans une page en particulier.
+from utils.ui_helpers import status_strip as _status_strip
+_status_strip(_label.status, _label.seance, _label.maj, count, total_titres)
 
 # Import and run the selected page
 if page == "Dashboard":
