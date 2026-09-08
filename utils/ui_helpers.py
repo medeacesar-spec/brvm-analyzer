@@ -100,3 +100,121 @@ def load_theme(css_path: str = "style.css"):
     p = Path(css_path)
     if p.exists():
         st.markdown(f"<style>{p.read_text()}</style>", unsafe_allow_html=True)
+
+
+# ─────────────────────────────────────────────────────────────────
+# Composants du redesign v4
+# Référence : design/BRVM Analyzer - Redesign v4.dc.html
+# ─────────────────────────────────────────────────────────────────
+
+def breadth_bar(up: int, flat: int, down: int, label: str = "Largeur du marché"):
+    """Barre de largeur du marché : hausses / stables / baisses en une bande.
+
+    Une rangée de compteurs dit *combien* ; cette barre dit *dans quelle
+    proportion*, ce qui se lit d'un coup d'œil et pas en comparant trois
+    nombres. Les trois segments sont dans l'ordre du canevas — hausses,
+    stables, baisses — pour que la lecture aille du vert au rouge.
+    """
+    total = up + flat + down
+    if total <= 0:
+        return
+    segments = [
+        (up, "var(--up)", f"{up} ↑"),
+        (flat, "var(--border-strong)", f"{flat} ="),
+        (down, "var(--down)", f"{down} ↓"),
+    ]
+    bandes = "".join(
+        f"<div style='width:{n / total * 100:.1f}%;background:{couleur};'></div>"
+        for n, couleur, _ in segments if n
+    )
+    compteurs = "".join(
+        f"<span style='font-weight:600;color:{couleur};'>{texte}</span>"
+        for n, couleur, texte in segments
+    )
+    st.markdown(
+        "<div style='background:var(--bg-elev);border:1px solid var(--border);"
+        "border-radius:12px;padding:14px 18px;display:flex;align-items:center;"
+        "gap:18px;flex-wrap:wrap;margin-bottom:14px;'>"
+        "<span style='font-size:10.5px;font-weight:600;color:var(--ink-3);"
+        f"letter-spacing:0.09em;text-transform:uppercase;flex:0 0 auto;'>{label}</span>"
+        "<div style='flex:1;min-width:200px;display:flex;height:9px;"
+        f"border-radius:999px;overflow:hidden;background:var(--border-soft);'>{bandes}</div>"
+        "<div style='display:flex;gap:16px;font-family:var(--font-mono);"
+        f"font-size:12px;flex:0 0 auto;'>{compteurs}</div>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def heatmap(lignes, colonnes, echelle: float = None, footer: str = ""):
+    """Carte de chaleur : une ligne par entité, une colonne par fenêtre.
+
+    `lignes` : liste de (libellé, [valeurs en %]) — une valeur par colonne,
+    `None` pour une case sans donnée (rendue vide, jamais en zéro : un trou
+    n'est pas une stabilité).
+    `colonnes` : libellés des fenêtres, sans la première colonne du libellé.
+    `echelle` : variation en % qui sature la couleur. Par défaut, le plus
+    grand écart observé — ainsi la teinte reste lisible même un mois calme.
+    """
+    valeurs = [v for _, vals in lignes for v in vals if v is not None]
+    if not valeurs:
+        return
+    if not echelle:
+        echelle = max(abs(v) for v in valeurs) or 1.0
+
+    def _fond(v):
+        if v is None:
+            return "var(--bg-elev)"
+        intensite = min(abs(v) / echelle, 1.0) * 0.85
+        # Teintes du canevas : vert #0E7A54 en hausse, rouge #C0392B en baisse.
+        r, g, b = (14, 122, 84) if v >= 0 else (192, 57, 43)
+        return f"rgba({r},{g},{b},{intensite:.3f})"
+
+    def _encre(v):
+        if v is None:
+            return "var(--ink-4)"
+        return "#FFFFFF" if min(abs(v) / echelle, 1.0) > 0.55 else "var(--ink)"
+
+    entetes = (
+        "<div style='padding:9px 10px;background:var(--bg-sunken);"
+        "border-bottom:1px solid var(--border);font-size:10px;font-weight:600;"
+        "color:var(--ink-3);letter-spacing:0.09em;text-transform:uppercase;"
+        "white-space:nowrap;'>Secteur</div>"
+        + "".join(
+            "<div style='padding:9px 10px;background:var(--bg-sunken);"
+            "border-bottom:1px solid var(--border);font-size:10px;font-weight:600;"
+            "color:var(--ink-3);letter-spacing:0.09em;text-transform:uppercase;"
+            f"text-align:right;white-space:nowrap;'>{c}</div>"
+            for c in colonnes
+        )
+    )
+    cellules = ""
+    for libelle, vals in lignes:
+        cellules += (
+            "<div style='padding:9px 10px;border-bottom:1px solid var(--bg-elev);"
+            "border-right:1px solid var(--bg-elev);font-size:12.5px;"
+            f"font-weight:500;color:var(--ink);white-space:nowrap;'>{libelle}</div>"
+        )
+        for v in vals:
+            texte = "—" if v is None else f"{v:+.2f} %"
+            cellules += (
+                "<div style='padding:9px 10px;border-bottom:1px solid var(--bg-elev);"
+                "border-right:1px solid var(--bg-elev);text-align:right;"
+                f"background:{_fond(v)};'>"
+                "<span style='font-family:var(--font-mono);font-size:12px;"
+                f"font-weight:500;color:{_encre(v)};white-space:nowrap;'>{texte}</span>"
+                "</div>"
+            )
+    pied = (
+        "<div style='padding:10px 12px;background:var(--bg-footer);"
+        f"font-size:11.5px;color:var(--ink-3);'>{footer}</div>" if footer else ""
+    )
+    st.markdown(
+        "<div style='background:var(--bg-elev);border:1px solid var(--border);"
+        "border-radius:12px;overflow:hidden;'>"
+        "<div style='overflow-x:auto;'>"
+        "<div style='display:grid;grid-template-columns:minmax(140px,1.6fr) "
+        f"repeat({len(colonnes)},minmax(78px,1fr));min-width:{140 + 90 * len(colonnes)}px;'>"
+        f"{entetes}{cellules}</div></div>{pied}</div>",
+        unsafe_allow_html=True,
+    )
