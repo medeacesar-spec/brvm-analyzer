@@ -294,17 +294,21 @@ def render():
                 f"titres sur {len(all_stocks)}</div></div>",
                 unsafe_allow_html=True,
             )
-        _k2.metric("Correspondances", f"{len(filtered)}", help="Après filtres")
-        _k3.metric(
-            "Yield médian",
-            f"{_yield_med.median() * 100:.2f} %" if not _yield_med.empty else "—",
-            help="Médiane de la sélection",
-        )
-        _k4.metric(
-            "Score médian",
-            f"{_score_med.median():.0f} / 50" if not _score_med.empty else "—",
-            help="Score fondamental médian de la sélection",
-        )
+        from utils.ui_helpers import kpi_v4
+        with _k2:
+            kpi_v4("Correspondances", f"{len(filtered)}", "après filtres",
+                   accent="var(--primary)")
+        with _k3:
+            _y = _yield_med.median() * 100 if not _yield_med.empty else None
+            kpi_v4("Yield médian", f"{_y:.2f} %" if _y is not None else "—",
+                   "de la sélection",
+                   accent="var(--up)" if _y and _y >= 6 else "var(--ink-4)",
+                   sub_color="var(--up)" if _y and _y >= 6 else "")
+        with _k4:
+            _sc = _score_med.median() if not _score_med.empty else None
+            kpi_v4("Score médian",
+                   f"{_sc:.0f} / 50" if _sc is not None else "—",
+                   "fondamental", accent="var(--ink-4)")
 
     with onglet_res:
         # ─── Résultats ──────────────────────────────────────────────────────

@@ -356,17 +356,26 @@ def render():
         MARKET_YIELD_REF = 4.1
 
         def _kpi_card(label, value, sub, tone="neutral"):
+            """Carte au gabarit du canevas v4."""
             arrow = {"up": "▲", "down": "▼"}.get(tone, "")
-            sub_color = {"up": "var(--up)", "down": "var(--down)"}.get(tone, "var(--ink-3)")
+            accent = {"up": "var(--up)", "down": "var(--down)",
+                      "warn": "var(--warn)"}.get(tone, "var(--ink-4)")
+            teinte = {"up": "var(--up)", "down": "var(--down)",
+                      "warn": "var(--warn)"}.get(tone, "var(--ink-3)")
+            poids = 600 if tone in ("up", "down", "warn") else 400
             return (
                 f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
-                f"border-radius:12px;padding:14px 16px;min-height:92px;'>"
-                f"<div class='label-xs' style='margin-bottom:6px;'>{label}</div>"
-                f"<div style='font-size:22px;font-weight:600;letter-spacing:-0.02em;"
-                f"color:var(--ink);font-variant-numeric:tabular-nums;line-height:1.15;'>{value}</div>"
-                f"<div style='font-size:11.5px;color:{sub_color};margin-top:6px;font-weight:500;'>"
-                f"{arrow + ' ' if arrow else '— '}{sub}</div>"
-                f"</div>"
+                f"border-top:2px solid {accent};border-radius:12px;padding:15px 17px;"
+                f"display:flex;flex-direction:column;gap:5px;height:100%;'>"
+                f"<span style='font-size:10.5px;font-weight:600;letter-spacing:0.09em;"
+                f"text-transform:uppercase;color:var(--ink-3);'>{label}</span>"
+                f"<span style='font-variant-numeric:tabular-nums;font-size:27px;"
+                f"font-weight:600;letter-spacing:-0.015em;line-height:1.05;"
+                f"color:var(--ink);'>{value}</span>"
+                + (f"<span style='font-size:11.5px;font-weight:{poids};"
+                   f"color:{teinte};'>{arrow + ' ' if arrow else ''}{sub}</span>"
+                   if sub else "")
+                + "</div>"
             )
 
         c1, c2, c3, c4 = st.columns(4)

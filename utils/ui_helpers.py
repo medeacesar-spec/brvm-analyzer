@@ -259,7 +259,8 @@ def status_strip(statut: str, seance: str, maj: str = "",
 
 
 def kpi_v4(label: str, value: str, sub: str = "", accent: str = "var(--ink-4)",
-           sub_color: str = "", dark: bool = False, bar_pct: float = None):
+           sub_color: str = "", dark: bool = False, bar_pct: float = None,
+           taille: str = "27px", couleur_valeur: str = ""):
     """Carte de KPI au modèle du canevas v4.
 
     `st.metric` ne sait pas teinter une carte : toutes portent le même filet
@@ -277,7 +278,8 @@ def kpi_v4(label: str, value: str, sub: str = "", accent: str = "var(--ink-4)",
         filet = f"1px solid {bord}"
     else:
         fond, bord, c_label = "var(--bg-elev)", "var(--border)", "var(--ink-3)"
-        c_val, c_sub = "var(--ink)", (sub_color or "var(--ink-3)")
+        c_val = couleur_valeur or "var(--ink)"
+        c_sub = sub_color or "var(--ink-3)"
         piste, barre = "var(--bg-sunken)", accent
         filet = f"2px solid {accent}"
 
@@ -296,11 +298,43 @@ def kpi_v4(label: str, value: str, sub: str = "", accent: str = "var(--ink-4)",
         "display:flex;flex-direction:column;gap:5px;height:100%;'>"
         "<span style='font-size:10.5px;font-weight:600;letter-spacing:0.09em;"
         f"text-transform:uppercase;color:{c_label};'>{label}</span>"
-        "<span style='font-variant-numeric:tabular-nums;font-size:27px;"
+        # nowrap : dans une rangée de sept cartes sur écran étroit, « +1,92 % »
+        # se brisait en trois lignes, un caractère par ligne. Mieux vaut
+        # écourter que d'empiler.
+        f"<span style='font-variant-numeric:tabular-nums;font-size:{taille};"
         f"font-weight:600;letter-spacing:-0.015em;line-height:1.05;"
+        f"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
         f"color:{c_val};'>{value}</span>"
         f"{html_barre}"
         f"<span style='font-size:11.5px;font-weight:{poids_sub};"
-        f"color:{c_sub};'>{sub}</span></div>",
+        f"line-height:1.3;color:{c_sub};'>{sub}</span></div>",
+        unsafe_allow_html=True,
+    )
+
+
+def note(titre: str, texte: str, ton: str = "primary"):
+    """Encart à filet latéral : une lecture, pas une donnée.
+
+    Le canevas s'en sert partout où l'application doit DIRE quelque chose —
+    pourquoi deux colonnes ne se contredisent pas, ce qu'un chiffre ne dit
+    pas, quelle hypothèse a été prise. `st.info` mettait ces phrases dans une
+    boîte bleue d'alerte, ce qui les faisait lire comme des avertissements.
+
+    `ton` : primary (lecture), warn (vigilance), up, down.
+    """
+    accents = {"primary": "var(--primary)", "warn": "var(--warn)",
+               "up": "var(--up)", "down": "var(--down)"}
+    accent = accents.get(ton, "var(--primary)")
+    entete = (
+        f"<div style='font-size:14.5px;font-weight:600;margin-bottom:6px;'>"
+        f"{titre}</div>" if titre else ""
+    )
+    st.markdown(
+        "<div style='background:var(--bg-elev);border:1px solid var(--border);"
+        f"border-left:2px solid {accent};border-radius:0 12px 12px 0;"
+        "padding:14px 18px;margin:12px 0;'>"
+        f"{entete}"
+        "<div style='font-size:13px;color:var(--ink-2);line-height:1.55;"
+        f"max-width:76ch;text-wrap:pretty;'>{texte}</div></div>",
         unsafe_allow_html=True,
     )
