@@ -222,26 +222,40 @@ def render():
 
         col_top, col_bot = st.columns(2)
 
-        def _hbar_list(df_subset, tone_color, title, dot_class):
-            """Liste bar horizontaux: nom + bar propotionnel + % à droite."""
-            max_abs = max(abs(v) for v in df_subset[col_perf]) if not df_subset.empty else 1
-            max_abs = max_abs or 1
+        # UNE BARRE SIGNEE, ET UNE SEULE ECHELLE. L'ancienne barre valait
+        # `abs(valeur) / max` et prenait la couleur de la LISTE : dans « Pires
+        # performers », un titre qui avait gagne 13,5 % recevait une barre
+        # rouge plus longue que celle d'un titre ayant perdu 5,1 %. La barre
+        # se lisait comme une baisse et n'en etait pas une.
+        #
+        # Desormais la barre part d'un axe central, va a droite si la valeur
+        # est positive, et prend la couleur du SIGNE. L'echelle est celle du
+        # classement entier, la meme des deux cotes : les deux listes se
+        # comparent, ce qu'elles ne faisaient pas quand chacune se normalisait
+        # sur son propre maximum.
+        from utils.ui_helpers import barre_signee
+        _echelle = (max(abs(v) for v in valid_sorted[col_perf]) * 100
+                    if not valid_sorted.empty else 1.0) or 1.0
+
+        def _hbar_list(df_subset, title, dot_class):
+            """Nom, barre signee sur l'echelle du classement, valeur a droite."""
             inner = ""
             for _, r in df_subset.iterrows():
                 v = r[col_perf]
-                w = abs(v) / max_abs * 100
+                pct = v * 100
+                teinte = "var(--up)" if v >= 0 else "var(--down)"
                 sign = "+" if v >= 0 else ""
                 inner += (
                     f"<div style='display:flex;align-items:center;gap:10px;"
                     f"padding:7px 0;border-bottom:1px solid var(--border-soft);font-size:13px;'>"
                     f"<div style='min-width:100px;color:var(--ink);font-weight:500;'>{r['name']}</div>"
-                    f"<div style='flex:1;height:10px;background:var(--bg-sunken);"
-                    f"border-radius:4px;overflow:hidden;'>"
-                    f"<div style='width:{w:.0f}%;height:100%;background:{tone_color};"
-                    f"border-radius:4px;'></div></div>"
-                    f"<div style='min-width:65px;text-align:right;color:{tone_color};"
+                    f"<div style='flex:1;'>"
+                    + barre_signee(pct, borne=_echelle, mini="60px",
+                                   legende=f"{sign}{pct:.1f} %")
+                    + f"</div>"
+                    f"<div style='min-width:65px;text-align:right;color:{teinte};"
                     f"font-weight:600;font-variant-numeric:tabular-nums;'>"
-                    f"{sign}{v*100:.1f}%</div>"
+                    f"{sign}{pct:.1f}%</div>"
                     f"</div>"
                 )
             st.markdown(
@@ -252,10 +266,19 @@ def render():
             )
 
         with col_top:
-            _hbar_list(valid_sorted.head(n_show), "var(--up)", "Top performers", "up")
+            _hbar_list(valid_sorted.head(n_show), "Top performers", "up")
         with col_bot:
             _hbar_list(valid_sorted.tail(n_show).sort_values(col_perf),
-                        "var(--down)", "Pires performers", "down")
+                       "Pires performers", "down")
+
+        st.caption(
+            f"Barre signée : à droite de l'axe si la performance est positive, "
+            f"à gauche sinon, et la couleur suit le signe — non la liste. "
+            f"Échelle commune aux deux colonnes, ±{_echelle:.0f} %, "
+            f"le maximum du classement. **Les « pires » sont les derniers du "
+            f"classement, pas nécessairement des baisses** : quand le marché "
+            f"monte, cette colonne contient des hausses."
+        )
 
     # ───────── TAB 2: By sector ─────────
     with tab_sectors:

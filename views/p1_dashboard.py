@@ -1291,30 +1291,15 @@ def render():
     _visible = display_df if _tout else display_df.head(APERCU)
     _restantes = _total_lignes - len(_visible)
 
-    def _barre_signee(v):
-        """Barre centrée sur un axe : à droite si positive, à gauche sinon.
+    # La barre signee vit desormais dans `utils.ui_helpers` : le classement de
+    # Performance des Titres et le tableau des positions en ont besoin aussi,
+    # et trois copies d'une meme echelle finissent toujours par diverger.
+    from utils.ui_helpers import barre_signee
 
-        Une variation sur trente jours a un signe ; une barre qui part
-        toujours de la gauche le perd. L'échelle est bornée à ±40 %, au-delà
-        la barre sature — c'est l'ordre de grandeur qui compte ici, pas le
-        centième de point.
-        """
-        if v is None or pd.isna(v):
-            return "<span style='color:var(--ink-4);'>—</span>"
-        borne = 40.0
-        part = max(-1.0, min(1.0, v / borne)) * 50.0
-        couleur = "var(--up)" if v >= 0 else "var(--down)"
-        gauche = 50.0 if v >= 0 else 50.0 + part
-        return (
-            "<span title='" + f"{v:+.2f} % sur 30 jours" + "' "
-            "style='position:relative;display:inline-block;width:100%;"
-            "min-width:70px;height:8px;background:var(--bg-sunken);"
-            "border-radius:999px;overflow:hidden;vertical-align:middle;'>"
-            f"<span style='position:absolute;top:0;left:{gauche:.1f}%;"
-            f"width:{abs(part):.1f}%;height:100%;background:{couleur};'></span>"
-            "<span style='position:absolute;top:0;left:50%;width:1px;"
-            "height:8px;background:var(--border-strong);'></span></span>"
-        )
+    def _barre_signee(v):
+        return barre_signee(v, borne=40.0, legende=(
+            f"{v:+.2f} % sur 30 jours" if v is not None and not pd.isna(v)
+            else ""))
 
     def _n(v, fmt="{:,.0f}", vide="—"):
         if v is None or pd.isna(v):

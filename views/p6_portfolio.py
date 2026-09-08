@@ -414,6 +414,15 @@ def render():
         # Tableau Positions editorial
         # ═══════════════════════════════════════════════════════════════════
         section_heading("Positions", spacing="loose")
+        # P2 : le canevas dit d'ou vient le PRU. Sans cette phrase, un lecteur
+        # qui recalcule le cout de revient a partir du PRU affiche tombe sur
+        # un ecart qu'il ne s'explique pas — les frais d'achat y sont deja.
+        st.caption(
+            "Le **PRU** inclut les frais d'achat : commission de courtage, "
+            "frais BRVM et TVA sont incorporés au coût de revient de la ligne. "
+            "La **variation** se lit par titre, face au PRU — le P&L, lui, "
+            "dépend aussi de la taille de la position."
+        )
 
         header_style = (
             "font-size:10.5px;text-transform:uppercase;letter-spacing:0.08em;"
@@ -423,6 +432,21 @@ def render():
         cell_style = "padding:10px;font-size:13px;border-bottom:1px solid var(--border-soft);"
         num_style = cell_style + "text-align:right;font-variant-numeric:tabular-nums;"
 
+        # Echelle commune a toutes les lignes : bornee au plus grand ecart
+        # observe, pour qu'aucune barre ne sature et que deux lignes se
+        # comparent d'un coup d'oeil.
+        from utils.ui_helpers import barre_signee
+        _ecarts = [((p.get("current_price") - (p.get("avg_price") or 0))
+                    / (p.get("avg_price") or 1) * 100)
+                   for _, p in portfolio.iterrows()
+                   if pd.notna(p.get("current_price")) and (p.get("avg_price") or 0)]
+        _echelle_var = max((abs(e) for e in _ecarts), default=10.0) or 10.0
+
+        def _barre_variation(v):
+            return barre_signee(v, borne=_echelle_var, mini="80px",
+                                legende=(f"{v:+.1f} % vs PRU"
+                                         if v is not None else ""))
+
         rows_html = (
             f"<tr>"
             f"<th style='{header_style};text-align:left;'>Ticker</th>"
@@ -431,6 +455,7 @@ def render():
             f"<th style='{header_style};text-align:right;'>PRU</th>"
             f"<th style='{header_style};text-align:right;'>Cours</th>"
             f"<th style='{header_style};text-align:right;'>P&L</th>"
+            f"<th style='{header_style};text-align:center;'>Variation</th>"
             f"<th style='{header_style};text-align:right;'>Poids</th>"
             f"<th style='{header_style};text-align:right;'>Yield</th>"
             f"</tr>"
@@ -443,6 +468,15 @@ def render():
             yield_pos = (dps / cur_price * 100) if cur_price else 0
             pnl = pos.get("pnl")
             cur_str = f"{cur_price:,.0f}" if pd.notna(cur_price) else "—"
+            # LA VARIATION, PAS SEULEMENT LE GAIN. Le P&L en francs melange
+            # deux choses : combien la ligne a bouge, et combien on en detient.
+            # Une ligne a +2 % sur une grosse position rapporte plus qu'une
+            # ligne a +40 % sur une petite, et la colonne P&L les classe donc
+            # a l'envers de leur performance. La barre signee dit la variation
+            # par titre, echelle commune a toutes les lignes.
+            _pru = pos.get("avg_price") or 0
+            _var_pct = (((cur_price - _pru) / _pru * 100)
+                        if (pd.notna(cur_price) and _pru) else None)
             if pd.notna(cur_price) and pnl is not None:
                 pnl_sign = "−" if pnl < 0 else "+"
                 pnl_str = f"{pnl_sign}{abs(pnl):,.0f}"
@@ -459,6 +493,9 @@ def render():
                 f"<td style='{num_style}'>{pos['avg_price']:,.2f}</td>"
                 f"<td style='{num_style}'>{cur_str}</td>"
                 f"<td style='{num_style};color:{pnl_color};font-weight:600;'>{pnl_str}</td>"
+                f"<td style='{cell_style};min-width:96px;'>"
+                + _barre_variation(_var_pct) +
+                f"</td>"
                 f"<td style='{num_style}'>{poids_pct:.1f}%</td>"
                 f"<td style='{num_style}'>{yield_pos:.2f}%</td>"
                 f"</tr>"
