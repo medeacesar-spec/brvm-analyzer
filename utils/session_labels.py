@@ -27,6 +27,8 @@ class SessionLabel:
     sidebar: str      # "Clôture · màj 16:40"
     caption: str      # "Clôture · Mercredi 22 avril 2026"
     day_tab: str      # "Jour · 22/04"
+    maj: str = ""     # "16:40" — heure de dernière mise à jour, seule
+    seance: str = ""  # "Séance du mercredi 22 avril 2026 · 15:00 GMT"
 
 
 def _parse_date(s: Optional[str]) -> Optional[date]:
@@ -94,6 +96,8 @@ def build_session_label(
             sidebar="Données indisponibles",
             caption="Bourse régionale des valeurs mobilières · 48 titres suivis",
             day_tab="Jour",
+            maj="",
+            seance="Séance indisponible",
         )
 
     today = now.date()
@@ -119,6 +123,10 @@ def build_session_label(
     sidebar = f"{status} · màj {update}" if update else status
     day_tab = f"Jour · {date_short}"
 
+    seance = f"Séance du {date_long.lower()}"
+    if stime:
+        seance += f" · {stime} GMT"
+
     return SessionLabel(
         status=status,
         date_long=date_long,
@@ -126,4 +134,6 @@ def build_session_label(
         sidebar=sidebar,
         caption=caption,
         day_tab=day_tab,
+        maj=update,
+        seance=seance,
     )

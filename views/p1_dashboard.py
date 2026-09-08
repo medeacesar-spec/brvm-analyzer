@@ -1027,7 +1027,8 @@ def render():
     )
 
     st.title("Marché BRVM")
-    st.caption(session_label.caption)
+    st.caption("Variations calculées entre la dernière clôture et la "
+               "précédente, à partir du cache de cotations.")
 
     # Alerte publications non intégrées (conditionnelle, ne s'affiche que si besoin)
     _render_pending_publications_alert()
@@ -1095,6 +1096,8 @@ def render():
 
     tab_day, tab_week, tab_month = st.tabs([day_label, "Semaine", "Mois"])
     with tab_day:
+        st.caption(f"Dernière clôture comparée à la précédente · "
+                   f"{session_label.date_long.lower()}")
         _render_top5(perf.get("day", pd.DataFrame()), "du jour")
     with tab_week:
         if week_caption:
@@ -1178,49 +1181,178 @@ def render():
 
     _render_sector_heatmap(quotes, perf)
 
-    # --- Tableau complet (repliable, pas de divider — densité v3) ---
-    with st.expander(f"Toutes les cotations · {len(quotes)} titres", expanded=False):
+    # ─── Toutes les cotations ───────────────────────────────────────────
+    # Le canevas la donne OUVERTE, pas repliée : c'est le dernier bloc de la
+    # page, celui où l'on va vérifier une ligne précise. La replier obligeait
+    # à un clic pour atteindre la seule chose qu'on venait chercher.
+    _var30 = {}
+    _m = perf.get("month")
+    if _m is not None and not _m.empty:
+        _var30 = {r["ticker"]: r["variation"] for _, r in _m.iterrows()}
+
+    # Le canevas termine ce tableau par deux colonnes Bêta et RSI. Ni l'une ni
+    # l'autre n'a de source : `market_data.beta` et `market_data.rsi` sont
+    # vides sur les quarante-huit lignes, et l'ancien tableau les affichait
+    # deja creuses sans le dire. Plutot que deux colonnes qui ne se
+    # rempliront jamais, on donne les deux mesures que l'application calcule
+    # vraiment et qui repondent a la meme question — a quel prix se detient
+    # ce titre, et peut-on le revendre.
+    try:
+        from analysis.risque import toutes_les_mesures as _mesures_risque
+        _risque = _mesures_risque()
+    except Exception:                                           # noqa: BLE001
+        _risque = {}
+
+    st.markdown(
+        "<div style='display:flex;align-items:baseline;gap:10px;"
+        "margin:26px 0 12px;'>"
+        "<h2 style='font-size:17px;font-weight:600;margin:0;"
+        "letter-spacing:-0.015em;'>Toutes les cotations</h2>"
+        "<span style='font-family:var(--font-mono);font-size:11.5px;"
+        f"color:var(--ink-3);'>{len(quotes)} LIGNES</span></div>",
+        unsafe_allow_html=True,
+    )
+
+    _c_sect, _c_tri = st.columns([2, 2])
+    with _c_sect:
         sectors = ["Tous"] + sorted(quotes["sector"].dropna().unique().tolist())
         selected_sector = st.selectbox("Filtrer par secteur", sectors)
-        display_df = quotes[quotes["sector"] == selected_sector] if selected_sector != "Tous" else quotes
-
-        # Format display columns — keep numeric for sorting
-        fmt_df = display_df.copy()
-        fmt_df["market_cap"] = fmt_df["market_cap"].apply(
-            lambda x: round(x / 1e9, 1) if pd.notna(x) and x > 0 else None
-        )
-        fmt_df["variation"] = fmt_df["variation"].apply(
-            lambda x: round(x, 2) if pd.notna(x) else 0.0
-        )
-        fmt_df["beta"] = fmt_df["beta"].apply(lambda x: round(x, 2) if pd.notna(x) and abs(x) > 0.001 else None)
-        fmt_df["rsi"] = fmt_df["rsi"].apply(lambda x: round(x, 0) if pd.notna(x) and abs(x) > 0.001 else None)
-        fmt_df["dps"] = fmt_df["dps"].apply(lambda x: round(x, 0) if pd.notna(x) and x > 0 else None)
-        fmt_df["last"] = fmt_df["last"].apply(lambda x: round(x, 0) if pd.notna(x) and x > 0 else None)
-
-        show_cols = {"ticker": "Ticker", "name": "Nom", "sector": "Secteur",
-                     "last": "Prix (FCFA)", "variation": "Var (%)",
-                     "market_cap": "Cap (Mds FCFA)", "beta": "Beta", "rsi": "RSI", "dps": "DPS"}
-        available = {k: v for k, v in show_cols.items() if k in fmt_df.columns}
-        st.dataframe(
-            fmt_df[list(available.keys())].rename(columns=available),
-            use_container_width=True, height=600,
-            column_config={
-                "Prix (FCFA)": st.column_config.NumberColumn(format="%.0f"),
-                "Var (%)": st.column_config.NumberColumn(format="%.2f %%"),
-                "Cap (Mds FCFA)": st.column_config.NumberColumn(format="%.1f"),
-                "Beta": st.column_config.NumberColumn(format="%.2f"),
-                "RSI": st.column_config.NumberColumn(format="%.0f"),
-                "DPS": st.column_config.NumberColumn(format="%.0f"),
-            }
+    with _c_tri:
+        # Un tableau HTML ne se trie pas au clic comme un st.dataframe : le
+        # tri redevient donc explicite, plutôt que perdu.
+        _tri = st.selectbox(
+            "Trier par",
+            ["Capitalisation", "Variation du jour", "Variation 30 jours",
+             "Ticker"],
+            key="dash_tri_cotations",
         )
 
-        # Quick jump to stock analysis from the full cotations table
-        picker_options = [
-            (row["ticker"], f"{row['ticker']} — {row.get('name', '')}")
-            for _, row in fmt_df.iterrows()
-            if row.get("ticker")
-        ]
-        ticker_quick_picker(picker_options, key="dash_goto", label="Ouvrir l'analyse d'un titre")
+    display_df = (quotes[quotes["sector"] == selected_sector]
+                  if selected_sector != "Tous" else quotes).copy()
+    display_df["var30"] = display_df["ticker"].map(_var30)
+
+    _cles = {
+        "Capitalisation": ("market_cap", False),
+        "Variation du jour": ("variation", False),
+        "Variation 30 jours": ("var30", False),
+        "Ticker": ("ticker", True),
+    }
+    _col, _asc = _cles[_tri]
+    if _col in display_df.columns:
+        display_df = display_df.sort_values(_col, ascending=_asc,
+                                            na_position="last")
+
+    def _barre_signee(v):
+        """Barre centrée sur un axe : à droite si positive, à gauche sinon.
+
+        Une variation sur trente jours a un signe ; une barre qui part
+        toujours de la gauche le perd. L'échelle est bornée à ±40 %, au-delà
+        la barre sature — c'est l'ordre de grandeur qui compte ici, pas le
+        centième de point.
+        """
+        if v is None or pd.isna(v):
+            return "<span style='color:var(--ink-4);'>—</span>"
+        borne = 40.0
+        part = max(-1.0, min(1.0, v / borne)) * 50.0
+        couleur = "var(--up)" if v >= 0 else "var(--down)"
+        gauche = 50.0 if v >= 0 else 50.0 + part
+        return (
+            "<span title='" + f"{v:+.2f} % sur 30 jours" + "' "
+            "style='position:relative;display:inline-block;width:100%;"
+            "min-width:70px;height:8px;background:var(--bg-sunken);"
+            "border-radius:999px;overflow:hidden;vertical-align:middle;'>"
+            f"<span style='position:absolute;top:0;left:{gauche:.1f}%;"
+            f"width:{abs(part):.1f}%;height:100%;background:{couleur};'></span>"
+            "<span style='position:absolute;top:0;left:50%;width:1px;"
+            "height:8px;background:var(--border-strong);'></span></span>"
+        )
+
+    def _n(v, fmt="{:,.0f}", vide="—"):
+        if v is None or pd.isna(v):
+            return vide
+        return fmt.format(v).replace(",", " ")
+
+    def _fmt_echange(v):
+        """Un montant échangé se lit en milliards ou en millions, jamais en
+        francs : la colonne servirait à compter des zéros."""
+        if v is None or pd.isna(v) or not v:
+            return "—"
+        return f"{v / 1e9:.1f} Md" if v >= 1e9 else f"{v / 1e6:.0f} M"
+
+    _th = ("font-size:10px;text-transform:uppercase;letter-spacing:0.09em;"
+           "color:var(--ink-3);font-weight:600;padding:9px 12px;"
+           "border-bottom:1px solid var(--border);background:var(--bg-sunken);"
+           "white-space:nowrap;")
+    _td = "padding:10px 12px;border-bottom:1px solid var(--border-soft);font-size:13px;"
+    # white-space:nowrap — sans lui, « +0,30 % » se coupait entre le nombre
+    # et son signe de pourcentage dans une colonne etroite.
+    _tdn = (_td + "text-align:right;font-variant-numeric:tabular-nums;"
+            "white-space:nowrap;")
+
+    _lignes = (
+        "<tr>"
+        f"<th style='{_th}text-align:left;'>Ticker</th>"
+        f"<th style='{_th}text-align:left;'>Nom</th>"
+        f"<th style='{_th}text-align:left;'>Secteur</th>"
+        f"<th style='{_th}text-align:right;'>Prix</th>"
+        f"<th style='{_th}text-align:right;'>Var</th>"
+        f"<th style='{_th}text-align:left;'>Var. 30 j</th>"
+        f"<th style='{_th}text-align:right;'>Cap (Mds)</th>"
+        f"<th style='{_th}text-align:right;'>Volatilité</th>"
+        f"<th style='{_th}text-align:right;'>Échangé / mois</th>"
+        "</tr>"
+    )
+    for _, r in display_df.iterrows():
+        _v = r.get("variation")
+        _cv = ("var(--up)" if _v and _v > 0 else
+               "var(--down)" if _v and _v < 0 else "var(--ink-3)")
+        _cap = r.get("market_cap")
+        _mes = _risque.get(r.get("ticker")) or {}
+        _vol = _mes.get("volatilite")
+        _ech = _mes.get("montant_echange")
+        _lignes += (
+            "<tr>"
+            f"<td style='{_td}font-family:var(--font-mono);font-size:11.5px;"
+            f"font-weight:600;color:var(--ink-2);'>{r.get('ticker', '')}</td>"
+            f"<td style='{_td}font-weight:500;'>{r.get('name', '')}</td>"
+            f"<td style='{_td}color:var(--ink-2);font-size:12.5px;'>"
+            f"{r.get('sector') or '—'}</td>"
+            f"<td style='{_tdn}'>{_n(r.get('last'))}</td>"
+            f"<td style='{_tdn}font-weight:600;color:{_cv};'>"
+            f"{_n(_v, '{:+.2f} %')}</td>"
+            f"<td style='{_td}min-width:90px;'>{_barre_signee(r.get('var30'))}</td>"
+            f"<td style='{_tdn}color:var(--ink-2);'>"
+            f"{_n(_cap / 1e9 if _cap and not pd.isna(_cap) else None, '{:,.1f}')}</td>"
+            f"<td style='{_tdn}color:var(--ink-2);'>"
+            f"{_n(_vol * 100 if _vol is not None else None, '{:.0f} %')}</td>"
+            f"<td style='{_tdn}color:var(--ink-2);'>{_fmt_echange(_ech)}</td>"
+            "</tr>"
+        )
+
+    st.markdown(
+        "<div style='background:var(--bg-elev);border:1px solid var(--border);"
+        "border-radius:12px;overflow:hidden;'>"
+        "<div style='overflow-x:auto;'>"
+        "<table style='width:100%;border-collapse:collapse;min-width:920px;'>"
+        f"{_lignes}</table></div>"
+        "<div style='padding:10px 12px;background:var(--bg-footer);"
+        "font-size:11.5px;color:var(--ink-3);'>"
+        "Barre signée : variation sur 30 jours, échelle ±40 % autour de l'axe "
+        "central ; au-delà, la barre sature. Une barre absente est un titre "
+        "sans historique mensuel suffisant. Volatilité et montant échangé "
+        "remplacent le bêta et le RSI du modèle : ces deux-là n'ont aucune "
+        "source renseignée dans la base.</div></div>",
+        unsafe_allow_html=True,
+    )
+
+    # Accès direct à l'analyse depuis le tableau
+    picker_options = [
+        (row["ticker"], f"{row['ticker']} — {row.get('name', '')}")
+        for _, row in display_df.iterrows()
+        if row.get("ticker")
+    ]
+    ticker_quick_picker(picker_options, key="dash_goto",
+                        label="Ouvrir l'analyse d'un titre")
 
 
 def _render_boc():
