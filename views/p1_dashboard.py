@@ -152,13 +152,16 @@ def _compute_period_performance(quotes: pd.DataFrame) -> dict:
         else:
             # Pas d'historique : fallback sur market_data.variation (rare)
             day_var = row.get("variation", 0) or 0
-        results["day"].append({"ticker": ticker, "name": name, "price": last_price, "variation": day_var})
+        _secteur = row.get("sector") or ""
+        results["day"].append({"ticker": ticker, "name": name, "sector": _secteur,
+                               "price": last_price, "variation": day_var})
 
         if prices.empty or len(prices) < 5:
             # Sans historique, aucune fenêtre n'est calculable : on inscrit
             # None plutôt que 0, qui se lirait comme une stabilité.
             for _k in ("week", "month", "quarter", "ytd"):
                 results[_k].append({"ticker": ticker, "name": name,
+                                    "sector": _secteur,
                                     "price": last_price,
                                     "variation": 0 if _k in ("week", "month") else None})
             continue
@@ -176,13 +179,30 @@ def _compute_period_performance(quotes: pd.DataFrame) -> dict:
             else:
                 # Fenêtres longues : pas d'historique suffisant → case vide.
                 var = None
-            results[period_key].append({"ticker": ticker, "name": name, "price": last_price, "variation": var})
+            results[period_key].append({"ticker": ticker, "name": name,
+                                        "sector": _secteur,
+                                        "price": last_price, "variation": var})
 
     # Sépare "ranges" (dict de dates, pas un DataFrame) du reste
     ranges = results.pop("ranges", {})
     out = {k: pd.DataFrame(v) for k, v in results.items()}
     out["ranges"] = ranges
     return out
+
+
+def _slug_periode(label: str) -> str:
+    """Une cle de widget sans espace ni accent — elle devient une classe CSS.
+
+    Streamlit pose `st-key-<cle>` sur le conteneur du widget, et c'est par la
+    que `style.css` raccorde la bande d'ouverture au bas de la carte. Une cle
+    contenant « du jour » donnerait une classe avec une espace, inutilisable
+    en selecteur.
+    """
+    import unicodedata
+    sans_accent = "".join(
+        c for c in unicodedata.normalize("NFD", label or "")
+        if unicodedata.category(c) != "Mn")
+    return "".join(c if c.isalnum() else "_" for c in sans_accent).strip("_").lower() or "periode"
 
 
 def _render_top5(df: pd.DataFrame, label: str):
@@ -251,7 +271,17 @@ def _render_top5(df: pd.DataFrame, label: str):
                 f"<div style='font-size:14px;font-weight:600;color:var(--ink);"
                 f"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>"
                 f"{r['name']}</div>"
-                f"<div style='margin-top:2px;'>{ticker_chip(r['ticker'])}</div>"
+                # D2 : le canevas ecrit « ticker · secteur ». Le seul ticker
+                # laissait deviner de quel metier on parle — et sur cette
+                # cote, la moitie des hausses d'une journee peut venir d'un
+                # seul secteur sans que la liste le montre.
+                f"<div style='margin-top:2px;display:flex;align-items:center;"
+                f"gap:6px;min-width:0;'>{ticker_chip(r['ticker'])}"
+                + (f"<span style='font-size:11.5px;color:var(--ink-3);"
+                   f"white-space:nowrap;overflow:hidden;"
+                   f"text-overflow:ellipsis;'>· {r['sector']}</span>"
+                   if r.get('sector') else "")
+                + f"</div>"
                 f"</div>"
                 # Droite : prix + variation
                 f"<div style='text-align:right;flex-shrink:0;'>"
@@ -270,14 +300,25 @@ def _render_top5(df: pd.DataFrame, label: str):
         # fois. Le canevas met une seule bande en pied de carte ; le saut vers
         # un titre PRÉCIS reste possible juste dessous, au sélecteur du
         # tableau des cotations. Rien n'est perdu, la page respire.
+        # D3 : LA BANDE FERME LA CARTE. Le canevas la met en pied de carte ;
+        # elle flottait dessous, separee par une gouttiere, et se lisait comme
+        # un bouton de page plutot que comme la derniere ligne de la liste.
+        # Streamlit ne sait pas poser un bouton DANS un bloc HTML : la carte
+        # perd donc son arrondi et sa bordure du bas, et le bouton reprend
+        # l'un et l'autre — le raccord se fait dans `style.css`, accroche a la
+        # classe `st-key-` que Streamlit pose sur le conteneur du widget.
+        _cle = f"dash_top5_{key_prefix}_{_slug_periode(label)}"
         st.markdown(
+            f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
+            f"border-radius:12px 12px 0 0;border-bottom:none;"
+            f"overflow:hidden;'>{inner}</div>"
+            if count else
             f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
             f"border-radius:12px;overflow:hidden;'>{inner}</div>",
             unsafe_allow_html=True,
         )
         if count:
-            if st.button("Ouvrir l'analyse d'un titre  →",
-                         key=f"dash_{key_prefix}_{label}_ouvrir",
+            if st.button("Ouvrir l'analyse d'un titre  →", key=_cle,
                          use_container_width=True):
                 from utils.nav import goto_analyse
                 goto_analyse()
