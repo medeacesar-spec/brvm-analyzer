@@ -17,7 +17,8 @@ barres groupées, bloc dépliable.
 | `kpi_v4` — carte à filet coloré | `utils/ui_helpers.py` | fait |
 | `breadth_bar` — barre de largeur | `utils/ui_helpers.py` | fait |
 | `heatmap` — carte de chaleur | `utils/ui_helpers.py` | fait |
-| `note` — encart à filet latéral | `utils/ui_helpers.py` | à écrire |
+| `note` — encart à filet latéral | `utils/ui_helpers.py` | fait |
+| `donut` — anneau à figure centrale | `utils/ui_helpers.py` | fait |
 | Châssis de tableau (rayon, filets, en-têtes) | `style.css` + vues | fait |
 | Boutons, segments, champs | `style.css` | fait |
 
@@ -29,11 +30,11 @@ barres groupées, bloc dépliable.
 | 2 | Infos Marché | Revue de presse · Fil d'actualités | cartes×3, tableau | **fait** |
 | 3 | Analyse d'un Titre | Cours · Fondamentale · Technique · Risque · Recommandation · Profil | 32 KPI, 12 tableaux, 3 courbes, nuage, 4 notes, 3 dépliables | partiel |
 | 4 | Screening | Filtres fondamentaux · Risque et liquidité · Résultats | 4 KPI, 3 tableaux, note, nuage | **fait** |
-| 5 | Comparateur | Tableau · Profil · Performance | 1 tableau, 2 courbes, carte de chaleur | partiel |
-| 6 | Performance des Titres | Classement · Par secteur · Graphique · Multi-périodes | 4 KPI, listes, 2 tableaux, carte de chaleur, courbe | partiel |
-| 7 | Portefeuille | Performance · Recommandations · Risque et optimisation | 16 KPI, 9 tableaux, carte de chaleur, anneau, barres, plan en étapes, nuage, 5 notes | à faire |
+| 5 | Comparateur | Tableau · Profil · Performance | 1 tableau, 2 courbes, carte de chaleur | **fait** |
+| 6 | Performance des Titres | Classement · Par secteur · Graphique · Multi-périodes | 4 KPI, listes, 2 tableaux, carte de chaleur, courbe | **fait** |
+| 7 | Portefeuille | Performance · Recommandations · Risque et optimisation | 16 KPI, 9 tableaux, carte de chaleur, anneau, barres, plan en étapes, nuage, 5 notes | KPI + anneau faits ; reste carte de chaleur mensuelle et plan en étapes |
 | 8 | Signaux | Synthèse · Contradictions | 4 KPI, tableau, cartes | **fait** |
-| 9 | Trajectoires Recommandations | Cohorte · Trajectoires · Backtest | 12 KPI, 2 tableaux, note | à faire |
+| 9 | Trajectoires Recommandations | Cohorte · Trajectoires · Backtest | 12 KPI, 2 tableaux, note | KPI faits |
 | 10 | Historique Signaux | Vue d'ensemble · Signaux · Recommandations · Calibration · Données brutes | 23 KPI, 8 tableaux, carte de chaleur, note | à faire |
 
 ## Méthode
@@ -44,3 +45,11 @@ et chacun de ses blocs correspondent au canevas, **et** que le rendu réel a
 
 Les écarts assumés au canevas sont notés dans la PR qui les introduit, jamais
 laissés implicites.
+
+## Ce qui n'est pas vérifiable ici
+
+La page **Portefeuille** exige une connexion Google, et l'environnement local
+n'a pas `Authlib` : elle ne s'ouvre pas dans le navigateur de développement.
+Ses composants sont donc vérifiés **isolément**, avec la feuille de style
+réelle — c'est une vérification de forme, pas de branchement. Le donneur
+d'ordre, qui peut se connecter, tranche sur le rendu réel.
