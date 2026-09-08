@@ -179,8 +179,8 @@ que corriger les symptômes un à un.
 
 1. ~~Les 7 cartes de KPI manquantes (P5, P3, A7)~~ — **fait le 08/09**.
 2. ~~Les sous-lignes des scores (A3) et la grille (A4)~~ — **fait le 08/09**.
-3. Les contrôles segmentés (A2, A5, A6, I1).
+3. Les contrôles segmentés (A2, A5, A6) — ~~I1 fait le 08/09~~.
 4. Les tableaux pédagogiques de Screening (S1, S2).
 5. Les trois blocs à re-rendre (P4, A8, C1).
 6. La barre signée des positions (P1).
-7. Les détails : T1, T2, H1, H2, D2, D3, I2, A9-A13, P2.
+7. Les détails : T1, T2, H1, H2, D2, D3, A9-A13, P2 — ~~I2 fait le 08/09~~.
