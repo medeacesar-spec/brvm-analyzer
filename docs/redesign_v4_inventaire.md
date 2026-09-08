@@ -1,5 +1,9 @@
 # Redesign v4 — inventaire et avancement
 
+> Le registre des écarts onglet par onglet, et la **méthode de comparaison**,
+> vivent dans `docs/redesign_v4_ecarts.md`. Ce fichier-ci ne tient que
+> l'inventaire de ce que le canevas contient.
+
 Référence : `design/BRVM Analyzer - Redesign v4.dc.html` (canevas Claude Design).
 Ce fichier liste, page par page et onglet par onglet, **ce que le canevas
 contient**, et l'état de la reprise. Il se met à jour à chaque page traitée.
