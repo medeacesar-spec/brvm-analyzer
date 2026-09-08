@@ -515,19 +515,19 @@ if "calibration_review_checked" not in st.session_state:
 
 
 # ─── SIDEBAR ───
-# Logo : carré dégradé deep-green → terracotta avec "B" blanc
-# (remplace l'emoji 📊 selon le principe v3 : zéro emoji dans l'UI)
+# Logo : carré clair, "B" navy, sous-titre en mono (canevas v4)
+# (pas d'emoji dans l'UI — principe conservé depuis la v3)
 st.sidebar.markdown(
     "<div style='display:flex;align-items:center;gap:10px;padding:0.4rem 0 0.6rem;'>"
-    "<div style='width:32px;height:32px;border-radius:7px;"
-    "background:linear-gradient(135deg,#1F5D3A 0%,#B8532A 100%);"
-    "color:#fff;font-weight:700;font-size:15px;"
+    "<div style='width:30px;height:30px;border-radius:8px;"
+    "background:var(--bg);color:var(--primary-2);font-weight:700;font-size:15px;"
     "display:flex;align-items:center;justify-content:center;"
-    "letter-spacing:-0.02em;flex-shrink:0;'>B</div>"
-    "<div style='display:flex;flex-direction:column;line-height:1.1;'>"
-    "<span style='font-size:15px;font-weight:700;color:var(--ink);letter-spacing:-0.01em;'>BRVM</span>"
-    "<span style='font-size:10.5px;color:var(--ink-3);letter-spacing:0.08em;"
-    "text-transform:uppercase;font-weight:500;'>Analyzer</span>"
+    "letter-spacing:-0.03em;flex-shrink:0;'>B</div>"
+    "<div style='display:flex;flex-direction:column;line-height:1.15;'>"
+    "<span style='font-size:14px;font-weight:600;color:var(--on-dark);"
+    "letter-spacing:-0.01em;'>BRVM Analyzer</span>"
+    "<span style='font-family:var(--font-mono);font-size:10px;"
+    "color:var(--on-dark-3);letter-spacing:0.05em;'>Analyse de la cote</span>"
     "</div></div>",
     unsafe_allow_html=True,
 )
@@ -670,7 +670,7 @@ for _k in list(st.session_state.keys()):
 _clicked = None
 for _sec_name, _sec_pages in _NAV_SECTIONS:
     st.sidebar.markdown(
-        f"<div style='font-size:10.5px;font-weight:600;color:var(--ink-3);"
+        f"<div style='font-size:10px;font-weight:600;color:var(--on-dark-4);"
         f"letter-spacing:0.08em;text-transform:uppercase;"
         f"margin:14px 0 4px 2px;'>{_sec_name}</div>",
         unsafe_allow_html=True,
@@ -768,14 +768,19 @@ elif st.session_state.confirm_shutdown:
 
 from data.db import db_info as _db_info
 _info = _db_info()
-_db_label = "🗄️ SQLite local" if _info["type"] == "sqlite" else "☁️ Postgres cloud"
+_db_label = "SQLite local" if _info["type"] == "sqlite" else "Postgres cloud"
 if _info["type"] == "sqlite" and _info.get("size_mb"):
     _db_label += f" ({_info['size_mb']} MB)"
+# Pastille verte quand la base est celle de production, ocre en local.
+_db_dot = "#8A5A00" if _info["type"] == "sqlite" else "#4ADE80"
 
 st.sidebar.markdown(
-    "<div style='text-align:center;padding:0.5rem 0;'>"
-    "<span style='font-size:0.72rem;color:var(--ink-3);font-weight:500;'>BRVM Analyzer v1.0</span><br>"
-    "<span style='font-size:0.68rem;color:var(--ink-4);'>Données marché BRVM</span><br>"
-    f"<span style='font-size:0.62rem;color:var(--ink-4);'>{_db_label}</span></div>",
+    "<div style='display:flex;flex-direction:column;gap:5px;padding:0.5rem 0;'>"
+    "<div style='display:flex;align-items:center;gap:7px;'>"
+    f"<span style='width:6px;height:6px;border-radius:50%;background:{_db_dot};'></span>"
+    "<span style='font-family:var(--font-mono);font-size:10.5px;"
+    f"color:var(--on-dark-3);'>{_db_label}</span></div>"
+    "<span style='font-family:var(--font-mono);font-size:10.5px;"
+    "color:var(--on-dark-dim);'>v1.0 · données BRVM</span></div>",
     unsafe_allow_html=True,
 )

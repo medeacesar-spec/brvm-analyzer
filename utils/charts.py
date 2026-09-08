@@ -7,21 +7,24 @@ from plotly.subplots import make_subplots
 import pandas as pd
 import numpy as np
 
-# Palette BRVM — Design v3 (Africain moderne, monochrome dataviz)
+# Palette BRVM — Redesign v4 (navy sur gris froid, dataviz sobre).
+# Ces valeurs doublent les jetons CSS de style.css : Plotly ne lit pas les
+# variables CSS, elles doivent donc être répétées ici. Toute correction se fait
+# aux deux endroits.
 COLORS = {
-    "primary": "#1F5D3A",      # deep green (hausses + accent principal)
-    "secondary": "#7A756C",    # neutre sombre (lignes secondaires)
-    "accent": "#B8532A",       # terracotta (1 seul accent non-primary autorisé)
-    "green": "#1F5D3A",        # alias : up = primary
-    "red": "#B42318",          # rouge terre (baisses uniquement)
-    "yellow": "#B5730E",       # ocre sombre (warnings)
+    "primary": "#1B3A6B",      # navy (accent principal)
+    "secondary": "#6E7581",    # neutre (lignes secondaires)
+    "accent": "#8A5A00",       # ocre (seul accent non-navy autorisé)
+    "green": "#0E7A54",        # hausses
+    "red": "#C0392B",          # baisses
+    "yellow": "#8A5A00",       # avertissements
     "bg": "#FFFFFF",
-    "card_bg": "#F7F5F0",
-    "text": "#1A1A1A",
-    "text_secondary": "#7A756C",
-    "border": "#E1DAC9",
-    # Palette monochrome pour bar charts / catégorielle (principe v3-07)
-    "monochrome_seq": ["#1F5D3A", "#7A756C", "#B8532A"],
+    "card_bg": "#F2F3F5",
+    "text": "#14171C",
+    "text_secondary": "#6E7581",
+    "border": "#DCDFE4",
+    # Séquence catégorielle sobre : navy, neutre, ocre (principe conservé)
+    "monochrome_seq": ["#1B3A6B", "#6E7581", "#8A5A00"],
 }
 
 
@@ -295,21 +298,21 @@ def gauge_chart(value: float, max_value: float = 100, title: str = "Score") -> g
 
 def pie_chart(labels: list, values: list, title: str = "",
               colors: list = None) -> go.Figure:
-    """Camembert design v3 : palette Africain moderne (vert / terracotta / ocre / neutres).
-    Cash reçoit systématiquement la teinte neutre sable pour se distinguer."""
-    # Palette v3 ordonnée — vert primary en tête, accent terracotta, ocre, puis neutres
+    """Camembert design v4 : navy en tête, puis dérivés et neutres.
+    Cash reçoit systématiquement la teinte neutre pour se distinguer."""
+    # Séquence v4 ordonnée — navy en tête, ocre, puis dérivés et neutres
     v3_seq = [
-        "#1F5D3A",  # primary deep green
-        "#B8532A",  # terracotta accent
-        "#B5730E",  # ocre
-        "#7A756C",  # neutre sombre
-        "#4A7F5C",  # vert feuille (dérivé primary)
-        "#D4A574",  # sable chaud
-        "#A69E92",  # neutre clair
-        "#6B3A1F",  # brun terracotta sombre
+        "#1B3A6B",  # navy primary
+        "#8A5A00",  # ocre accent
+        "#0E7A54",  # vert (hausse)
+        "#6E7581",  # neutre sombre
+        "#5A7CA8",  # navy clair
+        "#A8C4EA",  # navy pâle
+        "#AEB4BE",  # neutre clair
+        "#C0392B",  # rouge terre
     ]
-    # Cash toujours sable sobre — le reste suit la séquence v3
-    cash_color = "#A69E92"
+    # Cash toujours neutre sobre — le reste suit la séquence v4
+    cash_color = "#AEB4BE"
     resolved = []
     non_cash_idx = 0
     for lbl in labels:

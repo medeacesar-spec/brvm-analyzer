@@ -1387,7 +1387,7 @@ def _compute_global_action(nb_sells, nb_reinforce, nb_new_buys,
     Retourne (texte, icône_legacy, couleur_v3).
     Les couleurs utilisent les tokens du design v3 (CSS vars non exploitables ici :
     on renvoie les couleurs équivalentes hardcoded)."""
-    # Tokens v3 : primary=#1F5D3A, terracotta=#C94C2A, ocre=#C99A3B, ink-3=#8A8275
+    # Tokens v3 : primary=#0E7A54, terracotta=#C94C2A, ocre=#C99A3B, ink-3=#8A8275
     issues = []
     if nb_sells >= 2:
         issues.append(f"{nb_sells} positions à réduire")
@@ -1411,7 +1411,7 @@ def _compute_global_action(nb_sells, nb_reinforce, nb_new_buys,
     if cash_pct > 30 and (nb_reinforce + nb_new_buys) >= 2:
         return (
             f"Déployer le cash ({cash_pct:.0f}% disponible) sur les opportunités identifiées",
-            "", "#1F5D3A",
+            "", "#0E7A54",
         )
 
     if cash_pct > 30:
@@ -1423,7 +1423,7 @@ def _compute_global_action(nb_sells, nb_reinforce, nb_new_buys,
     if nb_reinforce >= 1 or nb_new_buys >= 1:
         return (
             "Portefeuille sain — quelques ajustements d'opportunité possibles",
-            "", "#1F5D3A",
+            "", "#0E7A54",
         )
 
     return (

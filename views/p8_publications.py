@@ -246,9 +246,9 @@ def _render_news_feed():
             active = tname in active_types
             tone = _TYPE_TONES.get(tname, "neutral")
             # Couleur d'accent selon tone v3
-            border = {"up": "#1F5D3A", "ocre": "#B5730E",
+            border = {"up": "#0E7A54", "ocre": "#8A5A00",
                       "neutral": "#7A756C"}.get(tone, "#7A756C")
-            bg_active = {"up": "#E4F0E7", "ocre": "#F4E4C2",
+            bg_active = {"up": "#E4EDE7", "ocre": "#F4E4C2",
                           "neutral": "#EDE8DC"}.get(tone, "#EDE8DC")
 
             with cols[i]:
@@ -306,7 +306,7 @@ def _render_news_feed():
     num_style = cell_style + "font-variant-numeric:tabular-nums;color:var(--ink-2);"
 
     tag_styles = {
-        "Trimestriel": "background:#E4F0E7;color:#1F5D3A;",
+        "Trimestriel": "background:#E4EDE7;color:#0E7A54;",
         "Semestriel": "background:#EDE8DC;color:#4A453C;",
         "Annuel": "background:#EDE8DC;color:#4A453C;",
         "Gouvernance": "background:#F4E4C2;color:#8A5A15;",

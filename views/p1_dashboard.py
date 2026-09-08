@@ -964,7 +964,7 @@ def render():
     # Acces rapide a la revue de presse (l'analyse detaillee vit dans Infos Marche)
     _revue_col, _ = st.columns([1, 3])
     with _revue_col:
-        if st.button("📰 Revue de presse", key="dash_goto_revue",
+        if st.button("Revue de presse", key="dash_goto_revue",
                      help="Dépêches du marché croisées avec vos lignes",
                      use_container_width=True):
             from utils.nav import goto_revue

@@ -78,23 +78,23 @@ def _generate_recommendation(
     # (adaptes au contexte BRVM ou les signaux techniques sont moins marques)
     if score >= 70:
         verdict = "ACHAT FORT"
-        verdict_color = "#1F5D3A"
+        verdict_color = "#0E7A54"
         stars = 5
     elif score >= 52:
         verdict = "ACHAT"
-        verdict_color = "#1F5D3A"
+        verdict_color = "#0E7A54"
         stars = 4
     elif score >= 38:
         verdict = "CONSERVER"
-        verdict_color = "#B5730E"
+        verdict_color = "#8A5A00"
         stars = 3
     elif score >= 25:
         verdict = "PRUDENCE"
-        verdict_color = "#B5730E"
+        verdict_color = "#8A5A00"
         stars = 2
     else:
         verdict = "EVITER"
-        verdict_color = "#B42318"
+        verdict_color = "#C0392B"
         stars = 1
 
     # Points forts
