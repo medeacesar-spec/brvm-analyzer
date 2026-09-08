@@ -170,7 +170,7 @@ def render():
         )
         return (
             f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
-            f"border-radius:10px;padding:14px 16px;min-height:92px;'>"
+            f"border-radius:12px;padding:14px 16px;min-height:92px;'>"
             f"<div class='label-xs' style='margin-bottom:6px;'>{label}</div>"
             f"<div style='font-size:22px;font-weight:600;letter-spacing:-0.02em;"
             f"color:var(--ink);line-height:1.15;'>{value}</div>"
@@ -222,7 +222,7 @@ def render():
                 sign = "+" if v >= 0 else ""
                 inner += (
                     f"<div style='display:flex;align-items:center;gap:10px;"
-                    f"padding:7px 0;border-bottom:1px solid var(--border);font-size:13px;'>"
+                    f"padding:7px 0;border-bottom:1px solid var(--border-soft);font-size:13px;'>"
                     f"<div style='min-width:100px;color:var(--ink);font-weight:500;'>{r['name']}</div>"
                     f"<div style='flex:1;height:10px;background:var(--bg-sunken);"
                     f"border-radius:4px;overflow:hidden;'>"
@@ -487,7 +487,7 @@ def _render_rendement_rapporte_au_risque():
             f"{formater('montant_echange', v.get('montant_echange'))}</td></tr>")
 
     st.markdown(
-        f"<div style='border:1px solid var(--border);border-radius:10px;"
+        f"<div style='border:1px solid var(--border);border-radius:12px;"
         f"overflow:hidden;background:var(--bg-elev);'>"
         f"<table style='width:100%;border-collapse:collapse;'>{html}</table>"
         f"</div>", unsafe_allow_html=True)

@@ -107,12 +107,17 @@ def _compute_period_performance(quotes: pd.DataFrame) -> dict:
     lever toute ambiguïté sur la fenêtre glissante).
     """
     from data.storage import get_all_cached_prices
-    results = {"day": [], "week": [], "month": [], "ranges": {}}
+    results = {"day": [], "week": [], "month": [], "quarter": [], "ytd": [],
+               "ranges": {}}
     today = datetime.now()
 
     # Fenêtre "Semaine" = 7 derniers jours calendaires glissants (simple).
     week_start = today - timedelta(days=7)
     month_ago = today - timedelta(days=30)
+    # Trimestre et depuis le 1er janvier : uniquement pour la carte de chaleur
+    # sectorielle, qui a besoin d'une tendance de fond à côté du jour.
+    quarter_ago = today - timedelta(days=90)
+    year_start = datetime(today.year, 1, 1)
 
     results["ranges"] = {
         "day": today.date(),
@@ -120,6 +125,8 @@ def _compute_period_performance(quotes: pd.DataFrame) -> dict:
         "week_end": today.date(),
         "month_start": month_ago.date(),
         "month_end": today.date(),
+        "quarter_start": quarter_ago.date(),
+        "ytd_start": year_start.date(),
     }
 
     # 1 seule requête pour tous les tickers (mise en cache 5 min)
@@ -148,17 +155,27 @@ def _compute_period_performance(quotes: pd.DataFrame) -> dict:
         results["day"].append({"ticker": ticker, "name": name, "price": last_price, "variation": day_var})
 
         if prices.empty or len(prices) < 5:
-            results["week"].append({"ticker": ticker, "name": name, "price": last_price, "variation": 0})
-            results["month"].append({"ticker": ticker, "name": name, "price": last_price, "variation": 0})
+            # Sans historique, aucune fenêtre n'est calculable : on inscrit
+            # None plutôt que 0, qui se lirait comme une stabilité.
+            for _k in ("week", "month", "quarter", "ytd"):
+                results[_k].append({"ticker": ticker, "name": name,
+                                    "price": last_price,
+                                    "variation": 0 if _k in ("week", "month") else None})
             continue
 
         prices = prices.sort_values("date")
-        for period_key, start_dt, end_dt in [("week", week_start, today), ("month", month_ago, today)]:
+        for period_key, start_dt, end_dt in [("week", week_start, today),
+                                             ("month", month_ago, today),
+                                             ("quarter", quarter_ago, today),
+                                             ("ytd", year_start, today)]:
             pdata = prices[(prices["date"] >= pd.Timestamp(start_dt)) & (prices["date"] <= pd.Timestamp(end_dt))]
             if len(pdata) >= 2:
                 var = ((pdata.iloc[-1]["close"] - pdata.iloc[0]["close"]) / pdata.iloc[0]["close"] * 100) if pdata.iloc[0]["close"] > 0 else 0
-            else:
+            elif period_key in ("week", "month"):
                 var = 0
+            else:
+                # Fenêtres longues : pas d'historique suffisant → case vide.
+                var = None
             results[period_key].append({"ticker": ticker, "name": name, "price": last_price, "variation": var})
 
     # Sépare "ranges" (dict de dates, pas un DataFrame) du reste
@@ -172,12 +189,18 @@ def _render_top5(df: pd.DataFrame, label: str):
     """Affiche les 5 plus fortes hausses + 5 plus fortes baisses de la période.
     Le `label` est inséré dans le titre de chaque colonne pour lever toute
     ambiguïté sur la fenêtre temporelle comparée."""
-    from utils.ui_helpers import delta, ticker as ticker_chip
+    from utils.ui_helpers import delta, ticker as ticker_chip, breadth_bar
     if df.empty or "variation" not in df.columns:
         return
 
     positive = df[df["variation"] > 0.01].nlargest(5, "variation")
     negative = df[df["variation"] < -0.01].nsmallest(5, "variation")
+
+    # Largeur du marché sur la MÊME fenêtre que les listes ci-dessous : une
+    # rangée de compteurs dit combien, la barre dit dans quelle proportion.
+    _hausses = int((df["variation"] > 0.01).sum())
+    _baisses = int((df["variation"] < -0.01).sum())
+    breadth_bar(_hausses, len(df) - _hausses - _baisses, _baisses)
 
     col_up, col_dn = st.columns(2)
 
@@ -195,14 +218,16 @@ def _render_top5(df: pd.DataFrame, label: str):
             f"letter-spacing:-0.01em;'>"
             f"<span style='color:{header_color};font-size:18px;'>{arrow}</span> "
             f"{title}</div>"
-            f"<div style='color:var(--ink-3);font-size:12px;'>Top {count if count else 0}</div>"
+            f"<div style='font-family:var(--font-mono);color:var(--ink-3);"
+            f"font-size:11.5px;letter-spacing:0.04em;'>"
+            f"TOP {count if count else 0}</div>"
             f"</div>",
             unsafe_allow_html=True,
         )
         if rows.empty:
             st.markdown(
                 f"<div style='padding:20px 14px;background:var(--bg-elev);"
-                f"border:1px solid var(--border);border-radius:10px;"
+                f"border:1px solid var(--border);border-radius:12px;"
                 f"color:var(--ink-3);font-size:13px;text-align:center;'>"
                 f"{empty_msg}</div>",
                 unsafe_allow_html=True,
@@ -210,7 +235,7 @@ def _render_top5(df: pd.DataFrame, label: str):
             return
 
         inner = ""
-        for i, r in rows.iterrows():
+        for _rang, (i, r) in enumerate(rows.iterrows(), start=1):
             # Variation + couleur
             var = r["variation"]
             var_color = header_color
@@ -218,8 +243,10 @@ def _render_top5(df: pd.DataFrame, label: str):
             # Chaque ligne : nom (gauche, plus gros), prix + var (droite)
             inner += (
                 f"<div style='display:flex;align-items:center;justify-content:space-between;"
-                f"gap:12px;padding:10px 14px;border-bottom:1px solid var(--border);'>"
-                # Gauche : nom + ticker chip
+                f"gap:12px;padding:11px 16px;border-bottom:1px solid var(--border-soft);'>"
+                # Rang, puis nom + ticker chip
+                f"<span style='font-family:var(--font-mono);font-size:11px;"
+                f"color:var(--ink-4);width:14px;flex:0 0 auto;'>{_rang:02d}</span>"
                 f"<div style='min-width:0;flex:1;'>"
                 f"<div style='font-size:14px;font-weight:600;color:var(--ink);"
                 f"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>"
@@ -240,7 +267,7 @@ def _render_top5(df: pd.DataFrame, label: str):
         # Card bordée
         st.markdown(
             f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
-            f"border-radius:10px;overflow:hidden;'>{inner}</div>",
+            f"border-radius:12px;overflow:hidden;'>{inner}</div>",
             unsafe_allow_html=True,
         )
 
@@ -255,12 +282,15 @@ def _render_top5(df: pd.DataFrame, label: str):
                         use_container_width=True,
                     )
 
+    # Le docstring promettait depuis longtemps que `label` entrait dans le
+    # titre ; il n'y entrait pas. « Hausses » seul laissait croire au jour
+    # même dans l'onglet Mois.
     with col_up:
-        _render_list(positive, "Hausses", tone="up", arrow="↗",
+        _render_list(positive, f"Hausses {label}".strip(), tone="up", arrow="↗",
                      empty_msg="Aucune hausse sur la période",
                      key_prefix="up")
     with col_dn:
-        _render_list(negative, "Baisses", tone="down", arrow="↘",
+        _render_list(negative, f"Baisses {label}".strip(), tone="down", arrow="↘",
                      empty_msg="Aucune baisse sur la période",
                      key_prefix="dn")
 
@@ -886,6 +916,72 @@ def _render_pending_publications_alert():
             )
 
 
+def _render_sector_heatmap(quotes: pd.DataFrame, perf: dict):
+    """Carte de chaleur : variation par secteur sur cinq fenêtres.
+
+    La moyenne est **pondérée par la capitalisation**, pas arithmétique : un
+    secteur où Sonatel pèse dix fois les autres ne se lit pas en donnant le
+    même poids à chaque ligne. Les secteurs sont classés par la fenêtre la
+    plus longue disponible — la tendance de fond, pas l'agitation du jour.
+    """
+    from utils.ui_helpers import heatmap
+
+    fenetres = [("Jour", "day"), ("Semaine", "week"), ("Mois", "month"),
+                ("3 mois", "quarter"), ("Depuis le 1er janv.", "ytd")]
+    if "sector" not in quotes.columns:
+        return
+    secteurs = quotes[["ticker", "sector", "market_cap"]].dropna(subset=["sector"])
+    if secteurs.empty:
+        return
+
+    lignes = {}
+    for _, cle in fenetres:
+        cadre = perf.get(cle)
+        if cadre is None or cadre.empty or "variation" not in cadre.columns:
+            for nom in secteurs["sector"].unique():
+                lignes.setdefault(nom, []).append(None)
+            continue
+        joint = secteurs.merge(cadre[["ticker", "variation"]], on="ticker", how="inner")
+        joint = joint[joint["variation"].notna()]
+        for nom in sorted(secteurs["sector"].unique()):
+            part = joint[joint["sector"] == nom]
+            poids = part["market_cap"].fillna(0)
+            if part.empty or poids.sum() <= 0:
+                # Sans capitalisation exploitable, la moyenne simple reste
+                # honnête tant qu'elle est annoncée comme telle en pied.
+                valeur = float(part["variation"].mean()) if not part.empty else None
+            else:
+                valeur = float((part["variation"] * poids).sum() / poids.sum())
+            lignes.setdefault(nom, []).append(valeur)
+
+    # Classement par la dernière colonne renseignée (la fenêtre la plus longue)
+    def _cle_tri(item):
+        vals = [v for v in item[1] if v is not None]
+        return -(vals[-1] if vals else -999)
+
+    ordonnees = sorted(lignes.items(), key=_cle_tri)
+    if not ordonnees:
+        return
+
+    st.markdown(
+        "<div style='display:flex;align-items:baseline;gap:10px;"
+        "margin:26px 0 12px;'>"
+        "<h2 style='font-size:17px;font-weight:600;margin:0;"
+        "letter-spacing:-0.015em;'>Secteurs · variation par fenêtre</h2>"
+        "<span style='font-family:var(--font-mono);font-size:11.5px;"
+        f"color:var(--ink-3);'>{len(ordonnees)} SECTEURS</span></div>",
+        unsafe_allow_html=True,
+    )
+    heatmap(
+        ordonnees,
+        [libelle for libelle, _ in fenetres],
+        footer="Moyenne pondérée par la capitalisation. Le jour se lit dans "
+               "la première colonne, la tendance de fond dans la dernière ; "
+               "une case vide est une fenêtre sans historique suffisant, "
+               "pas une stabilité.",
+    )
+
+
 def render():
     # Hiérarchie v3 : Title + caption → KPI row → Tabs → contenu (pas de divider)
     quotes = _load_quotes_from_db()
@@ -1017,50 +1113,6 @@ def render():
         else:
             st.info("Prix historiques en cours de chargement...")
 
-    # --- Tableau complet (repliable, pas de divider — densité v3) ---
-    with st.expander(f"Toutes les cotations · {len(quotes)} titres", expanded=False):
-        sectors = ["Tous"] + sorted(quotes["sector"].dropna().unique().tolist())
-        selected_sector = st.selectbox("Filtrer par secteur", sectors)
-        display_df = quotes[quotes["sector"] == selected_sector] if selected_sector != "Tous" else quotes
-
-        # Format display columns — keep numeric for sorting
-        fmt_df = display_df.copy()
-        fmt_df["market_cap"] = fmt_df["market_cap"].apply(
-            lambda x: round(x / 1e9, 1) if pd.notna(x) and x > 0 else None
-        )
-        fmt_df["variation"] = fmt_df["variation"].apply(
-            lambda x: round(x, 2) if pd.notna(x) else 0.0
-        )
-        fmt_df["beta"] = fmt_df["beta"].apply(lambda x: round(x, 2) if pd.notna(x) and abs(x) > 0.001 else None)
-        fmt_df["rsi"] = fmt_df["rsi"].apply(lambda x: round(x, 0) if pd.notna(x) and abs(x) > 0.001 else None)
-        fmt_df["dps"] = fmt_df["dps"].apply(lambda x: round(x, 0) if pd.notna(x) and x > 0 else None)
-        fmt_df["last"] = fmt_df["last"].apply(lambda x: round(x, 0) if pd.notna(x) and x > 0 else None)
-
-        show_cols = {"ticker": "Ticker", "name": "Nom", "sector": "Secteur",
-                     "last": "Prix (FCFA)", "variation": "Var (%)",
-                     "market_cap": "Cap (Mds FCFA)", "beta": "Beta", "rsi": "RSI", "dps": "DPS"}
-        available = {k: v for k, v in show_cols.items() if k in fmt_df.columns}
-        st.dataframe(
-            fmt_df[list(available.keys())].rename(columns=available),
-            use_container_width=True, height=600,
-            column_config={
-                "Prix (FCFA)": st.column_config.NumberColumn(format="%.0f"),
-                "Var (%)": st.column_config.NumberColumn(format="%.2f %%"),
-                "Cap (Mds FCFA)": st.column_config.NumberColumn(format="%.1f"),
-                "Beta": st.column_config.NumberColumn(format="%.2f"),
-                "RSI": st.column_config.NumberColumn(format="%.0f"),
-                "DPS": st.column_config.NumberColumn(format="%.0f"),
-            }
-        )
-
-        # Quick jump to stock analysis from the full cotations table
-        picker_options = [
-            (row["ticker"], f"{row['ticker']} — {row.get('name', '')}")
-            for _, row in fmt_df.iterrows()
-            if row.get("ticker")
-        ]
-        ticker_quick_picker(picker_options, key="dash_goto", label="Ouvrir l'analyse d'un titre")
-
     # --- Indices (grille 4 colonnes fixe pour homogénéité des tailles) ---
     st.subheader("Indices BRVM")
     indices = _load_indices_from_db()
@@ -1123,6 +1175,52 @@ def render():
                         if i < len(chunk):
                             _render_idx_metric(chunk[i][1])
                         # else : colonne vide → largeur préservée, pas de reflow
+
+    _render_sector_heatmap(quotes, perf)
+
+    # --- Tableau complet (repliable, pas de divider — densité v3) ---
+    with st.expander(f"Toutes les cotations · {len(quotes)} titres", expanded=False):
+        sectors = ["Tous"] + sorted(quotes["sector"].dropna().unique().tolist())
+        selected_sector = st.selectbox("Filtrer par secteur", sectors)
+        display_df = quotes[quotes["sector"] == selected_sector] if selected_sector != "Tous" else quotes
+
+        # Format display columns — keep numeric for sorting
+        fmt_df = display_df.copy()
+        fmt_df["market_cap"] = fmt_df["market_cap"].apply(
+            lambda x: round(x / 1e9, 1) if pd.notna(x) and x > 0 else None
+        )
+        fmt_df["variation"] = fmt_df["variation"].apply(
+            lambda x: round(x, 2) if pd.notna(x) else 0.0
+        )
+        fmt_df["beta"] = fmt_df["beta"].apply(lambda x: round(x, 2) if pd.notna(x) and abs(x) > 0.001 else None)
+        fmt_df["rsi"] = fmt_df["rsi"].apply(lambda x: round(x, 0) if pd.notna(x) and abs(x) > 0.001 else None)
+        fmt_df["dps"] = fmt_df["dps"].apply(lambda x: round(x, 0) if pd.notna(x) and x > 0 else None)
+        fmt_df["last"] = fmt_df["last"].apply(lambda x: round(x, 0) if pd.notna(x) and x > 0 else None)
+
+        show_cols = {"ticker": "Ticker", "name": "Nom", "sector": "Secteur",
+                     "last": "Prix (FCFA)", "variation": "Var (%)",
+                     "market_cap": "Cap (Mds FCFA)", "beta": "Beta", "rsi": "RSI", "dps": "DPS"}
+        available = {k: v for k, v in show_cols.items() if k in fmt_df.columns}
+        st.dataframe(
+            fmt_df[list(available.keys())].rename(columns=available),
+            use_container_width=True, height=600,
+            column_config={
+                "Prix (FCFA)": st.column_config.NumberColumn(format="%.0f"),
+                "Var (%)": st.column_config.NumberColumn(format="%.2f %%"),
+                "Cap (Mds FCFA)": st.column_config.NumberColumn(format="%.1f"),
+                "Beta": st.column_config.NumberColumn(format="%.2f"),
+                "RSI": st.column_config.NumberColumn(format="%.0f"),
+                "DPS": st.column_config.NumberColumn(format="%.0f"),
+            }
+        )
+
+        # Quick jump to stock analysis from the full cotations table
+        picker_options = [
+            (row["ticker"], f"{row['ticker']} — {row.get('name', '')}")
+            for _, row in fmt_df.iterrows()
+            if row.get("ticker")
+        ]
+        ticker_quick_picker(picker_options, key="dash_goto", label="Ouvrir l'analyse d'un titre")
 
 
 def _render_boc():

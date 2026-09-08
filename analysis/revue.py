@@ -115,6 +115,44 @@ def chiffres_recents(ticker: str, table=None) -> str:
     return f"{periode} — " + " · ".join(morceaux) if morceaux else ""
 
 
+def chiffres_detail(ticker: str, table=None) -> list:
+    """Memes chiffres que `chiffres_recents`, mais poste par poste.
+
+    La chaine reste utile en repli ; la carte du redesign v4 affiche chaque
+    poste separement, avec son libelle et sa couleur — une variation lue en
+    vert ou en rouge se saisit sans lire la phrase.
+    Renvoie une liste de (libelle, valeur, ton) ou ton vaut up / down / neutre.
+    """
+    df = table if table is not None else _table_trimestres()
+    if df is None or df.empty:
+        return []
+    df = df[df["ticker"] == ticker]
+    if df.empty:
+        return []
+
+    cur = df.iloc[0]
+    prec = df[(df["fiscal_year"] == cur["fiscal_year"] - 1)
+              & (df["quarter"] == cur["quarter"])]
+    prec = prec.iloc[0] if not prec.empty else None
+    periode = f"T{int(cur['quarter'])} {int(cur['fiscal_year'])}"
+    precedente = f"T{int(cur['quarter'])} {int(cur['fiscal_year']) - 1}"
+
+    postes = []
+    for champ, libelle in (("revenue", "CA"), ("net_income", "Résultat net")):
+        if not pd.notna(cur.get(champ)):
+            continue
+        postes.append((f"{libelle} · {periode}", _fmt_montant(cur[champ]), "neutre"))
+        if prec is None or not pd.notna(prec.get(champ)) or not prec[champ]:
+            continue
+        pct = (float(cur[champ]) - float(prec[champ])) / abs(float(prec[champ])) * 100
+        signe = "+" if pct >= 0 else "−"
+        # Virgule decimale, comme les montants juste a cote.
+        valeur = f"{signe}{abs(pct):.1f} %".replace(".", ",")
+        postes.append((f"vs {precedente}", valeur,
+                       "up" if pct >= 0 else "down"))
+    return postes
+
+
 # ──────────────────────────────────────────────────────────────────────────
 # Assemblage
 # ──────────────────────────────────────────────────────────────────────────
@@ -193,6 +231,7 @@ def build_revue(jours: int = 10, portefeuille: list | None = None) -> dict:
             "exposees": [(t, noms.get(t, t)) for t in exposees],
             "texte": _extrait(r["body"] or r["lead"]),
             "chiffres": chiffres_recents(sujets[0], trimestres) if sujets else "",
+            "chiffres_detail": chiffres_detail(sujets[0], trimestres) if sujets else [],
         }
 
         if en_portefeuille:

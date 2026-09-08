@@ -560,5 +560,13 @@ code, kbd, pre {
   border-bottom: 1px solid var(--border-soft) !important;
 }
 
-/* ── Cartes de KPI — filet supérieur coloré, coins v4 ── */
-[data-testid="stMetric"] { border-radius: 12px; padding: 15px 17px; }
+/* ── Cartes de KPI — filet supérieur, coins v4 ──
+   Le canevas donne à chaque carte un filet haut de 2 px dans sa couleur
+   d'accent. st.metric ne permet pas de teinter carte par carte : le filet
+   prend donc l'accent neutre du canevas (INK4), et les cartes qui portent
+   une couleur propre sont construites en HTML. */
+[data-testid="stMetric"] {
+  border-radius: 12px;
+  padding: 15px 17px;
+  border-top: 2px solid var(--ink-4);
+}

@@ -345,7 +345,7 @@ def render():
     def _stat_card(label: str, value: str, sub_html: str = "", tone: str = "neutral"):
         return (
             f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
-            f"border-radius:10px;padding:14px 16px;min-height:92px;'>"
+            f"border-radius:12px;padding:14px 16px;min-height:92px;'>"
             f"<div style='font-size:10.5px;text-transform:uppercase;letter-spacing:0.08em;"
             f"color:var(--ink-3);font-weight:500;margin-bottom:8px;'>{label}</div>"
             f"<div style='font-size:24px;font-weight:600;letter-spacing:-0.02em;"
@@ -505,19 +505,23 @@ def _render_fundamental(fundamentals, ratios):
     c_total, c_sub = st.columns([1.6, 4])
     with c_total:
         st.markdown(
-            f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
-            f"border-radius:10px;padding:14px 16px;height:100%;'>"
-            f"<div class='label-xs' style='margin-bottom:4px;'>Score fondamental</div>"
-            f"<div style='font-size:28px;font-weight:600;letter-spacing:-0.02em;"
-            f"color:var(--ink);font-variant-numeric:tabular-nums;'>"
-            f"{total:.0f} <span style='color:var(--ink-3);font-size:16px;font-weight:400;'>/ 50</span>"
+            # Carte sombre (canevas v4) : le score d'ensemble se distingue des
+            # quatre sous-scores qui le composent, au lieu de leur ressembler.
+            f"<div style='background:var(--primary-2);border:1px solid var(--primary-2);"
+            f"border-radius:12px;padding:15px 17px;height:100%;'>"
+            f"<div style='font-size:10.5px;font-weight:600;letter-spacing:0.09em;"
+            f"text-transform:uppercase;color:var(--on-dark-3);"
+            f"margin-bottom:4px;'>Score fondamental</div>"
+            f"<div style='font-size:29px;font-weight:600;letter-spacing:-0.02em;"
+            f"color:var(--on-dark);font-variant-numeric:tabular-nums;'>"
+            f"{total:.0f} <span style='color:var(--on-dark-4);font-size:16px;font-weight:400;'>/ 50</span>"
             f"</div>"
-            f"<div style='height:4px;background:var(--bg-sunken);border-radius:999px;"
+            f"<div style='height:4px;background:rgba(255,255,255,0.18);border-radius:999px;"
             f"margin:8px 0 10px 0;overflow:hidden;'>"
             f"<div style='width:{min(100, total/50*100):.0f}%;height:100%;"
-            f"background:{_tone_for(total, 50)};border-radius:999px;'></div></div>"
-            f"<div style='font-size:12px;color:var(--ink-3);line-height:1.4;'>Profil "
-            f"<b style='color:var(--ink);'>{profile or '—'}</b></div>"
+            f"background:var(--primary-soft);border-radius:999px;'></div></div>"
+            f"<div style='font-size:12px;color:var(--on-dark-2);line-height:1.4;'>Profil "
+            f"<b style='color:var(--on-dark);'>{profile or '—'}</b></div>"
             f"</div>",
             unsafe_allow_html=True,
         )
@@ -529,7 +533,8 @@ def _render_fundamental(fundamentals, ratios):
             with cell:
                 st.markdown(
                     f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
-                    f"border-radius:10px;padding:14px 16px;height:100%;'>"
+                    f"border-top:2px solid {tone};"
+                    f"border-radius:12px;padding:14px 16px;height:100%;'>"
                     f"<div class='label-xs' style='margin-bottom:4px;'>{label}</div>"
                     f"<div style='font-size:20px;font-weight:600;color:var(--ink);"
                     f"font-variant-numeric:tabular-nums;'>"
@@ -652,7 +657,7 @@ def _render_fundamental(fundamentals, ratios):
         "border-bottom:1px solid var(--border);background:var(--bg-sunken);"
         "text-align:left;"
     )
-    cell_style = "padding:9px 10px;border-bottom:1px solid var(--border);font-size:13px;"
+    cell_style = "padding:9px 10px;border-bottom:1px solid var(--border-soft);font-size:13px;"
 
     rows_html = (
         f"<tr>"
@@ -682,7 +687,7 @@ def _render_fundamental(fundamentals, ratios):
         )
 
     st.markdown(
-        f"<div style='border:1px solid var(--border);border-radius:10px;"
+        f"<div style='border:1px solid var(--border);border-radius:12px;"
         f"overflow:hidden;background:var(--bg-elev);'>"
         f"<table style='width:100%;border-collapse:collapse;'>{rows_html}</table></div>",
         unsafe_allow_html=True,
@@ -759,7 +764,7 @@ def _render_fundamental(fundamentals, ratios):
                 return f"{v:.2f}" if abs(v) < 10 else f"{v:.0f}"
             return f"{v:,.2f}" if abs(v) < 10 else f"{v:,.0f}"
 
-        header = "font-size:10.5px;text-transform:uppercase;letter-spacing:0.08em;color:var(--ink-3);font-weight:500;padding:7px 10px;text-align:left;"
+        header = "font-size:10px;text-transform:uppercase;letter-spacing:0.09em;color:var(--ink-3);font-weight:600;padding:7px 10px;text-align:left;"
         cell = "padding:8px 10px;font-size:13px;border-bottom:1px solid var(--border);"
         years_hdr = "".join(f"<th style='{header};text-align:right;'>{y}</th>" for y in year_labels) if year_labels else ""
         rows = [
@@ -778,7 +783,7 @@ def _render_fundamental(fundamentals, ratios):
             inner += f"<tr><td style='{cell};font-weight:500;'>{label}</td>{cells_html}</tr>"
 
         st.markdown(
-            f"<div style='border:1px solid var(--border);border-radius:10px;overflow:hidden;"
+            f"<div style='border:1px solid var(--border);border-radius:12px;overflow:hidden;"
             f"background:var(--bg-elev);'><table style='width:100%;border-collapse:collapse;'>"
             f"<tr><th style='{header};background:var(--bg-sunken);'>Exercice</th>{years_hdr}</tr>"
             f"{inner}</table></div>",
@@ -811,14 +816,14 @@ def _render_fundamental(fundamentals, ratios):
         for key, val in items:
             rows_html += (
                 f"<div style='display:flex;justify-content:space-between;padding:10px 14px;"
-                f"border-bottom:1px solid var(--border);font-size:13px;'>"
+                f"border-bottom:1px solid var(--border-soft);font-size:13px;'>"
                 f"<span style='color:var(--ink-2);'>{key}</span>"
                 f"<span style='font-weight:500;font-variant-numeric:tabular-nums;color:var(--ink);'>{val}</span>"
                 f"</div>"
             )
         st.markdown(
             f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
-            f"border-radius:10px;overflow:hidden;'>{rows_html}</div>",
+            f"border-radius:12px;overflow:hidden;'>{rows_html}</div>",
             unsafe_allow_html=True,
         )
 
@@ -848,7 +853,7 @@ def _render_fundamental(fundamentals, ratios):
         narrative = ". ".join(phrases[:3]) + "."
         st.markdown(
             f"<div style='background:var(--bg-sunken);border:1px solid var(--border);"
-            f"border-radius:10px;padding:14px 16px;margin-top:18px;'>"
+            f"border-radius:12px;padding:14px 16px;margin-top:18px;'>"
             f"<div class='label-xs' style='margin-bottom:6px;'>Lecture synthétique</div>"
             f"<div style='font-size:13px;line-height:1.5;color:var(--ink-2);'>{narrative}</div>"
             f"</div>",
@@ -1016,7 +1021,7 @@ def _render_technical(ticker, price_df, result):
 
     st.markdown(
         f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
-        f"border-radius:10px;padding:14px 16px;margin-bottom:12px;"
+        f"border-radius:12px;padding:14px 16px;margin-bottom:12px;"
         f"max-width:340px;'>"
         f"<div class='label-xs' style='margin-bottom:4px;'>Score technique</div>"
         f"<div style='font-size:28px;font-weight:600;letter-spacing:-0.02em;"
@@ -1087,7 +1092,7 @@ def _render_technical(ticker, price_df, result):
         )
         return (
             f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
-            f"border-radius:10px;padding:14px 16px;min-height:92px;'>"
+            f"border-radius:12px;padding:14px 16px;min-height:92px;'>"
             f"<div class='label-xs' style='margin-bottom:6px;'>{label}</div>"
             f"<div style='font-size:22px;font-weight:600;letter-spacing:-0.02em;"
             f"color:var(--ink);font-variant-numeric:tabular-nums;line-height:1.15;'>"
@@ -1229,7 +1234,7 @@ def _render_technical(ticker, price_df, result):
             "border-bottom:1px solid var(--border);background:var(--bg-sunken);"
             "text-align:left;"
         )
-        cell_style = "padding:9px 10px;border-bottom:1px solid var(--border);font-size:13px;"
+        cell_style = "padding:9px 10px;border-bottom:1px solid var(--border-soft);font-size:13px;"
 
         rows_html = (
             f"<tr>"
@@ -1257,7 +1262,7 @@ def _render_technical(ticker, price_df, result):
             # Pas de supports/résistances détectés
             pass
         st.markdown(
-            f"<div style='border:1px solid var(--border);border-radius:10px;"
+            f"<div style='border:1px solid var(--border);border-radius:12px;"
             f"overflow:hidden;background:var(--bg-elev);'>"
             f"<table style='width:100%;border-collapse:collapse;'>{rows_html}</table></div>",
             unsafe_allow_html=True,
@@ -1275,7 +1280,7 @@ def _render_technical(ticker, price_df, result):
                 tone = {"achat": "up", "vente": "down", "info": "neutral"}.get(sig.get("type"), "neutral")
                 inner += (
                     f"<div style='display:flex;justify-content:space-between;align-items:flex-start;"
-                    f"gap:12px;padding:9px 12px;border-bottom:1px solid var(--border);"
+                    f"gap:12px;padding:9px 12px;border-bottom:1px solid var(--border-soft);"
                     f"font-size:13px;'>"
                     f"<div style='flex:1;min-width:0;'>"
                     f"<span class='dot {tone}'></span><b>{sig.get('signal', '')}</b>"
@@ -1285,7 +1290,7 @@ def _render_technical(ticker, price_df, result):
                     f"</div>"
                 )
             st.markdown(
-                f"<div style='border:1px solid var(--border);border-radius:10px;"
+                f"<div style='border:1px solid var(--border);border-radius:12px;"
                 f"overflow:hidden;background:var(--bg-elev);'>{inner}</div>",
                 unsafe_allow_html=True,
             )
@@ -1571,7 +1576,7 @@ def _render_tendance_periodes(ticker):
     ligne_rn += _rangee_variation("net_income_var")
     st.markdown(
         f"<div style='overflow-x:auto;border:1px solid var(--border);"
-        f"border-radius:10px;padding:6px 14px;background:var(--bg-elev);'>"
+        f"border-radius:12px;padding:6px 14px;background:var(--bg-elev);'>"
         f"<table style='width:100%;border-collapse:collapse;'>"
         f"<thead><tr><th style='padding:0 12px 5px 0;'></th>{entetes}</tr></thead>"
         f"<tbody>{ligne_ca}{ligne_rn}</tbody></table></div>",
@@ -1610,7 +1615,7 @@ def _render_tendance_periodes(ticker):
         couleur = "var(--up)" if croissance >= 0 else "var(--down)"
         return (
             f"<div style='flex:1;min-width:190px;border:1px solid var(--border);"
-            f"border-radius:10px;padding:12px 14px;background:var(--bg-elev);'>"
+            f"border-radius:12px;padding:12px 14px;background:var(--bg-elev);'>"
             f"<div style='font-size:11px;color:var(--ink-3);"
             f"text-transform:uppercase;letter-spacing:.03em;'>{libelle}</div>"
             f"<div style='font-size:22px;font-weight:600;margin-top:2px;"
@@ -1709,7 +1714,7 @@ def _render_bloc_sectoriel(fundamentals, ratios_src):
                 f"{commentaire}{_vs_pairs}</td></tr>"
             )
         st.markdown(
-            f"<div style='border:1px solid var(--border);border-radius:10px;"
+            f"<div style='border:1px solid var(--border);border-radius:12px;"
             f"padding:6px 16px;background:var(--bg-elev);'>"
             f"<table style='width:100%;border-collapse:collapse;'>{lignes}</table></div>",
             unsafe_allow_html=True,
@@ -1772,7 +1777,7 @@ def _render_bloc_sectoriel(fundamentals, ratios_src):
                     f"text-align:right;'>{_var}</td></tr>"
                 )
             st.markdown(
-                f"<div style='border:1px solid var(--border);border-radius:10px;"
+                f"<div style='border:1px solid var(--border);border-radius:12px;"
                 f"padding:6px 16px;background:var(--bg-elev);'>"
                 f"<table style='width:100%;border-collapse:collapse;'>{_cellules}</table>"
                 f"</div>", unsafe_allow_html=True)
@@ -1847,7 +1852,7 @@ def _render_bloc_sectoriel(fundamentals, ratios_src):
 
             st.markdown(
                 f"<div style='overflow-x:auto;border:1px solid var(--border);"
-                f"border-radius:10px;padding:6px 14px;background:var(--bg-elev);'>"
+                f"border-radius:12px;padding:6px 14px;background:var(--bg-elev);'>"
                 f"<table style='width:100%;border-collapse:collapse;'>"
                 f"<thead><tr><th style='padding:0 12px 5px 0;font-size:11px;"
                 f"font-weight:500;color:var(--ink-3);text-align:left;'></th>"
@@ -1983,7 +1988,7 @@ def _render_risque(ticker, fundamentals):
     # ── La lecture d'abord : c'est elle qu'on vient chercher ──────────────
     st.markdown(
         "<div style='background:var(--bg-elev);border:1px solid var(--border);"
-        "border-left:3px solid var(--ocre);border-radius:10px;"
+        "border-left:3px solid var(--ocre);border-radius:12px;"
         "padding:16px 18px;'>"
         "<div class='label-xs' style='margin-bottom:8px;'>Ce que les mesures "
         "disent</div>"
@@ -2049,7 +2054,7 @@ def _render_risque(ticker, fundamentals):
                 f"<td style='{cell}'>"
                 f"{_position(situations['marché'], champ)}</td></tr>")
         st.markdown(
-            f"<div style='border:1px solid var(--border);border-radius:10px;"
+            f"<div style='border:1px solid var(--border);border-radius:12px;"
             f"overflow:hidden;background:var(--bg-elev);margin-top:14px;'>"
             f"<table style='width:100%;border-collapse:collapse;'>{lignes}"
             f"</table></div>", unsafe_allow_html=True)
@@ -2173,7 +2178,7 @@ def _render_recommendation(result, fundamentals):
 
     st.markdown(
         f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
-        f"border-radius:10px;padding:18px 20px;'>"
+        f"border-radius:12px;padding:18px 20px;'>"
         f"<div style='display:flex;align-items:flex-start;gap:24px;'>"
         # Colonne gauche : verdict + score + horizon
         f"<div style='min-width:240px;'>"
@@ -2283,7 +2288,7 @@ def _render_recommendation(result, fundamentals):
             _alerte = ""
         st.markdown(
             f"<div style='background:var(--bg-elev);border:1px solid "
-            f"var(--border);border-radius:10px;padding:16px 18px;"
+            f"var(--border);border-radius:12px;padding:16px 18px;"
             f"margin-top:14px;'>"
             f"<div class='label-xs' style='margin-bottom:6px;'>"
             f"Ce que le score ne dit pas</div>"
@@ -2335,7 +2340,7 @@ def _render_recommendation(result, fundamentals):
     if not tp:
         st.markdown(
             "<div style='background:var(--bg-elev);border:1px solid var(--border);"
-            "border-radius:10px;padding:14px 18px;margin-top:12px;"
+            "border-radius:12px;padding:14px 18px;margin-top:12px;"
             "color:var(--ink-3);font-size:13px;'>"
             "Prix cible indisponible — données EPS ou DPS manquantes."
             "</div>",
@@ -2348,7 +2353,7 @@ def _render_recommendation(result, fundamentals):
         st.markdown(
             f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
             f"border-left:4px solid var(--ocre);"
-            f"border-radius:10px;padding:16px 20px;margin-top:12px;'>"
+            f"border-radius:12px;padding:16px 20px;margin-top:12px;'>"
             f"<div style='display:flex;align-items:flex-start;gap:32px;flex-wrap:wrap;'>"
             f"<div>"
             f"<div class='label-xs' style='margin-bottom:3px;'>Prix actuel</div>"
@@ -2395,7 +2400,7 @@ def _render_recommendation(result, fundamentals):
 
         st.markdown(
             f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
-            f"border-radius:10px;padding:16px 20px;margin-top:12px;'>"
+            f"border-radius:12px;padding:16px 20px;margin-top:12px;'>"
             f"<div style='display:flex;align-items:flex-start;gap:32px;flex-wrap:wrap;'>"
             f"<div>"
             f"<div class='label-xs' style='margin-bottom:3px;'>Prix actuel</div>"
@@ -2478,7 +2483,7 @@ def _render_recommendation(result, fundamentals):
 
         st.markdown(
             f"<div style='background:var(--bg-elev);border:1px dashed var(--border);"
-            f"border-radius:10px;padding:14px 18px;margin-top:10px;'>"
+            f"border-radius:12px;padding:14px 18px;margin-top:10px;'>"
             f"<div style='display:flex;justify-content:space-between;align-items:baseline;'>"
             f"<div class='label-xs'>Seconde lecture · valorisation croisée</div>"
             f"<div style='font-size:11px;color:var(--ink-3);'>confiance {vc.get('confidence')}</div>"
@@ -2529,7 +2534,7 @@ def _render_recommendation(result, fundamentals):
             "border-bottom:1px solid var(--border);background:var(--bg-sunken);"
             "text-align:left;"
         )
-        cell_style = "padding:10px;border-bottom:1px solid var(--border);font-size:13px;"
+        cell_style = "padding:10px;border-bottom:1px solid var(--border-soft);font-size:13px;"
 
         rows_html = (
             f"<tr>"
@@ -2589,7 +2594,7 @@ def _render_recommendation(result, fundamentals):
             )
 
         st.markdown(
-            f"<div style='border:1px solid var(--border);border-radius:10px;"
+            f"<div style='border:1px solid var(--border);border-radius:12px;"
             f"overflow:hidden;background:var(--bg-elev);'>"
             f"<table style='width:100%;border-collapse:collapse;'>{rows_html}</table></div>",
             unsafe_allow_html=True,
@@ -2607,7 +2612,7 @@ def _render_recommendation(result, fundamentals):
     )
     st.markdown(
         f"<div style='margin-top:16px;padding:12px 16px;background:var(--bg-sunken);"
-        f"border-radius:10px;font-size:12.5px;color:var(--ink-2);line-height:1.5;'>"
+        f"border-radius:12px;font-size:12.5px;color:var(--ink-2);line-height:1.5;'>"
         f"{synth}</div>",
         unsafe_allow_html=True,
     )
@@ -2631,7 +2636,7 @@ def _render_recommendation(result, fundamentals):
                     main, side = item[:idx], item[idx + 2 : -1]
                 rows += (
                     f"<div style='display:flex;justify-content:space-between;"
-                    f"gap:12px;padding:8px 0;border-bottom:1px solid var(--border);'>"
+                    f"gap:12px;padding:8px 0;border-bottom:1px solid var(--border-soft);'>"
                     f"<span style='color:var(--ink);font-size:13px;'>{main}</span>"
                     f"<span style='color:var(--ink-3);font-size:12.5px;text-align:right;"
                     f"font-variant-numeric:tabular-nums;'>{side}</span>"
@@ -2641,7 +2646,7 @@ def _render_recommendation(result, fundamentals):
             rows = "<div style='padding:10px 0;color:var(--ink-3);font-size:13px;'>Aucun élément</div>"
         return (
             f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
-            f"border-radius:10px;padding:14px 16px;'>"
+            f"border-radius:12px;padding:14px 16px;'>"
             f"<div style='font-size:14px;font-weight:600;color:var(--ink);"
             f"margin-bottom:6px;'><span class='dot {tone}'></span>{label}</div>"
             f"{rows}"
@@ -2824,7 +2829,7 @@ def _render_publications_with_status(ticker: str):
         else:
             title_html = title
         st.markdown(
-            f"<div style='padding:6px 0;border-bottom:1px solid var(--border);"
+            f"<div style='padding:6px 0;border-bottom:1px solid var(--border-soft);"
             f"font-size:13px;line-height:1.5;display:flex;align-items:center;"
             f"gap:8px;flex-wrap:wrap;'>"
             f"<span style='min-width:78px;'>{date_html}</span>"
@@ -2974,7 +2979,7 @@ def _render_profile(ticker: str, fundamentals: dict):
         f"<div style='font-size:22px;font-weight:600;color:var(--ink);"
         f"letter-spacing:-0.02em;'>{company}</div>"
         f"<div style='color:var(--ink-3);font-size:13px;margin-top:2px;"
-        f"padding-bottom:12px;border-bottom:1px solid var(--border);'>"
+        f"padding-bottom:12px;border-bottom:1px solid var(--border-soft);'>"
         f"Profil entreprise · {ticker}</div>"
         f"</div>",
         unsafe_allow_html=True,
@@ -2985,7 +2990,7 @@ def _render_profile(ticker: str, fundamentals: dict):
         rows_html = ""
         visible = [(k, v) for k, v in items if v]
         for i, (key, val) in enumerate(visible):
-            sep = "border-bottom:1px solid var(--border);" if i < len(visible) - 1 else ""
+            sep = "border-bottom:1px solid var(--border-soft);" if i < len(visible) - 1 else ""
             rows_html += (
                 f"<div style='display:flex;justify-content:space-between;gap:12px;"
                 f"padding:8px 0;{sep}'>"
@@ -2999,7 +3004,7 @@ def _render_profile(ticker: str, fundamentals: dict):
                          "padding:4px 0;'>Non disponible</div>")
         return (
             f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
-            f"border-radius:10px;padding:14px 16px;margin-bottom:12px;'>"
+            f"border-radius:12px;padding:14px 16px;margin-bottom:12px;'>"
             f"<div style='font-size:14px;font-weight:600;color:var(--ink);"
             f"margin-bottom:8px;'>{label}</div>"
             f"{rows_html}"
@@ -3129,7 +3134,7 @@ def _render_profile(ticker: str, fundamentals: dict):
                     f"</tr>"
                 )
             st.markdown(
-                f"<div style='border:1px solid var(--border);border-radius:10px;"
+                f"<div style='border:1px solid var(--border);border-radius:12px;"
                 f"overflow:hidden;background:var(--bg-elev);'>"
                 f"<table style='width:100%;border-collapse:collapse;'>{rows_html}</table>"
                 f"</div>",
@@ -3211,7 +3216,7 @@ def _render_profile(ticker: str, fundamentals: dict):
                 )
             st.markdown(
                 f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
-                f"border-radius:10px;padding:14px 16px;margin-bottom:12px;'>"
+                f"border-radius:12px;padding:14px 16px;margin-bottom:12px;'>"
                 f"<div style='font-size:14px;font-weight:600;color:var(--ink);"
                 f"margin-bottom:8px;'>Contact</div>"
                 f"{contact_body}"

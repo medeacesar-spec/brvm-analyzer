@@ -313,7 +313,7 @@ def render():
                      "warn": "var(--ocre)"}.get(tone, "var(--ink-3)")
         return (
             f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
-            f"border-radius:10px;padding:14px 16px;min-height:90px;'>"
+            f"border-radius:12px;padding:14px 16px;min-height:90px;'>"
             f"<div class='label-xs' style='margin-bottom:6px;'>{label}</div>"
             f"<div style='font-size:26px;font-weight:600;letter-spacing:-0.02em;"
             f"color:var(--ink);font-variant-numeric:tabular-nums;line-height:1;'>{value}</div>"
@@ -390,7 +390,7 @@ def render():
             "color:var(--ink-3);font-weight:500;padding:9px 10px;"
             "border-bottom:1px solid var(--border);background:var(--bg-sunken);"
         )
-        cell_style = "padding:10px;font-size:13px;border-bottom:1px solid var(--border);"
+        cell_style = "padding:10px;font-size:13px;border-bottom:1px solid var(--border-soft);"
 
         def _verdict_tag(v):
             if not v:
@@ -467,7 +467,7 @@ def render():
             )
 
         st.markdown(
-            f"<div style='border:1px solid var(--border);border-radius:10px;"
+            f"<div style='border:1px solid var(--border);border-radius:12px;"
             f"overflow:hidden;background:var(--bg-elev);margin-bottom:16px;'>"
             f"<table style='width:100%;border-collapse:collapse;'>{rows_html}</table></div>",
             unsafe_allow_html=True,
