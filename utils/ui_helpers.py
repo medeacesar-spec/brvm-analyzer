@@ -394,6 +394,47 @@ def note(titre: str, texte: str, ton: str = "primary"):
     )
 
 
+def cartes_constats(constats, mini: str = "300px"):
+    """Une grille de constats en cartes — le motif `bCards` du canevas.
+
+    Un tableau aligne des colonnes, et l'oeil y cherche une comparaison qui
+    n'existe pas : les constats d'un diagnostic ne se comparent pas entre eux,
+    ils s'additionnent. En cartes, chacun se lit pour lui-même, son filet et
+    sa pastille disent sa gravité avant qu'on ait lu le titre, et le texte
+    peut respirer sur plusieurs lignes sans étirer une rangée.
+
+    `constats` : une suite de (ton, titre, texte), `ton` valant
+    up / warn / ocre / down / primary.
+    """
+    accents = {"up": "var(--up)", "warn": "var(--warn)", "ocre": "var(--ocre)",
+               "down": "var(--down)", "primary": "var(--primary)"}
+    pastilles = {"up": "up", "warn": "ocre", "ocre": "ocre", "down": "down"}
+    constats = [c for c in constats if c]
+    if not constats:
+        return
+    cartes = []
+    for ton, titre, texte in constats:
+        accent = accents.get(ton, "var(--primary)")
+        cartes.append(
+            "<div style='background:var(--bg-elev);border:1px solid "
+            f"var(--border);border-left:2px solid {accent};"
+            "border-radius:0 12px 12px 0;padding:14px 18px;height:100%;'>"
+            "<div style='display:flex;align-items:baseline;gap:8px;"
+            "margin-bottom:6px;'>"
+            f"<span class='dot {pastilles.get(ton, 'neutral')}'></span>"
+            "<span style='font-size:14px;font-weight:600;line-height:1.35;"
+            f"text-wrap:pretty;'>{titre}</span></div>"
+            "<div style='font-size:13px;color:var(--ink-2);line-height:1.55;"
+            f"text-wrap:pretty;'>{texte}</div></div>"
+        )
+    st.markdown(
+        f"<div style='display:grid;gap:12px;margin:2px 0 14px;"
+        f"grid-template-columns:repeat(auto-fit,minmax({mini},1fr));'>"
+        + "".join(cartes) + "</div>",
+        unsafe_allow_html=True,
+    )
+
+
 # Séquence de teintes du canevas v4, pour les blocs à catégories.
 TEINTES_V4 = ["#1B3A6B", "#8A5A00", "#0E7A54", "#5A7CA8", "#A8C4EA",
               "#6E7581", "#C0392B", "#12294B", "#AEB4BE"]

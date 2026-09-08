@@ -1263,29 +1263,20 @@ def _render_portfolio_analysis(portfolio, cash, total_value, total_portfolio, ti
             diagnostics.append(("warn", "Rendement faible", f"{pf_yield:.1f}% · envisager titres mieux rémunérés."))
 
     # ─── Affichage éditorial des diagnostics ───
+    # EN CARTES, PAS EN TABLEAU. Un tableau aligne des colonnes et l'oeil y
+    # cherche une comparaison qui n'existe pas : ces constats ne se comparent
+    # pas entre eux, ils s'additionnent. Le canevas en fait des cartes a filet
+    # et pastille, ou chacun se lit pour lui-meme.
+    from utils.ui_helpers import cartes_constats
     section_heading("Diagnostic", spacing="default")
-    dot_tone_map = {"ok": "up", "warn": "ocre", "risk": "down"}
-    rows = []
-    for status, label, detail in diagnostics:
-        tone = dot_tone_map.get(status, "neutral")
-        rows.append(
-            f"<tr>"
-            f"<td style='padding:10px 12px;border-bottom:1px solid var(--border-soft);width:18px;'>"
-            f"<span class='dot {tone}'></span></td>"
-            f"<td style='padding:10px 12px;border-bottom:1px solid var(--border-soft);"
-            f"font-weight:600;font-size:13px;white-space:nowrap;'>{label}</td>"
-            f"<td style='padding:10px 12px;border-bottom:1px solid var(--border-soft);"
-            f"color:var(--ink-2);font-size:13px;'>{detail}</td>"
-            f"</tr>"
-        )
     st.markdown(
-        f"<div style='border:1px solid var(--border);border-radius:12px;"
-        f"overflow:hidden;background:var(--bg-elev);margin-bottom:14px;'>"
-        f"<table style='width:100%;border-collapse:collapse;'>{''.join(rows)}</table></div>",
-        unsafe_allow_html=True,
-    )
-
-
+        f"<div style='font-family:var(--font-mono);font-size:11.5px;"
+        f"color:var(--ink-3);margin:-6px 0 8px;'>{len(diagnostics)} constat"
+        f"{'s' if len(diagnostics) > 1 else ''}</div>",
+        unsafe_allow_html=True)
+    _ton = {"ok": "up", "warn": "ocre", "risk": "down"}
+    cartes_constats([(_ton.get(statut, "primary"), libelle, detail)
+                     for statut, libelle, detail in diagnostics])
 
 
 def _barre_titres(paires, cle, intitule="Ouvrir l'analyse d'un titre"):
