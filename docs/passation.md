@@ -14,7 +14,7 @@ Trois documents tiennent le chantier, et ils se lisent dans cet ordre :
 
 | Document | Ce qu'il contient |
 |---|---|
-| `docs/redesign_v4_ecarts.md` | **Le registre de travail** : 25 écarts au canevas, onglet par onglet, avec l'ordre de correction — et la **méthode pour refaire la comparaison** |
+| `docs/redesign_v4_ecarts.md` | **Le registre de travail** : 31 écarts au canevas, onglet par onglet, avec l'ordre de correction — et la **méthode pour refaire la comparaison** |
 | `docs/redesign_v4_inventaire.md` | Ce que le canevas contient (10 pages, 33 onglets, 95 cartes de KPI) et les écarts assumés |
 | `docs/cahier_des_requetes.md` | Les demandes de fond, hors design |
 
@@ -73,7 +73,7 @@ canevas en site statique local.
 
 ## Ce qui attend
 
-1. **Les 25 écarts au canevas**, dans l'ordre donné par
+1. **Les écarts au canevas** — 31 au total, dans l'ordre donné par
    `docs/redesign_v4_ecarts.md`. Commencer par les 7 cartes de KPI absentes.
 2. **Introduction d'une banque le 14 septembre** — nom à confirmer. L'ajouter
    à `data/brvm_tickers.json` **et** à `TICKER_TO_BRVM_SLUG`, puis lancer
