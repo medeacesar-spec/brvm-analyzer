@@ -19,6 +19,7 @@ barres groupées, bloc dépliable.
 | `heatmap` — carte de chaleur | `utils/ui_helpers.py` | fait |
 | `note` — encart à filet latéral | `utils/ui_helpers.py` | fait |
 | `donut` — anneau à figure centrale | `utils/ui_helpers.py` | fait |
+| `plan_etapes` — plan d'action numéroté | `utils/ui_helpers.py` | fait |
 | Châssis de tableau (rayon, filets, en-têtes) | `style.css` + vues | fait |
 | Boutons, segments, champs | `style.css` | fait |
 
@@ -32,10 +33,10 @@ barres groupées, bloc dépliable.
 | 4 | Screening | Filtres fondamentaux · Risque et liquidité · Résultats | 4 KPI, 3 tableaux, note, nuage | **fait** |
 | 5 | Comparateur | Tableau · Profil · Performance | 1 tableau, 2 courbes, carte de chaleur | **fait** |
 | 6 | Performance des Titres | Classement · Par secteur · Graphique · Multi-périodes | 4 KPI, listes, 2 tableaux, carte de chaleur, courbe | **fait** |
-| 7 | Portefeuille | Performance · Recommandations · Risque et optimisation | 16 KPI, 9 tableaux, carte de chaleur, anneau, barres, plan en étapes, nuage, 5 notes | KPI + anneau faits ; reste carte de chaleur mensuelle et plan en étapes |
+| 7 | Portefeuille | Performance · Recommandations · Risque et optimisation | 16 KPI, 9 tableaux, carte de chaleur, anneau, barres, plan en étapes, nuage, 5 notes | **fait** (vérifié isolément) |
 | 8 | Signaux | Synthèse · Contradictions | 4 KPI, tableau, cartes | **fait** |
-| 9 | Trajectoires Recommandations | Cohorte · Trajectoires · Backtest | 12 KPI, 2 tableaux, note | KPI faits |
-| 10 | Historique Signaux | Vue d'ensemble · Signaux · Recommandations · Calibration · Données brutes | 23 KPI, 8 tableaux, carte de chaleur, note | à faire |
+| 9 | Trajectoires Recommandations | Cohorte · Trajectoires · Backtest | 12 KPI, 2 tableaux, note | **fait** (non vérifiable ici) |
+| 10 | Historique Signaux | Vue d'ensemble · Signaux · Recommandations · Calibration · Données brutes | 23 KPI, 8 tableaux, carte de chaleur, note | **fait** (vérifié sur les données) |
 
 ## Méthode
 
@@ -48,8 +49,24 @@ laissés implicites.
 
 ## Ce qui n'est pas vérifiable ici
 
-La page **Portefeuille** exige une connexion Google, et l'environnement local
-n'a pas `Authlib` : elle ne s'ouvre pas dans le navigateur de développement.
-Ses composants sont donc vérifiés **isolément**, avec la feuille de style
-réelle — c'est une vérification de forme, pas de branchement. Le donneur
-d'ordre, qui peut se connecter, tranche sur le rendu réel.
+Trois pages ne s'ouvrent pas dans le navigateur de développement :
+
+| Page | Pourquoi |
+|---|---|
+| Portefeuille | exige une connexion Google ; `Authlib` n'est pas installé en local |
+| Trajectoires Recommandations | réservée à l'administrateur, donc invisible sans connexion |
+| Historique Signaux | idem |
+
+Pour ces trois pages, la vérification a pris deux formes, toutes deux réelles
+mais partielles :
+
+1. **La forme** — les composants sont rendus isolément dans un navigateur,
+   avec la feuille de style réelle et des valeurs plausibles. On voit le bloc,
+   pas son branchement.
+2. **La donnée** — les calculs qui les alimentent sont exécutés contre la base
+   de production et leurs résultats lus. On voit les chiffres, pas leur mise
+   en page.
+
+Ce qui n'est PAS vérifié : que le bloc s'affiche au bon endroit de la page,
+avec les bonnes données, dans le vrai flux Streamlit. Seul un utilisateur
+connecté peut le confirmer.

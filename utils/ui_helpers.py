@@ -436,3 +436,99 @@ def donut(segments, grand: str, sous_titre: str = "", montant_fmt=None):
         f"flex-direction:column;gap:8px;'>{lignes}</div></div>",
         unsafe_allow_html=True,
     )
+
+
+def plan_etapes(titre: str, etapes, compte: str = ""):
+    """Plan d'action ordonné, une carte numérotée par étape.
+
+    Le canevas ne se contente pas de lister ce qu'il y a à faire : il le
+    NUMÉROTE. Trois tableaux côte à côte — vendre, renforcer, acheter — posent
+    tous la même question implicite, « par quoi je commence ». La réponse
+    tient dans un rang.
+
+    `etapes` : liste de dicts avec `action`, `tag`, `motif`, `accent`,
+    `rang_libelle`, `lignes` (liste de (ticker, nom, quantité)), et
+    facultativement `impact_libelle`, `impact`, `impact_part` (0-100),
+    `impact_sub`. L'impact n'est affiché que s'il est fourni : le canevas en
+    montre un pour chaque étape, l'application ne sait pas toujours le
+    chiffrer, et une case vide vaut mieux qu'un nombre inventé.
+    """
+    if not etapes:
+        return
+    st.markdown(
+        "<div style='display:flex;align-items:baseline;gap:10px;"
+        "margin:26px 0 12px;'>"
+        "<h2 style='font-size:17px;font-weight:600;margin:0;"
+        f"letter-spacing:-0.015em;'>{titre}</h2>"
+        + (f"<span style='font-family:var(--font-mono);font-size:11.5px;"
+           f"color:var(--ink-3);'>{compte}</span>" if compte else "")
+        + "</div>",
+        unsafe_allow_html=True,
+    )
+    for i, e in enumerate(etapes, start=1):
+        accent = e.get("accent", "var(--primary)")
+        puces = "".join(
+            "<span style='display:inline-flex;align-items:center;gap:6px;"
+            "padding:3px 8px;border-radius:6px;background:var(--bg-sunken);'>"
+            "<span style='font-family:var(--font-mono);font-size:10.5px;"
+            f"font-weight:600;color:var(--ink-2);'>{t}</span>"
+            f"<span style='font-size:12px;color:var(--ink);'>{n}</span>"
+            + (f"<span style='font-family:var(--font-mono);font-size:11.5px;"
+               f"font-weight:600;color:{accent};'>{q}</span>" if q else "")
+            + "</span>"
+            for t, n, q in e.get("lignes", [])
+        )
+        impact = ""
+        if e.get("impact"):
+            impact = (
+                "<div style='flex:0 0 176px;padding:14px 18px;"
+                "border-left:1px solid var(--border-soft);display:flex;"
+                "flex-direction:column;gap:4px;justify-content:center;'>"
+                "<span style='font-size:10px;font-weight:600;"
+                "color:var(--ink-3);letter-spacing:0.08em;"
+                f"text-transform:uppercase;'>{e.get('impact_libelle', 'Impact')}"
+                "</span>"
+                "<span style='font-size:19px;font-weight:600;"
+                "font-variant-numeric:tabular-nums;letter-spacing:-0.02em;"
+                f"color:{accent};'>{e['impact']}</span>"
+                "<div style='height:5px;background:var(--bg-sunken);"
+                "border-radius:999px;overflow:hidden;margin-top:3px;'>"
+                f"<div style='width:{max(0, min(100, e.get('impact_part', 0))):.0f}%;"
+                f"height:100%;border-radius:999px;background:{accent};'></div>"
+                "</div>"
+                "<span style='font-size:11px;color:var(--ink-3);'>"
+                f"{e.get('impact_sub', '')}</span></div>"
+            )
+        st.markdown(
+            "<div style='background:var(--bg-elev);border:1px solid var(--border);"
+            f"border-left:4px solid {accent};border-radius:0 12px 12px 0;"
+            "display:flex;align-items:stretch;flex-wrap:wrap;"
+            "margin-bottom:12px;'>"
+            "<div style='flex:0 0 66px;background:var(--bg-sunken);"
+            "display:flex;flex-direction:column;align-items:center;"
+            "justify-content:center;gap:2px;padding:16px 0;'>"
+            "<span style='font-family:var(--font-mono);font-size:22px;"
+            f"font-weight:600;color:{accent};line-height:1;'>{i}</span>"
+            "<span style='font-size:9px;font-weight:600;letter-spacing:0.08em;"
+            f"text-transform:uppercase;color:{accent};'>"
+            f"{e.get('rang_libelle', '')}</span></div>"
+            "<div style='flex:1;min-width:240px;padding:14px 18px;"
+            "display:flex;flex-direction:column;gap:7px;'>"
+            "<div style='display:flex;align-items:center;gap:9px;"
+            "flex-wrap:wrap;'>"
+            "<span style='font-size:15.5px;font-weight:600;"
+            f"letter-spacing:-0.015em;'>{e.get('action', '')}</span>"
+            + (f"<span style='display:inline-flex;align-items:center;"
+               f"padding:2px 8px;border-radius:5px;font-size:10.5px;"
+               f"font-weight:600;letter-spacing:0.04em;"
+               f"background:var(--bg-sunken);color:{accent};'>"
+               f"{e['tag']}</span>" if e.get("tag") else "")
+            + "</div>"
+            + (f"<div style='display:flex;align-items:center;gap:8px;"
+               f"flex-wrap:wrap;'>{puces}</div>" if puces else "")
+            + "<div style='font-size:13px;color:var(--ink-2);line-height:1.5;"
+            f"max-width:74ch;text-wrap:pretty;'>{e.get('motif', '')}</div>"
+            "</div>"
+            f"{impact}</div>",
+            unsafe_allow_html=True,
+        )
