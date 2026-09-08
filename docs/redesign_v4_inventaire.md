@@ -47,29 +47,28 @@ et chacun de ses blocs correspondent au canevas, **et** que le rendu réel a
 Les écarts assumés au canevas sont notés dans la PR qui les introduit, jamais
 laissés implicites.
 
-## Ce qui n'est pas vérifiable ici
+## Vérifier les pages sous connexion
 
-Trois pages ne s'ouvrent pas dans le navigateur de développement :
+Portefeuille, Trajectoires et Historique Signaux exigent une session
+administrateur. En développement, il n'y avait aucun moyen d'en ouvrir une :
+`Authlib` n'est pas installé en local, et le mode dev de `utils/auth.py`
+était **lu partout mais n'avait jamais eu d'interface**.
 
-| Page | Pourquoi |
-|---|---|
-| Portefeuille | exige une connexion Google ; `Authlib` n'est pas installé en local |
-| Trajectoires Recommandations | réservée à l'administrateur, donc invisible sans connexion |
-| Historique Signaux | idem |
+Il en a une désormais, fermée par défaut :
 
-Pour ces trois pages, la vérification a pris deux formes, toutes deux réelles
-mais partielles :
+```bash
+BRVM_DEV_LOGIN=1 streamlit run app.py
+```
 
-1. **La forme** — les composants sont rendus isolément dans un navigateur,
-   avec la feuille de style réelle et des valeurs plausibles. On voit le bloc,
-   pas son branchement.
-2. **La donnée** — les calculs qui les alimentent sont exécutés contre la base
-   de production et leurs résultats lus. On voit les chiffres, pas leur mise
-   en page.
+Le formulaire « Accès développeur » apparaît alors dans la barre latérale et
+pose une identité de test dans la session. Aucun compte n'est créé, aucun mot
+de passe n'est vérifié, et fermer l'onglet efface tout. Sans la variable, le
+formulaire n'existe pas — Streamlit Cloud ne la définit pas.
 
-Ce qui n'est PAS vérifié : que le bloc s'affiche au bon endroit de la page,
-avec les bonnes données, dans le vrai flux Streamlit. Seul un utilisateur
-connecté peut le confirmer.
+**Les trois pages ont été vérifiées ainsi, en conditions réelles**, sur un
+portefeuille de huit positions. Quatre défauts n'apparaissaient qu'à ce
+moment : lots répétés dans la carte de chaleur et dans l'anneau, valeur
+totale coupée en deux, première étape du plan étiquetée « ensuite ».
 
 ## Écarts assumés au canevas
 
