@@ -267,21 +267,36 @@ def render():
     # ═══════════════════════════════════════════════════════════════════
     # Header éditorial : "TICKER · Secteur · Exercice YYYY"   + stars
     # ═══════════════════════════════════════════════════════════════════
+    # Le canevas met le NOM de la société en titre et relègue le ticker, le
+    # secteur et l'exercice en sous-ligne. C'est l'inverse de ce que faisait la
+    # page : « ABJC.ci · Distribution · Exercice 2025 » en gros, le nom en
+    # petit. On ne cherche pas un code, on cherche une société.
     sector_name = fundamentals.get("sector") or "—"
     fy = fundamentals.get("fiscal_year")
     year_label = f"Exercice {int(fy)}" if fy else ""
-    header_parts = [selected_ticker, sector_name]
-    if year_label:
-        header_parts.append(year_label)
-    header_title = "  ·  ".join(header_parts)
+    nom_societe = fundamentals.get("company_name") or selected_ticker
+    sous_titre = "  ·  ".join(
+        [x for x in (selected_ticker, sector_name, year_label) if x and x != "—"])
 
     col_title, col_stars = st.columns([5, 1])
     with col_title:
+        # Ligne de contexte en mono, comme au canevas : le score, le verdict
+        # et la confiance se lisent d'un trait sous le nom.
+        # Le canevas met aussi une confiance ; l'application ne la calcule
+        # pas. On ne l'invente pas : la ligne porte ce qui existe.
+        _score = result.get("hybrid_score")
+        _meta = "  ·  ".join(x for x in (
+            f"SCORE HYBRIDE {_score:.0f}/100" if _score is not None else "",
+            f"VERDICT {reco['verdict'].upper()}" if reco.get("verdict") else "",
+        ) if x)
         st.markdown(
-            f"<h1 style='margin:0;padding:0;font-size:24px;font-weight:600;"
-            f"letter-spacing:-0.02em;'>{header_title}</h1>"
-            f"<div style='color:var(--ink-3);font-size:13px;margin-top:4px;'>"
-            f"{fundamentals.get('company_name', '')}</div>",
+            f"<h1 style='margin:0;padding:0;font-size:31px;font-weight:600;"
+            f"letter-spacing:-0.025em;'>{nom_societe}</h1>"
+            f"<div style='color:var(--ink-2);font-size:14px;margin-top:4px;'>"
+            f"{sous_titre}</div>"
+            + (f"<div style='font-family:var(--font-mono);font-size:11.5px;"
+               f"color:var(--ink-3);margin-top:6px;letter-spacing:0.03em;'>"
+               f"{_meta}</div>" if _meta else ""),
             unsafe_allow_html=True,
         )
         # Le selecteur d'exercice signale quand aucun document annuel ne
@@ -921,24 +936,26 @@ def _render_price_only(ticker, price_df):
     variations = [(label, _pct_change_since(dt)) for label, dt in periods]
 
     # ── Rangée de KPI : une fenêtre par carte, au gabarit du canevas ──
-    # Sept cartes dans une rangée : la valeur descend à 21 px, sinon
-    # « +123,45 % » se coupait en « +123… ». La couleur porte le signe, dans
-    # la valeur ET dans le filet.
-    from utils.ui_helpers import kpi_v4
+    # En GRILLE, pas en colonnes : `st.columns` impose sept colonnes quelle
+    # que soit la largeur, et sous 1 100 px chacune reçoit 60 px où
+    # « +128,29 % » se réduit à « +… ». Le canevas emploie
+    # `repeat(auto-fit, minmax(...))` : les cartes passent à la ligne.
+    from utils.ui_helpers import kpi_grille
     _sous = {"1J": "vs veille", "1S": "7 jours", "1M": "30 jours",
              "3M": "90 jours", "6M": "180 jours", "1A": "365 jours",
              "YTD": "depuis le 1er janv."}
-    cols = st.columns(len(variations))
-    for col, (label, pct) in zip(cols, variations):
-        with col:
-            if pct is None:
-                kpi_v4(label, "—", _sous.get(label, ""),
-                       accent="var(--ink-4)", taille="21px")
-            else:
-                _t = "var(--up)" if pct >= 0 else "var(--down)"
-                kpi_v4(label, f"{pct:+.2f} %", _sous.get(label, ""),
-                       accent=_t, sub_color=_t, taille="21px",
-                       couleur_valeur=_t)
+    _cartes = []
+    for label, pct in variations:
+        if pct is None:
+            _cartes.append({"label": label, "value": "—",
+                            "sub": _sous.get(label, ""),
+                            "accent": "var(--ink-4)"})
+        else:
+            _t = "var(--up)" if pct >= 0 else "var(--down)"
+            _cartes.append({"label": label, "value": f"{pct:+.2f} %",
+                            "sub": _sous.get(label, ""), "accent": _t,
+                            "sub_color": _t, "couleur_valeur": _t})
+    kpi_grille(_cartes, mini="120px")
 
     # ── Sélecteur période pour la courbe ──
     period_options = {

@@ -564,3 +564,44 @@ def plan_etapes(titre: str, etapes, compte: str = ""):
             f"{impact}</div>",
             unsafe_allow_html=True,
         )
+
+
+def kpi_grille(cartes, mini: str = "150px"):
+    """Une rangée de cartes en GRILLE, qui se replie au lieu de se serrer.
+
+    `st.columns` impose N colonnes quelle que soit la largeur : à sept cartes
+    sur un écran de 800 px, chacune reçoit 60 px et « +128,29 % » se réduit à
+    « +… ». Le canevas n'emploie pas de colonnes fixes mais
+    `repeat(auto-fit, minmax(...))` : au-delà d'une largeur minimale les
+    cartes passent à la ligne, et restent lisibles.
+
+    `cartes` : liste de dicts {label, value, sub, accent, sub_color}.
+    """
+    if not cartes:
+        return
+    blocs = ""
+    for c in cartes:
+        accent = c.get("accent") or "var(--ink-4)"
+        teinte = c.get("sub_color") or "var(--ink-3)"
+        poids = 600 if c.get("sub_color") else 400
+        blocs += (
+            "<div style='background:var(--bg-elev);border:1px solid var(--border);"
+            f"border-top:2px solid {accent};border-radius:12px;padding:15px 17px;"
+            "display:flex;flex-direction:column;gap:5px;min-width:0;'>"
+            "<span style='font-size:10.5px;font-weight:600;letter-spacing:0.09em;"
+            f"text-transform:uppercase;color:var(--ink-3);'>{c['label']}</span>"
+            "<span style='font-variant-numeric:tabular-nums;font-size:22px;"
+            "font-weight:600;letter-spacing:-0.015em;line-height:1.05;"
+            "white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
+            f"color:{c.get('couleur_valeur') or 'var(--ink)'};'>{c['value']}</span>"
+            + (f"<span style='font-size:11.5px;font-weight:{poids};"
+               f"line-height:1.3;color:{teinte};'>{c['sub']}</span>"
+               if c.get("sub") else "")
+            + "</div>"
+        )
+    st.markdown(
+        "<div style='display:grid;gap:14px;margin-bottom:8px;"
+        f"grid-template-columns:repeat(auto-fit,minmax({mini},1fr));'>"
+        f"{blocs}</div>",
+        unsafe_allow_html=True,
+    )
