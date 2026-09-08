@@ -88,8 +88,8 @@ Légende : **à faire** · *en cours* · fait (vu au rendu)
 |---|---|---|---|
 | A1 | Cours | Pas de sélecteur **Exercice** dans la barre d'outils | à faire |
 | A2 | Cours | Période affichée en menu déroulant ; le canevas met des **boutons segmentés** | à faire |
-| A3 | Fondamentale | Les 4 sous-scores n'ont pas leur **sous-ligne explicative** (« ROE 28,4 % ») | à faire |
-| A4 | Fondamentale | Libellés coupés (« ENDETTEMEN/T ») : 5 colonnes fixes au lieu d'une grille repliable | à faire |
+| A3 | Fondamentale | Les 4 sous-scores n'ont pas leur **sous-ligne explicative** (« ROE 28,4 % ») | **fait** — vu au rendu le 08/09. Chaque sous-ligne nomme les ratios qui alimentent réellement le barème, et dit « non applicable » pour l'endettement d'une banque |
+| A4 | Fondamentale | Libellés coupés (« ENDETTEMEN/T ») : 5 colonnes fixes au lieu d'une grille repliable | **fait** — vu au rendu le 08/09, à 1 440 px (5 colonnes) et à 1 000 px (2 colonnes), sans libellé coupé |
 | A5 | Technique | Période et surcouches en menu et cases à cocher ; le canevas met **segmentés et pastilles** | à faire |
 | A6 | Technique | Pas de sélecteur **Périodicité** (Journalière / Mensuelle) | à faire |
 | A7 | Recommandation | Manque les cartes **Prix actuel** et **Prix cible (modèle)** | **fait** — vu au rendu le 08/09, dans les deux cas : cible unique (BOAS.sn, « +9.5 % vs cours ») et méthodes divergentes (SNTS.sn, fourchette). Les deux tuiles qui répétaient ces chiffres plus bas ont été retirées |
@@ -172,7 +172,7 @@ que corriger les symptômes un à un.
 ## Ordre de correction proposé
 
 1. ~~Les 7 cartes de KPI manquantes (P5, P3, A7)~~ — **fait le 08/09**.
-2. Les sous-lignes des scores (A3) et la grille (A4).
+2. ~~Les sous-lignes des scores (A3) et la grille (A4)~~ — **fait le 08/09**.
 3. Les contrôles segmentés (A2, A5, A6, I1).
 4. Les tableaux pédagogiques de Screening (S1, S2).
 5. Les trois blocs à re-rendre (P4, A8, C1).
