@@ -123,7 +123,7 @@ Légende : **à faire** · *en cours* · fait (vu au rendu)
 
 | # | Écart | État |
 |---|---|---|
-| C1 | Profil comparatif en barres groupées ; le canevas emploie des **axes parallèles**, où le croisement des lignes montre où le choix se joue | à faire |
+| C1 | Profil comparatif en barres groupées ; le canevas emploie des **axes parallèles**, où le croisement des lignes montre où le choix se joue | **fait** — vu au rendu le 08/09. Les croisements sont **calculés** et nommés, avec une lecture qui change selon qu'ils sont rares, majoritaires ou absents |
 
 ### Performance des Titres — 4 onglets
 
@@ -208,6 +208,6 @@ que corriger les symptômes un à un.
 2. ~~Les sous-lignes des scores (A3) et la grille (A4)~~ — **fait le 08/09**.
 3. Les contrôles segmentés (A2, A5, A6) — ~~I1 fait le 08/09~~.
 4. ~~Les tableaux pédagogiques de Screening (S1, S2)~~ — **fait le 08/09**.
-5. Les blocs à re-rendre : P4 et C1 — ~~A8 refusé le 08/09~~.
+5. ~~Les blocs à re-rendre : P4 et C1~~ — **fait le 08/09** ; ~~A8 refusé~~.
 6. La barre signée des positions (P1).
 7. Les détails : T1, T2, H1, H2, D2, D3, A9-A13, P2 — ~~I2 fait le 08/09~~.

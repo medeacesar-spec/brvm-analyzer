@@ -239,32 +239,117 @@ def render():
             "#4A8A5F", "#D97E4F", "#A69D8D",  # variantes
         ]
 
+        # AXES PARALLELES, PAS BARRES GROUPEES. Les barres groupees repondent
+        # « combien vaut ce titre sur ce critere », un critere a la fois. Le
+        # canevas trace une LIGNE par titre a travers les six axes : un profil
+        # se lit alors a sa forme, et surtout les lignes SE CROISENT — le
+        # croisement est l'information, il montre l'axe ou l'ordre s'inverse,
+        # c'est-a-dire l'endroit ou le choix se joue. Des barres groupees ne
+        # peuvent pas le montrer : elles rangent chaque critere a part.
+        # Le bloc voisin porte son titre ; celui-ci n'en avait pas, et la
+        # figure ouvrait l'onglet sans dire ce qu'elle montrait.
+        st.markdown(
+            "<div style='display:flex;align-items:baseline;gap:10px;"
+            "margin:2px 0 10px;'>"
+            "<h2 style='font-size:17px;font-weight:600;margin:0;"
+            "letter-spacing:-0.015em;'>Profil comparatif · axes parallèles</h2>"
+            "<span style='font-family:var(--font-mono);font-size:11.5px;"
+            "color:var(--ink-3);'>SCORE 0-100</span></div>",
+            unsafe_allow_html=True,
+        )
+
+        _axes = [m[0] for m in bar_metrics]
+        _profils = {}
         fig = go.Figure()
         for i, (ticker, data) in enumerate(stocks.items()):
             r = data["ratios"]
             name = data["fundamentals"].get("company_name") or ticker
             values = [fn(r) for _, fn in bar_metrics]
-            fig.add_trace(go.Bar(
-                y=[m[0] for m in bar_metrics],
-                x=values,
-                name=name,
-                orientation="h",
-                marker_color=mono_palette[i % len(mono_palette)],
-                text=[f"{v:.0f}" for v in values],
-                textposition="auto",
+            _profils[name] = values
+            fig.add_trace(go.Scatter(
+                x=_axes, y=values, name=name,
+                mode="lines+markers",
+                line=dict(color=mono_palette[i % len(mono_palette)], width=2.5),
+                marker=dict(size=7,
+                            color=mono_palette[i % len(mono_palette)]),
+                hovertemplate="%{x} · %{y:.0f}/100<extra>" + name + "</extra>",
             ))
         fig.update_layout(
-            barmode="group", height=380,
+            height=380,
             template="plotly_white",
             paper_bgcolor=COLORS["bg"], plot_bgcolor=COLORS["bg"],
-            font=dict(color=COLORS["text"], family="ui-sans-serif, -apple-system, sans-serif", size=12),
-            xaxis=dict(title="Score (0-100)", range=[0, 100], gridcolor=COLORS["border"]),
-            yaxis=dict(autorange="reversed"),
+            font=dict(color=COLORS["text"],
+                      family="ui-sans-serif, -apple-system, sans-serif", size=12),
+            # Une verticale par axe : c'est ce qui fait lire la figure comme
+            # des axes paralleles plutot que comme une courbe dans le temps.
+            xaxis=dict(showgrid=True, gridcolor=COLORS["border"], gridwidth=1,
+                       showline=False, ticks="", type="category"),
+            yaxis=dict(title="Score (0-100)", range=[0, 100],
+                       gridcolor=COLORS["border"], zeroline=False),
             margin=dict(l=10, r=10, t=10, b=40),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
+            legend=dict(orientation="h", yanchor="bottom", y=1.02,
+                        xanchor="right", x=1,
                         font=dict(size=11, color=COLORS["text_secondary"])),
         )
         st.plotly_chart(fig, use_container_width=True)
+
+        # OU LES LIGNES SE CROISENT. Le canevas le dit en toutes lettres ;
+        # ici on le CALCULE, plutot que de recopier son exemple : entre deux
+        # axes voisins, deux titres se croisent quand l'ordre s'inverse de
+        # l'un a l'autre.
+        #
+        # Encore faut-il que ce soit une information. Sur cinq titres, il se
+        # croise quelque chose entre chaque paire d'axes : nommer les cinq
+        # intervalles ne dit plus rien, et la phrase « ailleurs le classement
+        # ne change pas » designe un ailleurs vide. La lecture depend donc du
+        # NOMBRE de croisements — ce qui est rare est ce qui informe, que ce
+        # soient les croisements ou les stabilites.
+        _intervalles = [f"{_axes[_i]} et {_axes[_i + 1]}"
+                        for _i in range(len(_axes) - 1)]
+        _croise = set()
+        _noms_profils = list(_profils)
+        for _a in range(len(_noms_profils)):
+            for _b in range(_a + 1, len(_noms_profils)):
+                _va, _vb = _profils[_noms_profils[_a]], _profils[_noms_profils[_b]]
+                for _i in range(len(_axes) - 1):
+                    if (_va[_i] - _vb[_i]) * (_va[_i + 1] - _vb[_i + 1]) < 0:
+                        _croise.add(_i)
+        # Dans l'ordre des axes, jamais alphabetique : on suit la figure.
+        _ou_croise = [_intervalles[_i] for _i in sorted(_croise)]
+        _ou_stable = [l for _i, l in enumerate(_intervalles) if _i not in _croise]
+
+        _tete = ("Six axes, une ligne par titre : un profil se lit à sa forme, "
+                 "et plus la ligne est haute, meilleur est le score sur l'axe. ")
+        _et = lambda liste: "<b>" + "</b>, <b>".join(liste[:-1]) + \
+                            ("</b> et <b>" if len(liste) > 1 else "") + \
+                            liste[-1] + "</b>"
+        if len(_profils) < 2:
+            _lecture = ("Un seul titre mesurable : la ligne donne son profil, "
+                        "sans comparaison possible.")
+        elif not _ou_croise:
+            _lecture = _tete + (
+                "<b>Aucune ligne n'en croise une autre</b> : le classement est "
+                "le même sur les six axes, et le choix ne dépend d'aucun "
+                "arbitrage.")
+        elif len(_ou_croise) <= len(_intervalles) / 2:
+            _lecture = _tete + (
+                f"Les lignes se croisent entre {_et(_ou_croise)} — c'est là que "
+                f"l'ordre s'inverse, donc là que le choix se joue. Ailleurs, le "
+                f"classement ne change pas.")
+        elif _ou_stable:
+            _lecture = _tete + (
+                f"Les lignes se croisent presque partout : le classement ne "
+                f"tient qu'entre {_et(_ou_stable)}. <b>Aucun titre ne domine "
+                f"les six axes</b> — le choix est un arbitrage, pas un "
+                f"classement.")
+        else:
+            _lecture = _tete + (
+                f"Les lignes se croisent sur les {len(_intervalles)} "
+                f"intervalles : <b>aucun titre ne domine</b>, et l'ordre change "
+                f"d'un axe au suivant. Le choix se fait en décidant quels axes "
+                f"comptent, pas en lisant un classement.")
+        from utils.ui_helpers import note as _note
+        _note("", _lecture, ton="primary")
 
         # ── Le même profil, en intensité ──
         # Le graphique groupé répond « quelle est la forme de ce titre ». La
