@@ -264,23 +264,23 @@ def _render_top5(df: pd.DataFrame, label: str):
                 f"</div>"
                 f"</div>"
             )
-        # Card bordée
+        # Card bordée, close par la bande d'accès du canevas.
+        # Cinq boutons alignés sous la carte, un par titre, remplissaient la
+        # largeur d'une rangée de commandes pour une action qu'on fait une
+        # fois. Le canevas met une seule bande en pied de carte ; le saut vers
+        # un titre PRÉCIS reste possible juste dessous, au sélecteur du
+        # tableau des cotations. Rien n'est perdu, la page respire.
         st.markdown(
             f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
             f"border-radius:12px;overflow:hidden;'>{inner}</div>",
             unsafe_allow_html=True,
         )
-
-        # Boutons "ouvrir l'analyse" SOUS la card (petit + discret)
         if count:
-            btn_cols = st.columns(count)
-            for i, (_, r) in enumerate(rows.iterrows()):
-                with btn_cols[i]:
-                    ticker_analyze_button(
-                        r["ticker"],
-                        key=f"dash_{key_prefix}_{label}_{r['ticker']}",
-                        use_container_width=True,
-                    )
+            if st.button("Ouvrir l'analyse d'un titre  →",
+                         key=f"dash_{key_prefix}_{label}_ouvrir",
+                         use_container_width=True):
+                from utils.nav import goto_analyse
+                goto_analyse()
 
     # Le docstring promettait depuis longtemps que `label` entrait dans le
     # titre ; il n'y entrait pas. « Hausses » seul laissait croire au jour
