@@ -98,7 +98,8 @@ def _fmt_date_fr(d):
 
 
 def render():
-    st.title("Historique Signaux & Recommandations")
+    from utils.ui_helpers import titre_admin
+    titre_admin("Historique Signaux & Recommandations")
     st.caption("Performance agrégée · calibration du modèle")
 
     df_all = get_signal_history()
