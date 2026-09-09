@@ -262,4 +262,4 @@ signe** : le calcul, lui, tranche.
 4. ~~Les tableaux pédagogiques de Screening (S1, S2)~~ — **fait le 08/09**.
 5. ~~Les blocs à re-rendre : P4 et C1~~ — **fait le 08/09** ; ~~A8 refusé~~.
 6. La barre signée : les positions du portefeuille (P1) **et le classement de Performance des Titres (F1)** — le même composant répond aux deux.
-7. Les détails : ~~T1, T2, H1, H2~~ **faits le 08/09** ; restent D2, D3, A9, A10, A11 — ~~A12, A13, I2, P2 faits~~.
+7. Les détails : T1, T2, H1, H2, D2, D3, A9-A13, P2 — ~~I2 fait le 08/09~~.
