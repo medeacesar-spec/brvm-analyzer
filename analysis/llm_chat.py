@@ -64,6 +64,14 @@ _TICKER_ALIASES = {
     "BICC.ci": ["bici", "bnp ci"],
     "STBC.ci": ["sitab"],
     "SEMC.sn": ["seter", "setao"],
+    # Deux introductions recentes que la table ignorait : leurs publications
+    # arrivaient donc sans ticker, et les rapports periodiques restaient « a
+    # integrer » sans que rien ne puisse retrouver leur PDF.
+    "LNBB.bj": ["lnb", "lnb benin", "lnb bénin", "loterie nationale du benin",
+                "loterie nationale du bénin", "loterie du benin",
+                "loterie du bénin"],
+    "BICB.bj": ["biic", "biic benin", "biic bénin", "bici benin", "bici bénin",
+                "banque internationale pour l'industrie et le commerce"],
 }
 
 

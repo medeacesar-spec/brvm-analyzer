@@ -43,6 +43,17 @@ HEADERS_SIKA = {
 # ──────────────────────────────────────────────────────────────────────────
 
 RICHBOURSE_NAME_TO_TICKER = {
+    # Six slugs manquaient, et seize publications restaient sans ticker — dont
+    # quatre rapports periodiques que rien ne pouvait integrer, faute de
+    # pouvoir retrouver leur PDF. Releve le 09/09 en comparant les
+    # publications sans ticker a leur slug richbourse.
+    "africa-global-logistics-ci": "SDSC.ci",
+    "lnb-bn": "LNBB.bj",
+    "biic-bn": "BICB.bj",     # la cle « bicb-bn » existait, le slug dit « biic »
+    "saph-ci": "SPHC.ci",
+    "palm-ci": "PALC.ci",
+    "boa-ng": "BOAN.ne",      # « Ng » = Niger : c'est le seul BOA de la cote
+                              # dont le pays commence par N
     "bici-ci": "BICC.ci",
     "bicb-bn": "BICB.bj",
     "bicicibf": "CBIBF.bf",
