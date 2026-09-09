@@ -366,6 +366,27 @@ def kpi_grille(cartes, mini: str = "210px"):
     )
 
 
+def titre_admin(texte: str):
+    """Le titre d'une page réservée, avec son badge ADMIN à côté.
+
+    Deux des dix pages ne s'ouvrent qu'en session administrateur. Rien ne le
+    disait à l'écran : on ne l'apprenait qu'en tombant sur le refus depuis un
+    compte ordinaire. Le canevas met un badge au titre — c'est la seule
+    marque qui distingue ces pages des huit autres.
+
+    Rendu en markdown plutôt que par `st.title` : c'est le même `<h1>`, mais
+    il accepte le badge sur la même ligne.
+    """
+    st.markdown(
+        f"# {texte} "
+        "<span style=\"font-family:var(--font-mono);font-size:9.5px;"
+        "font-weight:600;letter-spacing:0.08em;padding:3px 6px;"
+        "border-radius:4px;background:var(--primary-bg);"
+        "color:var(--primary-2);vertical-align:middle;\">ADMIN</span>",
+        unsafe_allow_html=True,
+    )
+
+
 def note(titre: str, texte: str, ton: str = "primary"):
     """Encart à filet latéral : une lecture, pas une donnée.
 
@@ -390,27 +411,6 @@ def note(titre: str, texte: str, ton: str = "primary"):
         f"{entete}"
         "<div style='font-size:13px;color:var(--ink-2);line-height:1.55;"
         f"max-width:76ch;text-wrap:pretty;'>{texte}</div></div>",
-        unsafe_allow_html=True,
-    )
-
-
-def titre_admin(texte: str):
-    """Le titre d'une page réservée, avec son badge ADMIN à côté.
-
-    Deux des dix pages ne s'ouvrent qu'en session administrateur. Rien ne le
-    disait à l'écran : on ne l'apprenait qu'en tombant sur le refus depuis un
-    compte ordinaire. Le canevas met un badge au titre — c'est la seule
-    marque qui distingue ces pages des huit autres.
-
-    Rendu en markdown plutôt que par `st.title` : c'est le même `<h1>`, mais
-    il accepte le badge sur la même ligne.
-    """
-    st.markdown(
-        f"# {texte} "
-        "<span style=\"font-family:var(--font-mono);font-size:9.5px;"
-        "font-weight:600;letter-spacing:0.08em;padding:3px 6px;"
-        "border-radius:4px;background:var(--primary-bg);"
-        "color:var(--primary-2);vertical-align:middle;\">ADMIN</span>",
         unsafe_allow_html=True,
     )
 
