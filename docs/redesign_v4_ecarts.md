@@ -82,17 +82,17 @@ Légende : **à faire** · *en cours* · fait (vu au rendu)
 
 | # | Écart | État |
 |---|---|---|
-| D1 | Le bulletin BOC et le bouton « Revue de presse » s'intercalent entre les KPI et les onglets ; le canevas enchaîne KPI → onglets | **arbitré le 08/09 : les deux vont dans Infos Marché.** Fait — le tableau de bord enchaîne KPI → onglets. Le BOC ouvre désormais la Revue de presse ; le bouton, qui ne faisait que renvoyer à cette page, est simplement retiré |
+| D1 | Le bulletin BOC et le bouton « Revue de presse » s'intercalent entre les KPI et les onglets ; le canevas enchaîne KPI → onglets | **arbitré le 08/09 : les deux vont dans Infos Marché.** Fait — le tableau de bord enchaîne KPI → onglets. Le BOC ouvre désormais la Revue de presse ; le bouton, qui ne faisait que renvoyer à cette page, est simplement retiré. **Étendu le 09/09** : le bloc « prochains dividendes » part avec, à la demande du donneur d'ordre — *« j'ai accès à cette information ailleurs »*. Le tableau de bord ne garde plus rien entre les KPI et les onglets |
 | D2 | Les lignes des Top 5 portent le ticker seul ; le canevas y met **ticker · secteur** | **fait** — vu au rendu le 08/09. Le secteur voyage désormais avec la ligne, et il montre ce que la liste cachait : les cinq baisses du jour étaient Agriculture, Agriculture, Industrie, Agriculture, Industrie |
 | D3 | La bande « Ouvrir l'analyse d'un titre » est sous la carte ; le canevas la met **en pied de carte** | **fait** — vu au rendu le 08/09, raccord **mesuré à −1 px** : les bordures se superposent. Streamlit ne sait pas poser un bouton dans un bloc HTML, le raccord se fait par la classe `st-key-` dans `style.css` |
 | D4 | **Un indice collecté que la page ne montrait pas.** La rangée « Indices principaux » était `st.columns(4)` suivi de `row1[:4]`, avec en commentaire « max 4 ». La cote compte **quatre** indices principaux plus le **Composite Total Return** : cinq cartes pour quatre places, et la cinquième tombait — toujours la même, le seul indice qui compte les dividendes | **fait le 09/09** — grille repliable, plus de troncature |
-| D5 | **Le Composite Total Return porte les variations du Composite**, au centième près (−0,53 % jour, −1,70 % YTD), alors que sa valeur lui est propre (221,40 contre 550,08). Impossible sur une place qui rend 5 à 7 % : un indice de rendement total ne peut pas avoir le cumul annuel de son indice de prix. Source ou collecte, à trancher | **contourné le 09/09** — la valeur s'affiche, les deux variations sont tues plutôt que fausses. **À porter au cahier des requêtes** |
+| D5 | **Le Composite Total Return porte les variations du Composite**, au centième près (−0,53 % jour, −1,70 % YTD), alors que sa valeur lui est propre (221,40 contre 550,08). Impossible sur une place qui rend 5 à 7 % : un indice de rendement total ne peut pas avoir le cumul annuel de son indice de prix. Source ou collecte, à trancher | **contourné le 09/09** — la valeur s'affiche, les deux variations sont tues plutôt que fausses. **Clos le 09/09 sans suite** : *« oublier le point sur le composite »*. Le contournement reste ; l'enquête sur la source n'aura pas lieu, et le point ne va donc pas au cahier des requêtes |
 
 ### Infos Marché — Revue de presse · Fil d'actualités
 
 | # | Écart | État |
 |---|---|---|
-| I1 | Le sélecteur de période est sous les onglets ; le canevas le place **au-dessus**, en barre d'outils de page | **fait** — vu au rendu le 08/09. Il gouverne désormais les deux onglets, comme dans le canevas ; ce que la fenêtre écarte du fil brut est compté, avec ce qui y reste à intégrer. Fenêtres ramenées à **1 j / 3 j / 7 j** (défaut 7) le 08/09 : 7, 15 et 30 jours ramenaient trop de lignes |
+| I1 | Le sélecteur de période est sous les onglets ; le canevas le place **au-dessus**, en barre d'outils de page | **fait** — vu au rendu le 08/09. Il gouverne désormais les deux onglets, comme dans le canevas ; ce que la fenêtre écarte du fil brut est compté, avec ce qui y reste à intégrer. Fenêtres ramenées à **1 j / 3 j / 7 j** le 08/09 : 7, 15 et 30 jours ramenaient trop de lignes. **Défaut ramené à 1 j le 09/09** — *« la sélection actuelle est trop longue »*. Le sélecteur ne gouverne plus que la revue : le fil d'actualités a pris une fenêtre fixe de **30 jours**, plus large, parce qu'il sert à vérifier qu'aucune publication officielle n'est passée à la trappe — ce n'est pas le même usage |
 | I2 | Dates au format long (`2026-09-07`) ; le canevas les met en `02/09` | **fait** — vu au rendu le 08/09. Le fil brut les écrivait déjà ainsi ; la revue s'aligne |
 
 ### Analyse d'un Titre — 6 onglets
@@ -205,7 +205,7 @@ de pondération, et avec chaque score rapporté à son propre maximum — 38/50 
 
 ## Causes récurrentes
 
-Les quarante et un écarts se ramènent à cinq causes. Corriger la cause vaut mieux
+Les quarante-trois écarts se ramènent à cinq causes. Corriger la cause vaut mieux
 que corriger les symptômes un à un.
 
 1. **Rangées de KPI manquantes** — 7 cartes (P5 ×4, P3, A7 ×2). Le canevas
@@ -271,4 +271,33 @@ signe** : le calcul, lui, tranche.
 4. ~~Les tableaux pédagogiques de Screening (S1, S2)~~ — **fait le 08/09**.
 5. ~~Les blocs à re-rendre : P4 et C1~~ — **fait le 08/09** ; ~~A8 refusé~~.
 6. ~~La barre signée : P1 et F1~~ — **fait le 08/09**, par `barre_signee` dans `utils/ui_helpers.py`, extrait du tableau de bord qui l'avait en propre.
-7. Les détails : T1, T2, H1, H2, D2, D3, A9-A13, P2 — ~~I2 fait le 08/09~~.
+7. ~~Les détails : T1, T2, H1, H2, D2, D3, A9-A13, P2~~ — **fait les 08 et 09/09** ; ~~I2 fait le 08/09~~.
+
+## Le registre est clos
+
+Au 9 septembre 2026, les quarante-trois écarts sont traités :
+
+| Sort | Nombre | Écarts |
+|---|---|---|
+| Corrigé et vu au rendu | 32 | D2-D4, I1, I2, A2-A5, A7, A9-A16, S1, S2, C1, F1, F2, P1-P5, G2, T1, T2, H1 |
+| Arbitré, puis corrigé | 5 | D1, A1, S3, G3, H3 |
+| Gardé en l'état sur arbitrage | 3 | A6, A8, F3 |
+| Sans objet à la vérification | 2 | G1, H2 |
+| Contourné, enquête close | 1 | D5 |
+
+Trente-sept écarts ont donc produit du code, six n'en produiront pas. Aucune
+ligne n'attend plus rien.
+
+Le registre avait été ouvert sur trente et un écarts annoncés. Il en compte
+quarante-trois, et les douze de l'écart ne viennent pas d'un design qui aurait
+changé : ils viennent de pages relues bloc par bloc après avoir été déclarées
+conformes sur une lecture d'ensemble. **C'est la mesure de ce que coûte un
+survol** — près d'un tiers du travail réel.
+
+Ce que la correction a trouvé en chemin dépasse la mise en forme : un indice
+collecté chaque jour que la page ne montrait à personne (D4), une barre rouge
+pour un titre qui avait gagné treize pour cent (F1), un titre retiré de la cote
+qui figurait encore au classement sectoriel (F2), un contrôle qui annonçait une
+fonction inexistante (H3). Aucun de ces quatre n'était au diagnostic d'origine.
+**Comparer une page à son canevas fait remonter des défauts qui ne sont pas
+des défauts de canevas.**
