@@ -2057,7 +2057,6 @@ def _render_risque(ticker, fundamentals):
     reste — elle sert a ceux qui savent la lire — mais c'est le RANG qui porte
     le sens, et la mediane ET la moyenne qui disent si le groupe est homogene.
     """
-    from utils.ui_helpers import section_heading
     from analysis.risque import (profil_de_risque, formater, MESURES,
                                  MESURES_RISQUE, MESURES_LIQUIDITE,
                                  EXPLICATIONS, RESUMES, TAUX_SANS_RISQUE)
@@ -2074,7 +2073,8 @@ def _render_risque(ticker, fundamentals):
         return
 
     m = profil["titre"]
-    section_heading("Risque", spacing="loose")
+    # A11 : pas de titre « Risque » ici — l'onglet s'appelle deja Risque, et
+    # le repeter en tete de son propre contenu n'ajoute rien.
 
     # ── La lecture d'abord : c'est elle qu'on vient chercher ──────────────
     st.markdown(
@@ -3072,18 +3072,49 @@ def _render_profile(ticker: str, fundamentals: dict):
         st.info("Profil non disponible. Lancez `scripts/scrape_profiles.py` pour charger les données.")
         return
 
-    # ─── En-tête tab : nom entreprise (h2) + "Profil entreprise — TICKER"
-    company = fundamentals.get("company_name") or ticker
+    # A10 : LE NOM NE SE REPETE PAS. Le titre de la page le porte deja, en
+    # grand, deux blocs plus haut — le redonner ici en 22 px faisait croire a
+    # un changement de sujet. Seule reste la ligne qui dit ce qu'on regarde.
     st.markdown(
-        f"<div style='margin-top:6px;'>"
-        f"<div style='font-size:22px;font-weight:600;color:var(--ink);"
-        f"letter-spacing:-0.02em;'>{company}</div>"
-        f"<div style='color:var(--ink-3);font-size:13px;margin-top:2px;"
+        f"<div style='margin-top:6px;color:var(--ink-3);font-size:13px;"
         f"padding-bottom:12px;border-bottom:1px solid var(--border-soft);'>"
-        f"Profil entreprise · {ticker}</div>"
-        f"</div>",
+        f"Profil entreprise · {ticker}</div>",
         unsafe_allow_html=True,
     )
+
+    # A9 : L'ACTIONNARIAT OUVRE L'ONGLET, EN CARTES. Il vivait dans une carte
+    # laterale du tiers droit, sous les dirigeants et le contact : trois
+    # chiffres de structure — combien de titres existent, quelle part
+    # s'echange, qui tient le reste — relegues au rang de coordonnees. Le
+    # canevas en fait une rangee de KPI, parce que ce sont des mesures.
+    _conn = get_connection()
+    _md = _conn.execute(
+        "SELECT shares, float_pct FROM market_data WHERE ticker = ?",
+        (ticker,),
+    ).fetchone()
+    _conn.close()
+    shares = _md["shares"] if (_md and _md["shares"] and _md["shares"] > 0) else None
+    float_pct = _md["float_pct"] if (_md and _md["float_pct"] and _md["float_pct"] > 0) else None
+    _actionnaire = profile.get("major_shareholder")
+    _part = profile.get("major_shareholder_pct")
+
+    from utils.ui_helpers import kpi_grille as _grille
+    _grille([
+        dict(label="Nombre de titres",
+             value=(f"{shares:,.0f}".replace(",", " ") if shares else "—"),
+             sub="titres composant le capital", accent="var(--ink-4)",
+             taille="22px"),
+        dict(label="Flottant",
+             value=(f"{float_pct:.1f} %" if float_pct else "—"),
+             sub=("part du capital échangeable" if float_pct
+                  else "non publié"),
+             accent="var(--ink-4)", taille="22px"),
+        dict(label="Actionnaire principal",
+             value=(_actionnaire or "—"),
+             sub=(f"{_part:.1f} % du capital" if _part
+                  else ("part non publiée" if _actionnaire else "non publié")),
+             accent="var(--ink-4)", taille="16px"),
+    ], mini="230px")
 
     # Helper : card key/value éditoriale
     def _info_card(label: str, items: list) -> str:
@@ -3252,29 +3283,8 @@ def _render_profile(ticker: str, fundamentals: dict):
                 st.caption("⚠ Écart avec la fiche sikafinance — " + " · ".join(desaccords))
 
     with col_right:
-        # Actionnariat (Nb titres, Flottant, Secteur, Actionnaire)
-        conn = get_connection()
-        md = conn.execute(
-            "SELECT shares, float_pct FROM market_data WHERE ticker = ?",
-            (ticker,),
-        ).fetchone()
-        conn.close()
-        shares = md["shares"] if (md and md["shares"] and md["shares"] > 0) else None
-        float_pct = md["float_pct"] if (md and md["float_pct"] and md["float_pct"] > 0) else None
-
-        actionnariat_items = [
-            ("Nombre de titres", f"{shares:,.0f}" if shares else None),
-            ("Flottant", f"{float_pct:.1f}%" if float_pct else None),
-            ("Secteur", fundamentals.get("sector") or None),
-        ]
-        # Actionnaire si dispo
-        if profile.get("major_shareholder"):
-            pct = profile.get("major_shareholder_pct")
-            pct_str = f" · {pct:.1f}%" if pct else ""
-            actionnariat_items.append(
-                ("Actionnaire principal", f"{profile['major_shareholder']}{pct_str}")
-            )
-        st.markdown(_info_card("Actionnariat", actionnariat_items), unsafe_allow_html=True)
+        # L'actionnariat est passe en rangee de KPI, en tete d'onglet (A9).
+        # Le secteur n'y a pas suivi : le titre de la page le porte deja.
 
         # Dirigeants (compact)
         dirigeants_items = [

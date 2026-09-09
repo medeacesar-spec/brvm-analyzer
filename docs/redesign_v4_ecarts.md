@@ -83,8 +83,10 @@ Légende : **à faire** · *en cours* · fait (vu au rendu)
 | # | Écart | État |
 |---|---|---|
 | D1 | Le bulletin BOC et le bouton « Revue de presse » s'intercalent entre les KPI et les onglets ; le canevas enchaîne KPI → onglets | **arbitré le 08/09 : les deux vont dans Infos Marché.** Fait — le tableau de bord enchaîne KPI → onglets. Le BOC ouvre désormais la Revue de presse ; le bouton, qui ne faisait que renvoyer à cette page, est simplement retiré |
-| D2 | Les lignes des Top 5 portent le ticker seul ; le canevas y met **ticker · secteur** | à faire |
-| D3 | La bande « Ouvrir l'analyse d'un titre » est sous la carte ; le canevas la met **en pied de carte** | à faire |
+| D2 | Les lignes des Top 5 portent le ticker seul ; le canevas y met **ticker · secteur** | **fait** — vu au rendu le 08/09. Le secteur voyage désormais avec la ligne, et il montre ce que la liste cachait : les cinq baisses du jour étaient Agriculture, Agriculture, Industrie, Agriculture, Industrie |
+| D3 | La bande « Ouvrir l'analyse d'un titre » est sous la carte ; le canevas la met **en pied de carte** | **fait** — vu au rendu le 08/09, raccord **mesuré à −1 px** : les bordures se superposent. Streamlit ne sait pas poser un bouton dans un bloc HTML, le raccord se fait par la classe `st-key-` dans `style.css` |
+| D4 | **Un indice collecté que la page ne montrait pas.** La rangée « Indices principaux » était `st.columns(4)` suivi de `row1[:4]`, avec en commentaire « max 4 ». La cote compte **quatre** indices principaux plus le **Composite Total Return** : cinq cartes pour quatre places, et la cinquième tombait — toujours la même, le seul indice qui compte les dividendes | **fait le 09/09** — grille repliable, plus de troncature |
+| D5 | **Le Composite Total Return porte les variations du Composite**, au centième près (−0,53 % jour, −1,70 % YTD), alors que sa valeur lui est propre (221,40 contre 550,08). Impossible sur une place qui rend 5 à 7 % : un indice de rendement total ne peut pas avoir le cumul annuel de son indice de prix. Source ou collecte, à trancher | **contourné le 09/09** — la valeur s'affiche, les deux variations sont tues plutôt que fausses. **À porter au cahier des requêtes** |
 
 ### Infos Marché — Revue de presse · Fil d'actualités
 
@@ -105,9 +107,9 @@ Légende : **à faire** · *en cours* · fait (vu au rendu)
 | A6 | Technique | Pas de sélecteur **Périodicité** (Journalière / Mensuelle) | **à trancher** — l'application *détecte* la périodicité de la série (`_detect_frequency`) au lieu de la laisser choisir. Offrir le choix veut dire lire `price_monthly` au lieu de `price_cache`, et cette table n'a **ni ouverture, ni plus haut, ni plus bas** : les chandeliers de l'onglet devraient devenir une courbe en mensuel. Décision de fond, pas de forme |
 | A7 | Recommandation | Manque les cartes **Prix actuel** et **Prix cible (modèle)** | **fait** — vu au rendu le 08/09, dans les deux cas : cible unique (BOAS.sn, « +9.5 % vs cours ») et méthodes divergentes (SNTS.sn, fourchette). Les deux tuiles qui répétaient ces chiffres plus bas ont été retirées |
 | A8 | Recommandation | Composition du score en barre empilée ; le canevas montre des **barres pondérées 60/40** | **refusé le 08/09** — voir ci-dessous |
-| A9 | Profil | Actionnariat en carte latérale ; le canevas en fait **3 cartes de KPI** | à faire |
-| A10 | Profil | Le nom de la société est répété en titre de section | à faire |
-| A11 | Risque | Un titre de section « Risque » en trop au-dessus de la note | à faire |
+| A9 | Profil | Actionnariat en carte latérale ; le canevas en fait **3 cartes de KPI** | **fait** — vu au rendu le 08/09. Trois chiffres de structure — titres émis, flottant, actionnaire principal — sortent de la colonne des coordonnées pour ouvrir l'onglet. Le secteur n'a pas suivi : le titre de la page le porte déjà |
+| A10 | Profil | Le nom de la société est répété en titre de section | **fait** — vu au rendu le 08/09 |
+| A11 | Risque | Un titre de section « Risque » en trop au-dessus de la note | **fait** — vu au rendu le 08/09 : l'onglet s'ouvre sur la lecture |
 | A12 | Technique | Emoji résiduel « 📖 Comprendre les indicateurs techniques » | **fait** — vu au rendu le 08/09, avec A16 : l'emoji partait avec l'expander |
 | A13 | Technique | Tendance affichée « Haussiere » sans accent (donnée) | **fait** — vu au rendu le 08/09. Le code interne reste sans accent : il sert de clé de comparaison dans `analysis/technical.py`. C'est le **libellé** qui s'accentue, la force aussi (« Modérée ») |
 | A14 | Technique | **Niveaux clés incomplet** : le canevas donne 7 lignes — Résistance 2, Résistance 1, Cours, **SMA 50**, **SMA 200**, Support 1, Support 2 — chacune avec son écart au cours. L'application ne construit jamais les lignes de moyenne mobile, alors qu'elles sont tracées sur le graphique juste au-dessus. Sur ABJC.ci : 3 lignes au lieu de 7 | **fait** — vu au rendu le 08/09. MM50 et MM200 entrent dans le tableau, et l'ensemble est rangé par prix décroissant : c'est une **échelle**, pas trois listes. Sur ABJC.ci, cinq lignes au lieu de trois |
@@ -211,7 +213,7 @@ que corriger les symptômes un à un.
 2. **Sous-lignes explicatives omises** — un score sans son « pourquoi » (A3).
 3. **Contrôles non segmentés** — menus déroulants et cases à cocher là où le
    canevas met des boutons segmentés et des pastilles (A2, A5, A6, I1).
-4. **Colonnes fixes au lieu de grilles repliables** — `st.columns` impose N
+4. **Colonnes fixes au lieu de grilles repliables** — et pas seulement des libellés coupés : sur le Dashboard, une rangée de quatre colonnes fixes faisait disparaître une carte entière (D4).  — `st.columns` impose N
    colonnes quelle que soit la largeur, d'où les libellés coupés (A4). Le
    canevas emploie `repeat(auto-fit, minmax(...))`. `kpi_grille` le fait —
    le composant était annoncé par la passation mais n'avait jamais été
@@ -238,6 +240,13 @@ comparant bloc par bloc au canevas plutôt qu'en survolant sa forme générale :
 La leçon rejoint celle de la méthode : **un onglet ne se juge pas à sa
 silhouette.** Il se compare bloc par bloc, comme les pages se comparent onglet
 par onglet.
+
+**La relecture du Dashboard, le 09/09, a trouvé le plus grave.** Un indice
+collecté chaque jour, stocké, et affiché nulle part — le Composite Total
+Return, seul indice qui compte les dividendes — parce qu'une rangée de quatre
+colonnes fixes en contenait cinq. Le commentaire du code disait « max 4 » et
+se trompait de compte. Personne ne pouvait s'en apercevoir à l'écran : rien
+ne manquait visiblement, la rangée était pleine.
 
 **La relecture a confirmé la leçon.** « Performance des Titres » et
 « Signaux », déclarées conformes sur une lecture d'ensemble, portent six

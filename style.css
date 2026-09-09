@@ -695,3 +695,27 @@ section[data-testid="stSidebar"] hr {
   border-color: var(--primary) !important;
   color: var(--primary-2) !important;
 }
+
+/* ── Top 5 du tableau de bord : la bande ferme la carte ──────────────
+   Le canevas met « Ouvrir l'analyse d'un titre » EN PIED DE CARTE, pas
+   dessous. Streamlit ne sait pas poser un bouton dans un bloc HTML : la
+   carte perd son arrondi bas (fait dans la vue) et le bouton reprend la
+   bordure et l'arrondi, de sorte que les deux ne font qu'un. Accroche a
+   la classe `st-key-` que Streamlit pose sur le conteneur du widget. */
+div[class*="st-key-dash_top5_"] {
+    margin-top: -1px;
+}
+div[class*="st-key-dash_top5_"] button {
+    border: 1px solid var(--border);
+    border-radius: 0 0 12px 12px;
+    background: var(--bg-elev);
+    color: var(--ink-3);
+    font-size: 12.5px;
+    font-weight: 500;
+    box-shadow: none;
+}
+div[class*="st-key-dash_top5_"] button:hover {
+    background: var(--bg-sunken);
+    color: var(--ink);
+    border-color: var(--border);
+}
