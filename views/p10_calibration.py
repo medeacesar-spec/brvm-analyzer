@@ -36,6 +36,26 @@ def _load_signal_perf_snapshot() -> pd.DataFrame:
         return pd.DataFrame()
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def _load_signal_history() -> pd.DataFrame:
+    """Charge l'historique complet des signaux, en cache 5 minutes.
+
+    `get_signal_history()` sans filtre fait un `SELECT *` sur les 1 388
+    lignes et 21 colonnes de `signal_history`. Mesure du 09/09/2026 :
+    **46,7 s** pour cette seule requete, contre 6,0 s avec un `LIMIT 200`
+    — le transfert est le cout, pas le calcul.
+
+    Elle etait appelee sans cache, et la rotation du nonce de navigation
+    rend la page DEUX fois a l'arrivee : la table etait donc tiree deux
+    fois de suite. Le voisin `_load_signal_perf_snapshot` avait deja ce
+    cache ; celui-ci ne l'avait pas.
+    """
+    try:
+        return get_signal_history()
+    except Exception:
+        return pd.DataFrame()
+
+
 VERDICT_ORDER = ["ACHAT FORT", "ACHAT", "CONSERVER", "NEUTRE", "VENTE", "VENTE FORTE"]
 VERDICT_COLORS = {
     "ACHAT FORT": COLORS["green"],
@@ -102,7 +122,7 @@ def render():
     titre_admin("Historique Signaux & Recommandations")
     st.caption("Performance agrégée · calibration du modèle")
 
-    df_all = get_signal_history()
+    df_all = _load_signal_history()
     if df_all.empty:
         st.info(
             "Aucun signal enregistré pour l'instant. Visitez les pages "

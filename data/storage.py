@@ -3297,7 +3297,6 @@ def get_signal_history(
 ) -> pd.DataFrame:
     """Récupère les événements signaux/recommandations.
     Filtres sur last_seen_date (pour voir 'encore actifs dernièrement')."""
-    conn = get_connection()
     conditions = []
     params = []
     if ticker:
@@ -3316,9 +3315,9 @@ def get_signal_history(
     where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     query = f"""SELECT * FROM signal_history {where_clause}
                 ORDER BY last_seen_date DESC, ticker"""
-    df = read_sql_df(query, params=params)
-    conn.close()
-    return df
+    # `read_sql_df` ouvre sa propre connexion : celle ouverte plus haut
+    # n'etait jamais utilisee, seulement ouverte puis refermee.
+    return read_sql_df(query, params=params)
 
 
 def compute_signal_performance(df: pd.DataFrame) -> pd.DataFrame:
