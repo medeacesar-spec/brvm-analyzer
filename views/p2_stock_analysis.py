@@ -1093,8 +1093,18 @@ def _render_technical(ticker, price_df, result):
     # ═══════════════════════════════════════════════════════════════════
     last_row = df.iloc[-1] if not df.empty else None
     trend = result.get("trend", {})
-    trend_name = (trend.get("trend") or "N/A").capitalize()
-    trend_strength = (trend.get("strength") or "").capitalize()
+    # Le code interne reste sans accent — il sert de cle de comparaison dans
+    # `analysis/technical.py` et ailleurs. C'est le LIBELLE qui s'accentue :
+    # « Haussiere » sur une carte est une faute, pas une convention.
+    _LIBELLE_TENDANCE = {"haussiere": "Haussière", "baissiere": "Baissière",
+                         "neutre": "Neutre", "indetermine": "Indéterminée"}
+    _LIBELLE_FORCE = {"forte": "Forte", "moderee": "Modérée",
+                      "faible": "Faible"}
+    _code_tendance = trend.get("trend") or ""
+    trend_name = _LIBELLE_TENDANCE.get(_code_tendance,
+                                       (_code_tendance or "N/A").capitalize())
+    _code_force = trend.get("strength") or ""
+    trend_strength = _LIBELLE_FORCE.get(_code_force, _code_force.capitalize())
 
     # Calcul MM20 vs MM50 pour sous-texte tendance
     mm_sub = "—"
@@ -1272,19 +1282,37 @@ def _render_technical(ticker, price_df, result):
             color = "var(--up)" if diff < 0 else "var(--down)"  # inverse : sous = bon pour achat
             return f"{sign}{diff:.1f}%", color
 
+        # UNE ECHELLE, PAS TROIS LISTES. Le tableau repond a une question :
+        # qu'y a-t-il au-dessus du cours, qu'y a-t-il en dessous. Les
+        # MOYENNES MOBILES en font partie — elles etaient tracees sur le
+        # graphique juste au-dessus et chiffrees nulle part, alors que « le
+        # cours tient au-dessus de la MM200 » est l'observation la plus
+        # courante qu'on vienne y chercher. Tout est donc range par prix
+        # decroissant, le cours a sa place naturelle dans l'echelle.
         rows_lvl = []
-        # Résistances (haut en bas)
         for i, r in enumerate(sorted(resistances, reverse=True)):
             ec, col = _ecart(r)
             rows_lvl.append(("Résistance", f"R{len(resistances)-i}", r, ec, col,
                              "Plafond technique"))
-        # Actuel
         rows_lvl.append(("Cours", "Actuel", current_price, "—", "var(--ink-3)",
                          "Dernière séance"))
-        # Supports
         for i, s in enumerate(supports):
             ec, col = _ecart(s)
             rows_lvl.append(("Support", f"S{i+1}", s, ec, col, "Zone de rebond"))
+
+        if last_row is not None:
+            _fenetres = (("sma50", sma_labels["medium"], "moyenne moyenne durée"),
+                         ("sma200", sma_labels["long"], "moyenne longue durée"))
+            for _col, _nom, _quoi in _fenetres:
+                _v = last_row.get(_col) if _col in df.columns else None
+                if _v is None or pd.isna(_v) or not _v:
+                    continue
+                ec, col = _ecart(float(_v))
+                rows_lvl.append(("Moyenne", _nom, float(_v), ec, col, _quoi))
+
+        # Le rang se lit du plus haut au plus bas : c'est ce qui fait une
+        # echelle plutot qu'une juxtaposition.
+        rows_lvl.sort(key=lambda l: -(l[2] or 0))
 
         header_style = (
             "font-size:10.5px;text-transform:uppercase;letter-spacing:0.08em;"
@@ -1304,7 +1332,9 @@ def _render_technical(ticker, price_df, result):
             f"</tr>"
         )
         for type_, niveau, price, ec_str, ec_color, comment in rows_lvl:
-            tone = "up" if type_ == "Support" else ("down" if type_ == "Résistance" else "neutral")
+            tone = ("up" if type_ == "Support"
+                    else "down" if type_ == "Résistance"
+                    else "ocre" if type_ == "Moyenne" else "neutral")
             px_str = f"{price:,.0f}" if price else "—"
             rows_html += (
                 f"<tr>"
@@ -1327,31 +1357,30 @@ def _render_technical(ticker, price_df, result):
         )
 
     # ═══════════════════════════════════════════════════════════════════
-    # Signaux techniques — editorial list avec value a droite
+    # Signaux techniques — en CARTES, comme le diagnostic du portefeuille
     # ═══════════════════════════════════════════════════════════════════
+    # Une liste alignait le constat a gauche et son detail a droite, en petit
+    # et en gris : le detail se lisait comme une note de bas de page alors
+    # qu'il porte le pourquoi. Ces signaux ne se comparent pas entre eux, ils
+    # s'additionnent — c'est le meme raisonnement que pour le diagnostic du
+    # portefeuille, et le meme composant.
     with col_sig:
-        section_heading("Signaux techniques")
+        from utils.ui_helpers import cartes_constats
         signals = result.get("signals", [])
+        section_heading("Signaux techniques")
         if signals:
-            inner = ""
-            for sig in signals:
-                tone = {"achat": "up", "vente": "down", "info": "neutral"}.get(sig.get("type"), "neutral")
-                inner += (
-                    f"<div style='display:flex;justify-content:space-between;align-items:flex-start;"
-                    f"gap:12px;padding:9px 12px;border-bottom:1px solid var(--border-soft);"
-                    f"font-size:13px;'>"
-                    f"<div style='flex:1;min-width:0;'>"
-                    f"<span class='dot {tone}'></span><b>{sig.get('signal', '')}</b>"
-                    f"</div>"
-                    f"<div style='color:var(--ink-3);font-size:12.5px;text-align:right;"
-                    f"max-width:60%;'>{sig.get('details', '')}</div>"
-                    f"</div>"
-                )
             st.markdown(
-                f"<div style='border:1px solid var(--border);border-radius:12px;"
-                f"overflow:hidden;background:var(--bg-elev);'>{inner}</div>",
-                unsafe_allow_html=True,
-            )
+                f"<div style='font-family:var(--font-mono);font-size:11.5px;"
+                f"color:var(--ink-3);margin:-6px 0 8px;'>{len(signals)} signal"
+                f"{'s' if len(signals) > 1 else ''} actif"
+                f"{'s' if len(signals) > 1 else ''}</div>",
+                unsafe_allow_html=True)
+            _ton_signal = {"achat": "up", "vente": "down", "info": "primary"}
+            cartes_constats(
+                [(_ton_signal.get(sig.get("type"), "primary"),
+                  sig.get("signal", ""), sig.get("details", ""))
+                 for sig in signals],
+                mini="260px")
         else:
             st.caption("Aucun signal technique actif")
 
@@ -1371,121 +1400,125 @@ def _render_indicator_explanations(df: pd.DataFrame, sma_labels: dict, freq: str
     macd_sig = last.get("macd_signal")
     macd_hist = last.get("macd_histogram")
 
-    with st.expander("📖 Comprendre les indicateurs techniques", expanded=False):
-        col_rsi, col_macd = st.columns(2)
+    # UN SEUL NIVEAU DE REPLI. Ce bloc etait un expander ouvert A L'INTERIEUR
+    # de « En savoir plus · RSI, MACD, Moyennes mobiles » : il fallait deplier
+    # deux fois pour lire une explication, et le titre repetait celui du
+    # dessus. L'emoji partait avec — il n'etait que la partie visible de
+    # l'ecart.
+    col_rsi, col_macd = st.columns(2)
 
-        with col_rsi:
-            st.markdown("#### RSI (Relative Strength Index)")
-            st.markdown(
-                "Le RSI mesure la **vitesse et l'amplitude des mouvements de prix** "
-                "sur une échelle de 0 à 100. Il compare les gains récents aux pertes récentes."
-            )
-            st.markdown(
-                "- **RSI > 70** : zone de **surachat** — le titre a beaucoup monté, "
-                "un repli est possible\n"
-                "- **RSI < 30** : zone de **survente** — le titre a beaucoup baissé, "
-                "un rebond est possible\n"
-                "- **RSI entre 40-60** : zone neutre, pas de signal fort"
-            )
-            if rsi_val is not None and not pd.isna(rsi_val):
-                if rsi_val > 70:
-                    interp = "Le titre est en **surachat**. Attention à un possible retournement baissier."
-                    tone = "down"
-                elif rsi_val < 30:
-                    interp = "Le titre est en **survente**. Opportunité d'achat potentielle si les fondamentaux sont solides."
-                    tone = "up"
-                elif rsi_val > 60 or rsi_val < 40:
-                    interp = ("Momentum haussier, mais pas encore en surachat." if rsi_val > 60
-                              else "Momentum baissier, mais pas encore en survente.")
-                    tone = "ocre"
-                else:
-                    interp = "Zone neutre — pas de signal directionnel fort."
-                    tone = "neutral"
-                st.markdown(
-                    "**RSI actuel :** " + _tag_html(f"{rsi_val:.1f}", tone),
-                    unsafe_allow_html=True,
-                )
-                st.markdown(f"*{interp}*")
-
-        with col_macd:
-            st.markdown("#### MACD (Moving Average Convergence Divergence)")
-            st.markdown(
-                "Le MACD mesure la **convergence/divergence entre deux moyennes mobiles**. "
-                "Il se compose de 3 éléments :"
-            )
-            st.markdown(
-                "- **Ligne MACD** : différence entre MM rapide et MM lente\n"
-                "- **Ligne Signal** : moyenne mobile du MACD\n"
-                "- **Histogramme** : écart entre MACD et Signal"
-            )
-            st.markdown(
-                "**Signaux clés :**\n"
-                "- MACD **croise le Signal par le haut** → signal d'achat\n"
-                "- MACD **croise le Signal par le bas** → signal de vente\n"
-                "- Histogramme **positif et croissant** → momentum haussier\n"
-                "- Histogramme **négatif et decroissant** → momentum baissier"
-            )
-            if macd_val is not None and not pd.isna(macd_val):
-                if macd_val > 0 and macd_hist is not None and macd_hist > 0:
-                    interp = "MACD positif avec histogramme croissant — **momentum haussier**."
-                    tone = "up"
-                elif macd_val > 0:
-                    interp = "MACD positif mais histogramme en baisse — le momentum ralentit."
-                    tone = "ocre"
-                elif macd_hist is not None and macd_hist > 0:
-                    interp = "MACD négatif mais histogramme en hausse — possible retournement haussier."
-                    tone = "ocre"
-                else:
-                    interp = "MACD négatif avec histogramme baissier — **momentum baissier**."
-                    tone = "down"
-                st.markdown(
-                    "**MACD actuel :** " + _tag_html(f"{macd_val:,.0f}", tone),
-                    unsafe_allow_html=True,
-                )
-                st.markdown(f"*{interp}*")
-
-        # Moyennes mobiles explanation
-        st.markdown("---")
-        col_mm, col_bb = st.columns(2)
-
-        with col_mm:
-            st.markdown("#### Moyennes Mobiles")
-            if freq == "monthly":
-                st.markdown(
-                    f"Avec des données mensuelles, les moyennes mobiles s'adaptent :\n"
-                    f"- **{sma_labels['short']}** (3 mois) : tendance court terme\n"
-                    f"- **{sma_labels['medium']}** (6 mois) : tendance moyen terme\n"
-                    f"- **{sma_labels['long']}** (12 mois) : tendance long terme\n\n"
-                    f"Quand le prix est **au-dessus** des 3 moyennes alignées, la tendance est fortement haussière. "
-                    f"Quand il est **en-dessous**, elle est fortement baissière."
-                )
+    with col_rsi:
+        st.markdown("#### RSI (Relative Strength Index)")
+        st.markdown(
+            "Le RSI mesure la **vitesse et l'amplitude des mouvements de prix** "
+            "sur une échelle de 0 à 100. Il compare les gains récents aux pertes récentes."
+        )
+        st.markdown(
+            "- **RSI > 70** : zone de **surachat** — le titre a beaucoup monté, "
+            "un repli est possible\n"
+            "- **RSI < 30** : zone de **survente** — le titre a beaucoup baissé, "
+            "un rebond est possible\n"
+            "- **RSI entre 40-60** : zone neutre, pas de signal fort"
+        )
+        if rsi_val is not None and not pd.isna(rsi_val):
+            if rsi_val > 70:
+                interp = "Le titre est en **surachat**. Attention à un possible retournement baissier."
+                tone = "down"
+            elif rsi_val < 30:
+                interp = "Le titre est en **survente**. Opportunité d'achat potentielle si les fondamentaux sont solides."
+                tone = "up"
+            elif rsi_val > 60 or rsi_val < 40:
+                interp = ("Momentum haussier, mais pas encore en surachat." if rsi_val > 60
+                          else "Momentum baissier, mais pas encore en survente.")
+                tone = "ocre"
             else:
-                st.markdown(
-                    f"- **{sma_labels['short']}** (20 jours) : tendance court terme\n"
-                    f"- **{sma_labels['medium']}** (50 jours) : tendance moyen terme\n"
-                    f"- **{sma_labels['long']}** (200 jours) : tendance long terme\n\n"
-                    f"Un **Golden Cross** (MM courte croise MM longue par le haut) est un signal d'achat. "
-                    f"Un **Death Cross** (croisement par le bas) est un signal de vente."
-                )
+                interp = "Zone neutre — pas de signal directionnel fort."
+                tone = "neutral"
+            st.markdown(
+                "**RSI actuel :** " + _tag_html(f"{rsi_val:.1f}", tone),
+                unsafe_allow_html=True,
+            )
+            st.markdown(f"*{interp}*")
 
-        with col_bb:
-            st.markdown("#### Bandes de Bollinger")
+    with col_macd:
+        st.markdown("#### MACD (Moving Average Convergence Divergence)")
+        st.markdown(
+            "Le MACD mesure la **convergence/divergence entre deux moyennes mobiles**. "
+            "Il se compose de 3 éléments :"
+        )
+        st.markdown(
+            "- **Ligne MACD** : différence entre MM rapide et MM lente\n"
+            "- **Ligne Signal** : moyenne mobile du MACD\n"
+            "- **Histogramme** : écart entre MACD et Signal"
+        )
+        st.markdown(
+            "**Signaux clés :**\n"
+            "- MACD **croise le Signal par le haut** → signal d'achat\n"
+            "- MACD **croise le Signal par le bas** → signal de vente\n"
+            "- Histogramme **positif et croissant** → momentum haussier\n"
+            "- Histogramme **négatif et decroissant** → momentum baissier"
+        )
+        if macd_val is not None and not pd.isna(macd_val):
+            if macd_val > 0 and macd_hist is not None and macd_hist > 0:
+                interp = "MACD positif avec histogramme croissant — **momentum haussier**."
+                tone = "up"
+            elif macd_val > 0:
+                interp = "MACD positif mais histogramme en baisse — le momentum ralentit."
+                tone = "ocre"
+            elif macd_hist is not None and macd_hist > 0:
+                interp = "MACD négatif mais histogramme en hausse — possible retournement haussier."
+                tone = "ocre"
+            else:
+                interp = "MACD négatif avec histogramme baissier — **momentum baissier**."
+                tone = "down"
             st.markdown(
-                "Les bandes de Bollinger mesurent la **volatilité** du titre. "
-                "Elles se composent de 3 lignes :"
+                "**MACD actuel :** " + _tag_html(f"{macd_val:,.0f}", tone),
+                unsafe_allow_html=True,
             )
+            st.markdown(f"*{interp}*")
+
+    # Moyennes mobiles explanation
+    st.markdown("---")
+    col_mm, col_bb = st.columns(2)
+
+    with col_mm:
+        st.markdown("#### Moyennes Mobiles")
+        if freq == "monthly":
             st.markdown(
-                "- **Bande supérieure** : moyenne mobile + 2 écarts-types\n"
-                "- **Bande médiane** : moyenne mobile simple\n"
-                "- **Bande inférieure** : moyenne mobile - 2 écarts-types"
+                f"Avec des données mensuelles, les moyennes mobiles s'adaptent :\n"
+                f"- **{sma_labels['short']}** (3 mois) : tendance court terme\n"
+                f"- **{sma_labels['medium']}** (6 mois) : tendance moyen terme\n"
+                f"- **{sma_labels['long']}** (12 mois) : tendance long terme\n\n"
+                f"Quand le prix est **au-dessus** des 3 moyennes alignées, la tendance est fortement haussière. "
+                f"Quand il est **en-dessous**, elle est fortement baissière."
             )
+        else:
             st.markdown(
-                "**Interprétation :**\n"
-                "- Prix proche de la **bande supérieure** → le titre est potentiellement suracheté\n"
-                "- Prix proche de la **bande inférieure** → le titre est potentiellement survendu\n"
-                "- **Resserrement** des bandes → faible volatilité, mouvement important à venir\n"
-                "- **Écartement** des bandes → forte volatilité en cours"
+                f"- **{sma_labels['short']}** (20 jours) : tendance court terme\n"
+                f"- **{sma_labels['medium']}** (50 jours) : tendance moyen terme\n"
+                f"- **{sma_labels['long']}** (200 jours) : tendance long terme\n\n"
+                f"Un **Golden Cross** (MM courte croise MM longue par le haut) est un signal d'achat. "
+                f"Un **Death Cross** (croisement par le bas) est un signal de vente."
             )
+
+    with col_bb:
+        st.markdown("#### Bandes de Bollinger")
+        st.markdown(
+            "Les bandes de Bollinger mesurent la **volatilité** du titre. "
+            "Elles se composent de 3 lignes :"
+        )
+        st.markdown(
+            "- **Bande supérieure** : moyenne mobile + 2 écarts-types\n"
+            "- **Bande médiane** : moyenne mobile simple\n"
+            "- **Bande inférieure** : moyenne mobile - 2 écarts-types"
+        )
+        st.markdown(
+            "**Interprétation :**\n"
+            "- Prix proche de la **bande supérieure** → le titre est potentiellement suracheté\n"
+            "- Prix proche de la **bande inférieure** → le titre est potentiellement survendu\n"
+            "- **Resserrement** des bandes → faible volatilité, mouvement important à venir\n"
+            "- **Écartement** des bandes → forte volatilité en cours"
+        )
 
 
 def _exercice_le_plus_complet(fundamentals, ratios_courants,
