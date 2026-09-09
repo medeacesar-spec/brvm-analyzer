@@ -1910,20 +1910,86 @@ def get_data_gaps() -> pd.DataFrame:
 
 # --- Actions sur les publications / écarts ---
 
-def ignore_publication(pub_id: int) -> bool:
-    """Marque une publication comme ignorée."""
+def _basculer_publications(pub_ids, ignored: int) -> int:
+    """Passe une liste de publications dans l'etat `ignored` demande.
+
+    Retourne le nombre de lignes reellement changees. Le drapeau est
+    reversible des deux cotes : c'est ce qui distingue « ecarter » de
+    « supprimer », et c'est pour cela que l'ecran d'administration
+    n'appelle jamais `delete_publication`.
+
+    Le `except` attrape `Exception` et non `sqlite3.Error` : en Postgres
+    les erreurs remontent en `psycopg.Error`, que la clause d'origine
+    laissait passer — la fonction n'a jamais tourne en production, elle
+    n'avait aucun appelant.
+    """
+    ids = [int(i) for i in pub_ids if i is not None]
+    if not ids:
+        return 0
     conn = get_connection()
+    n = 0
     try:
-        conn.execute(
-            "UPDATE publications SET ignored = 1, is_new = 0 WHERE id = ?",
-            (pub_id,),
-        )
+        for pid in ids:
+            if ignored:
+                cur = conn.execute(
+                    "UPDATE publications SET ignored = 1, is_new = 0 "
+                    "WHERE id = ? AND COALESCE(ignored, 0) = 0",
+                    (pid,),
+                )
+            else:
+                cur = conn.execute(
+                    "UPDATE publications SET ignored = 0 "
+                    "WHERE id = ? AND COALESCE(ignored, 0) = 1",
+                    (pid,),
+                )
+            # `rowcount`, pas `n += 1` : une ligne deja dans l'etat demande
+            # ne matche pas la clause WHERE, et l'annoncer traitee serait un
+            # compte qui ment.
+            n += max(int(cur.rowcount or 0), 0)
         conn.commit()
-        ok = True
-    except sqlite3.Error:
-        ok = False
-    conn.close()
-    return ok
+    except Exception:
+        conn.rollback()
+        n = 0
+    finally:
+        conn.close()
+    return n
+
+
+def ignore_publication(pub_id: int) -> bool:
+    """Ecarte une publication du fil. Reversible par `restore_publication`."""
+    return _basculer_publications([pub_id], 1) > 0
+
+
+def restore_publication(pub_id: int) -> bool:
+    """Remet au fil une publication ecartee."""
+    return _basculer_publications([pub_id], 0) > 0
+
+
+def ignore_publications(pub_ids) -> int:
+    """Ecarte plusieurs publications d'un coup. Retourne le nombre traite."""
+    return _basculer_publications(pub_ids, 1)
+
+
+def restore_publications(pub_ids) -> int:
+    """Remet au fil plusieurs publications ecartees."""
+    return _basculer_publications(pub_ids, 0)
+
+
+def get_ignored_publications(limit: int = 200):
+    """Les publications ecartees, les plus recentes en tete.
+
+    Sans cette lecture, `ignored = 1` serait un aller sans retour : rien
+    dans l'application ne montrait ce qui avait ete ecarte.
+    """
+    return read_sql_df(
+        """SELECT id, ticker, title, pub_type, fiscal_year, url, pub_date
+           FROM publications
+           WHERE COALESCE(ignored, 0) = 1
+           ORDER BY pub_date DESC NULLS LAST, id DESC
+           LIMIT ?""",
+        params=(limit,),
+        parse_dates=["pub_date"],
+    )
 
 
 def delete_publication(pub_id: int) -> bool:
