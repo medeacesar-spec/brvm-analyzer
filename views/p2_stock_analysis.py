@@ -485,6 +485,58 @@ def _render_fundamental(fundamentals, ratios):
     position secteur + trajectoire financiere + structure bilan."""
     from utils.ui_helpers import section_heading, kpi_grille
 
+    # ── SÉLECTEUR D'EXERCICE (A1) ────────────────────────────────────────
+    # Le canevas met « Exercice » dans la barre d'outils. Arbitrage du 09/09 :
+    # il vit ICI, sur l'onglet Fondamentale, et nulle part ailleurs. Sur
+    # l'onglet Cours, où le canevas le place, il n'aurait aucun effet — un
+    # cours de bourse n'appartient pas à un exercice comptable.
+    #
+    # Il ne gouverne que cet onglet. Le score, le verdict et la
+    # recommandation de la page restent calculés sur l'exercice de la fiche :
+    # les changer d'ici ferait dire à l'en-tête et aux onglets voisins deux
+    # choses différentes du même titre. Quand les deux exercices divergent,
+    # l'onglet le DIT plutôt que de laisser croire à une contradiction.
+    _ticker = fundamentals.get("ticker")
+    _fy_fiche = fundamentals.get("fiscal_year")
+    _exercices = []
+    if _ticker:
+        try:
+            _df_ex = read_sql_df(
+                "SELECT DISTINCT fiscal_year FROM fundamentals "
+                "WHERE ticker = ? AND fiscal_year IS NOT NULL "
+                "ORDER BY fiscal_year DESC", params=(_ticker,))
+            _exercices = [int(v) for v in _df_ex["fiscal_year"].tolist()]
+        except Exception:                                       # noqa: BLE001
+            _exercices = []
+
+    if len(_exercices) > 1 and _fy_fiche:
+        _defaut = int(_fy_fiche) if int(_fy_fiche) in _exercices else _exercices[0]
+        _choisi = st.segmented_control(
+            "Exercice", _exercices, default=_defaut,
+            format_func=lambda a: str(a),
+            key=f"fonda_exercice_{_ticker}") or _defaut
+        if _choisi != int(_fy_fiche):
+            _autre = get_fundamentals(_ticker, fiscal_year=_choisi)
+            if _autre:
+                # Le prix vient du marché, pas de l'exercice : il ne change
+                # pas quand on recule d'un an, sinon le PER deviendrait faux.
+                _autre = dict(_autre)
+                for _cle in ("price", "sector", "company_name", "shares"):
+                    if not _autre.get(_cle) and fundamentals.get(_cle):
+                        _autre[_cle] = fundamentals.get(_cle)
+                _autre["price"] = fundamentals.get("price") or _autre.get("price")
+                fundamentals = _autre
+                ratios = compute_ratios(_autre)
+                st.caption(
+                    f"Cet onglet lit l'exercice **{_choisi}**. Le score, le "
+                    f"verdict et la recommandation de la page restent calculés "
+                    f"sur l'exercice **{int(_fy_fiche)}**, celui de la fiche — "
+                    f"les comparer d'un onglet à l'autre n'aurait pas de sens. "
+                    f"Le cours, lui, est celui du jour dans les deux cas."
+                )
+            else:
+                st.caption(f"Aucune donnée pour l'exercice {_choisi}.")
+
     sector = fundamentals.get("sector", "")
     benchmarks = get_sector_benchmarks(sector) if sector else {}
 

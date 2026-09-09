@@ -1043,7 +1043,7 @@ poids dérivés de leur performance passée réelle.
         )
 
         with head_r:
-            b1, b2, b3 = st.columns(3)
+            b1, _b2 = st.columns([1, 2])
             with b1:
                 csv = df.to_csv(index=False).encode("utf-8")
                 st.download_button(
@@ -1054,19 +1054,10 @@ poids dérivés de leur performance passée réelle.
                     key="raw_csv_btn",
                     use_container_width=True,
                 )
-            with b2:
-                json_bytes = df.to_json(orient="records", force_ascii=False).encode("utf-8")
-                st.download_button(
-                    "Exporter JSON",
-                    data=json_bytes,
-                    file_name=f"signal_events_{datetime.now().strftime('%Y%m%d')}.json",
-                    mime="application/json",
-                    key="raw_json_btn",
-                    use_container_width=True,
-                )
-            with b3:
-                st.button("Colonnes", key="raw_cols_btn",
-                          use_container_width=True, disabled=True,
-                          help="Sélection de colonnes : à venir")
+            # H3, arbitre le 09/09 : les deux boutons hors canevas partent.
+            # « Colonnes » etait DESACTIVE, avec l'infobulle « a venir » — un
+            # controle qui annonce une fonction inexistante use la confiance
+            # sans rien rendre. « Exporter JSON », lui, fonctionnait : le
+            # CSV reste, et le JSON se retrouve dans l'historique si besoin.
 
         st.dataframe(df, use_container_width=True, hide_index=True, height=600)
