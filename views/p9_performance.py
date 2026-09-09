@@ -225,8 +225,9 @@ def render():
                      unsafe_allow_html=True)
 
     # ─── Tabs ─────────────────────────────────────────────────────────
-    tab_stocks, tab_sectors, tab_chart, tab_multi = st.tabs(
-        ["Classement", "Par secteur", "Graphique", "Tableau multi-périodes"]
+    tab_stocks, tab_sectors, tab_chart, tab_multi, tab_risque = st.tabs(
+        ["Classement", "Par secteur", "Graphique", "Tableau multi-périodes",
+         "Rendement / risque"]
     )
 
     # ───────── TAB 1 : Classement avec bars horizontaux Top / Pires ──
@@ -437,6 +438,11 @@ def render():
         else:
             st.info(f"Aucun titre avec données dans le secteur {selected_sector}.")
 
+        # Comparer les secteurs entre eux a sa place dans l'onglet qui parle
+        # des secteurs. Ce bloc pendait sous la barre d'onglets, visible quel
+        # que soit l'onglet ouvert.
+        _render_comparaison_secteurs()
+
     # ───────── TAB 3: Price chart ─────────
     with tab_chart:
         st.subheader("Évolution comparée des prix (base 100)")
@@ -530,8 +536,9 @@ def render():
         ticker_quick_picker(picker_options, key="perf_goto",
                              label="Ouvrir l'analyse d'un titre")
 
-    _render_rendement_rapporte_au_risque()
-    _render_comparaison_secteurs()
+    # ───────── TAB 5 : ce qu'un gain a coute en agitation ────────────
+    with tab_risque:
+        _render_rendement_rapporte_au_risque()
 
 
 def _render_rendement_rapporte_au_risque():
@@ -567,19 +574,49 @@ def _render_rendement_rapporte_au_risque():
     except Exception:                                           # noqa: BLE001
         pass
 
+    lignes = sorted(
+        ((v.get("sharpe"), t, v) for t, v in mesures.items()
+         if v.get("sharpe") is not None), reverse=True)
+
     section_heading("Rendement rapporté au risque · 5 ans", spacing="loose")
     st.caption(
         "Classement par **ratio de Sharpe** : le gain au-delà du taux sans "
         "risque, divisé par l'agitation qu'il a fallu supporter. Rendement "
         "**total, dividendes compris**, sur soixante mois — donc sans rapport "
-        "avec les performances de période ci-dessus, qui sont des cours à "
-        "court terme. La colonne **Échangé** rappelle qu'un bon classement ne "
-        "sert à rien si l'on ne peut pas entrer ni sortir."
+        "avec les performances de période des autres onglets, qui sont des "
+        "cours à court terme. La colonne **Échangé** rappelle qu'un bon "
+        "classement ne sert à rien si l'on ne peut pas entrer ni sortir."
     )
 
-    lignes = sorted(
-        ((v.get("sharpe"), t, v) for t, v in mesures.items()
-         if v.get("sharpe") is not None), reverse=True)
+    # Une tete de lecture : quarante-sept lignes ne se lisent pas d'un coup
+    # d'oeil, et ce tableau bouge peu d'un mois sur l'autre. Ces quatre cartes
+    # disent ce qu'il faut en retenir avant d'y entrer.
+    if lignes:
+        from utils.ui_helpers import kpi_grille
+        meilleur_sharpe, meilleur_ticker, _ = lignes[0]
+        n_bons = sum(1 for sh, _t, _v in lignes if sh >= 1)
+        n_negatifs = sum(1 for sh, _t, _v in lignes if sh < 0)
+        n_illiquides = sum(1 for _sh, _t, v in lignes if v.get("peu_liquide"))
+        kpi_grille([
+            {"label": "Titres mesurés", "value": f"{len(lignes)}",
+             "sub": "sur 47 cotés · deux ans d'historique minimum"},
+            {"label": "Meilleur rapport", "value": meilleur_ticker,
+             "sub": f"Sharpe {meilleur_sharpe:.2f}",
+             "accent": "var(--up)", "sub_color": "var(--up)"},
+            {"label": "Gain > agitation", "value": f"{n_bons}",
+             "sub": "titres au Sharpe ≥ 1",
+             "accent": "var(--up)" if n_bons else "var(--ink-4)"},
+            {"label": "Rapport négatif", "value": f"{n_negatifs}",
+             "sub": "moins bien que le sans-risque, sur cinq ans",
+             "accent": "var(--down)" if n_negatifs else "var(--ink-4)",
+             "sub_color": "var(--down)" if n_negatifs else ""},
+        ], mini="190px")
+        if n_illiquides:
+            st.caption(
+                f"**{n_illiquides}** de ces titres sont signalés *peu "
+                f"liquides* : bien classés, mais difficiles à acheter ou à "
+                f"vendre en quantité. Le classement les garde, il ne les "
+                f"cache pas.")
 
     entete = ("font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;"
               "color:var(--ink-3);font-weight:500;padding:9px 10px;"
