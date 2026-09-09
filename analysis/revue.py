@@ -15,6 +15,7 @@ import pandas as pd
 
 from config import load_tickers
 from data.db import read_sql_df
+from analysis.pertinence import score_depeche
 
 # Ordre d'affichage des rubriques
 RUBRIQUES = [
@@ -23,6 +24,12 @@ RUBRIQUES = [
     ("marche", "Séances et marché"),
     ("secteur", "Contexte sectoriel et macro"),
 ]
+
+# Plafond journalier. La collecte s'ouvrant a d'autres sources regionales,
+# le volume a triple : sans plafond, la rubrique « Contexte sectoriel » avale
+# la page. Vingt-cinq par jour, retenues sur la PONDERATION et non sur
+# l'heure de publication — c'est la difference entre une revue et un fil.
+MAX_PAR_JOUR = 25
 
 _THEME_RUBRIQUE = {
     "resultats": "resultats",
@@ -187,7 +194,7 @@ def build_revue(jours: int = 10, portefeuille: list | None = None) -> dict:
                       tickers, tickers_cites, secteurs, theme
                FROM news_articles
                ORDER BY published_at DESC NULLS LAST, id DESC
-               LIMIT 200"""
+               LIMIT 400"""
         )
     except Exception:
         return {}
@@ -199,6 +206,7 @@ def build_revue(jours: int = 10, portefeuille: list | None = None) -> dict:
         df = df[(df["published_at"].isna()) | (df["published_at"] >= limite)]
 
     rubriques = {cle: [] for cle, _ in RUBRIQUES}
+    retenues = []
 
     for _, r in df.iterrows():
         sujets = _liste(r["tickers"])
@@ -234,9 +242,49 @@ def build_revue(jours: int = 10, portefeuille: list | None = None) -> dict:
             "chiffres_detail": chiffres_detail(sujets[0], trimestres) if sujets else [],
         }
 
-        if en_portefeuille:
-            rubriques["portefeuille"].append(entree)
-        else:
-            rubriques[_THEME_RUBRIQUE.get(r["theme"], "secteur")].append(entree)
+        note, motifs = score_depeche(
+            titre=r["title"], texte=r["body"] or r["lead"],
+            tickers_sujets=sujets, tickers_cites=cites,
+            secteurs=secteurs, theme=r["theme"])
+        # Une depeche qui touche une ligne du portefeuille n'est jamais
+        # ecartee par le plafond : c'est la seule rubrique que le lecteur
+        # vient chercher nommement.
+        entree["score"] = note
+        entree["motifs"] = motifs
+        entree["rubrique"] = ("portefeuille" if en_portefeuille
+                              else _THEME_RUBRIQUE.get(r["theme"], "secteur"))
+        entree["_jour"] = str(r["published_at"] or "")[:10] or "sans date"
+        retenues.append(entree)
+
+    for entree in _plafonner_par_jour(retenues):
+        rubriques[entree["rubrique"]].append(entree)
 
     return rubriques
+
+
+def _plafonner_par_jour(entrees: list) -> list:
+    """Garde au plus MAX_PAR_JOUR depeches par journee, les mieux notees.
+
+    Le tri se fait sur la ponderation, pas sur l'heure : une depeche de fin
+    de journee qui porte sur un emetteur cote passe devant cinq breves du
+    matin sans rapport avec la cote. Les depeches du portefeuille sont
+    conservees en plus du plafond — les ecarter serait ecarter la seule
+    rubrique que le lecteur vient chercher.
+    """
+    par_jour = {}
+    for e in entrees:
+        par_jour.setdefault(e["_jour"], []).append(e)
+
+    gardees = []
+    for jour in sorted(par_jour, reverse=True):
+        lot = par_jour[jour]
+        siennes = [e for e in lot if e["rubrique"] == "portefeuille"]
+        autres = sorted((e for e in lot if e["rubrique"] != "portefeuille"),
+                        key=lambda e: (-e["score"], e["titre"]))
+        place = max(MAX_PAR_JOUR - len(siennes), 0)
+        gardees.extend(siennes + autres[:place])
+
+    # Ordre d'affichage final : du jour le plus recent au plus ancien, et a
+    # l'interieur d'une journee, de la depeche la plus pertinente a la moins.
+    gardees.sort(key=lambda e: (e["_jour"], e["score"]), reverse=True)
+    return gardees

@@ -168,6 +168,16 @@ def _render_revue(jours: int = 1):
         )
         return
 
+    from analysis.revue import MAX_PAR_JOUR
+    total = sum(len(v or []) for v in rubriques.values())
+    st.caption(
+        f"**{total} dépêche(s)** retenues sur la période, au plus "
+        f"**{MAX_PAR_JOUR} par jour**, choisies sur leur pertinence pour la "
+        f"cote et non sur leur heure de publication. Sources : sikafinance, "
+        f"Financial Afrik, Jeune Afrique. Le nombre gris de chaque carte est "
+        f"sa note ; survolez-le pour en voir le détail."
+    )
+
     for cle, titre in RUBRIQUES:
         entrees = rubriques.get(cle) or []
         if not entrees:
@@ -287,12 +297,28 @@ def _carte_depeche(e: dict) -> str:
             f"Vos lignes exposées : {noms}</span>"
         )
 
+    # La ponderation qui a retenu cette depeche, avec ses motifs en infobulle.
+    # Une selection qui ne dit pas pourquoi elle selectionne n'est pas une
+    # revue, c'est un tri opaque.
+    note = ""
+    if e.get("score") is not None:
+        motifs = " · ".join(e.get("motifs") or []) or "aucun motif particulier"
+        motifs = motifs.replace('"', "'")
+        note = (
+            f"<span title=\"pertinence {e['score']} — {motifs}\" "
+            "style='font-family:var(--font-mono);font-size:10.5px;"
+            "padding:2px 6px;border-radius:4px;background:var(--bg-sunken);"
+            "color:var(--ink-4);cursor:help;'>"
+            f"{e['score']}</span>"
+        )
+
     tetes = [x for x in (chip,
                          f"<span style='font-size:12px;color:var(--ink-3);'>"
                          f"{e.get('source', '')}</span>" if e.get("source") else "",
                          f"<span style='font-family:var(--font-mono);font-size:11px;"
                          f"color:var(--ink-4);'>{_date_courte(e.get('date'))}</span>"
                          if e.get("date") else "",
+                         note,
                          etoile) if x]
     entete = (
         "<div style='display:flex;align-items:center;gap:8px;flex-wrap:wrap;"
