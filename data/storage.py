@@ -2436,7 +2436,100 @@ def get_total_account_fees(user_id: Optional[str] = None) -> float:
 
 # --- Quarterly Data ---
 
-def save_quarterly_data(data: dict) -> int:
+# Ecarts d'echelle au-dela desquels une valeur ne peut pas etre juste. Les
+# erreurs relevees le 09/09/2026 etaient toutes des facteurs 1000 (millions
+# lus comme milliards, milliers lus comme unites) ou des colonnes voisines
+# prises pour la bonne : jamais des ecarts de 2 ou 3.
+_SEUIL_ECHELLE_HAUT = 20.0
+_SEUIL_ECHELLE_BAS = 20.0
+
+
+def verifier_coherence_trimestre(data: dict) -> list:
+    """Retourne la liste des incoherences d'une ligne trimestrielle.
+
+    Ne juge que ce qui ne peut pas etre vrai, jamais ce qui surprend :
+    l'application n'a pas a arbitrer si une societe a fait une bonne annee.
+
+    Les trois familles d'erreurs relevees le 09/09/2026 :
+      - une unite mal lue (facteur 1000) ;
+      - une colonne voisine prise pour la bonne (comparatif N-1, variation
+        en valeur, variation en pourcentage, exercice complet) ;
+      - un document annuel lu comme un trimestre.
+    Aucune ne produit un ecart discret : toutes sortent d'un ordre de
+    grandeur. C'est ce que ce controle attrape.
+    """
+    ecarts = []
+    tk = data.get("ticker")
+    rev = data.get("revenue")
+    ni = data.get("net_income")
+
+    if rev is not None and rev <= 0:
+        ecarts.append(f"chiffre d'affaires nul ou negatif ({rev:,.0f}) — "
+                      "probablement une colonne de variation")
+
+    if rev is not None and ni is not None and rev > 0 and abs(ni) > rev:
+        ecarts.append(f"resultat net ({ni:,.0f}) superieur au chiffre "
+                      f"d'affaires ({rev:,.0f})")
+
+    # Echelle : compare a la mediane des autres periodes du meme titre.
+    # `<>` et non `IS NOT` : `IS NOT $1` n'est pas du SQL valide en Postgres,
+    # la requete levait et le controle etait saute sans bruit.
+    if tk and (rev is not None or ni is not None):
+        try:
+            hist = read_sql_df(
+                "SELECT revenue, net_income FROM quarterly_data "
+                "WHERE ticker = ? AND COALESCE(periode, '') <> ?",
+                params=(tk, data.get("periode") or ""))
+        except Exception:
+            hist = None
+        if hist is not None and not hist.empty:
+            # Chaque grandeur se compare a SA propre mediane. Comparer un
+            # resultat net a une mediane de chiffre d'affaires accuse toute
+            # societe a faible marge : chez un distributeur de carburant,
+            # 0,7 % de marge nette est la norme, pas une anomalie.
+            for libelle, valeur, colonne in (
+                    ("chiffre d'affaires", rev, "revenue"),
+                    ("resultat net", ni, "net_income")):
+                if valeur is None or valeur == 0:
+                    continue
+                serie = hist[colonne].dropna()
+                serie = serie[serie > 0]
+                if len(serie) < 3:
+                    continue
+                med = float(serie.median())
+                if med <= 0:
+                    continue
+                v = abs(float(valeur))
+                if v > med * _SEUIL_ECHELLE_HAUT:
+                    ecarts.append(
+                        f"{libelle} {v / med:,.0f} fois la mediane du titre "
+                        f"({med:,.0f}) — unite probablement mal lue")
+                elif v * _SEUIL_ECHELLE_BAS < med:
+                    ecarts.append(
+                        f"{libelle} {med / v:,.0f} fois plus petit que la "
+                        f"mediane du titre ({med:,.0f}) — unite probablement "
+                        "mal lue")
+    return ecarts
+
+
+def save_quarterly_data(data: dict, forcer: bool = False) -> int:
+    """Ecrit une ligne trimestrielle, apres controle de coherence.
+
+    Leve `ValueError` si la valeur ne peut pas etre juste. L'appelant
+    (extraction automatique) enregistre alors un echec explicite plutot que
+    d'ecrire une donnee fausse : c'est exactement ce qui manquait le
+    09/09/2026, ou 28 671 milliards de FCFA de produit net bancaire sont
+    entres en base sans que rien ne bronche.
+
+    `forcer=True` passe outre — reserve a une saisie humaine deliberee.
+    """
+    if not forcer:
+        ecarts = verifier_coherence_trimestre(data)
+        if ecarts:
+            raise ValueError(
+                f"{data.get('ticker')} {data.get('fiscal_year')} "
+                f"{data.get('periode') or ''} : " + " ; ".join(ecarts))
+
     conn = get_connection()
     cursor = conn.execute(
         """INSERT INTO quarterly_data (ticker, fiscal_year, quarter, periode,
