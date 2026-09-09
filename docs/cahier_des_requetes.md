@@ -3,7 +3,7 @@
 Registre des demandes en attente. Une ligne par demande, dans l'ordre décidé
 par le donneur d'ordre. Rien n'en sort sans être fait ou explicitement retiré.
 
-Mis à jour le 2026-09-06.
+Mis à jour le 2026-09-09.
 
 ## En cours
 
@@ -14,6 +14,7 @@ Mis à jour le 2026-09-06.
 | 3 | ~~Correctifs des repères sectoriels~~ | 2026-09-05 | **livré 2026-09-06** — 5 ratios construits, seuil porté à 3 observations, portée nommée |
 | 4 | ~~Routine quinzomadaire~~ | demandée de longue date | **livré 2026-09-06** — `routine_quinzaine.py` + atelier, billet GitHub en cas d'échec |
 | 15 | **Neuf dividendes en contradiction avec l'avis BRVM**, après élimination des opérations sur titre. SOLIBRA 2020 et 2021 sont au dixième de l'avis ; Filtisac 2024 porte 145 contre 1 320. Restent aussi CFAO 2022, Onatel 2024, Vivo 2021, SITAB 2022, TotalEnergies Sénégal 2022, Filtisac 2023. | 2026-09-06 | à instruire |
+| 26 | **Le Composite Total Return porte les variations du Composite**, au centième près : −0,53 % sur le jour et −1,70 % en cumul annuel, alors que sa valeur lui est propre (221,40 contre 550,08). C'est impossible — un indice de rendement **total** compte les dividendes, et sur une place qui rend 5 à 7 % son cumul annuel ne peut pas égaler celui de l'indice de prix. Reste à savoir si la source ne les publie pas séparément, ou si `scripts/scrape_indices.py` les recopie depuis la ligne voisine. En attendant, le tableau de bord affiche la valeur et **tait** les deux variations. | 2026-09-09 | à instruire |
 | 23 | **Aucune valeur ne dit si elle est retraitée ou telle que payée.** Les deux conventions cohabitent dans `dps` sans être distinguées. | 2026-09-06 | à trancher |
 | 16 | **ETI hors collecte** — la BRVM publie ses dividendes tantôt en dollars, tantôt en cents, tantôt étiquetés « FCFA » alors qu'ils sont en dollars. Deux lignes contradictoires pour le seul exercice 2025. | 2026-09-06 | à trancher |
 | 20 | **Dividendes recopiés d'une année sur l'autre.** Bernabé n'a d'avis que pour l'exercice 2022 (150 FCFA), et la base porte 150 sur 2020, 2021, 2022, 2023 et 2024 ; ses comptes 2025 déclarent « Total dividendes bruts à distribuer : 0 ». La sonde `distribution` le voit (×27,6 en 2023, ×135,9 en 2024). Combien d'autres titres portent ainsi un dividende reconduit sans source ? | 2026-09-06 | à instruire |
@@ -29,6 +30,7 @@ Mis à jour le 2026-09-06.
 | # | Constat | État |
 |---|---|---|
 | 21 | SNTS.sn — capitaux propres de 224,3 à 1 160,7 Mds entre 2024 et 2025, relevé par la sonde `saut`. | à relire |
+| 27 | Le **Composite Total Return** n'était affiché nulle part avant le 09/09 : collecté chaque jour et stocké dans `indices_cache`, il tombait d'une rangée de quatre colonnes qui en contenait cinq. C'est le seul indice qui compte les dividendes. | corrigé côté affichage ; ses variations restent en question (#26) |
 | 22 | ORGT.tg 2026 — crédits négatifs (−188,75 Mds), relevé par la sonde `signe`. | à relire |
 | 6 | Le total du bilan est faux ou absent chez quelques titres. LNBB affiche 14,8 Md d'actif pour 21,95 Md de capitaux propres — impossible. | à corriger |
 | 7 | SHEC porte 18,4 Md de capitaux propres pour 605 M de chiffre d'affaires, sur deux exercices. | à vérifier |
