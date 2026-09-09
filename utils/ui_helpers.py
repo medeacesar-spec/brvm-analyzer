@@ -394,6 +394,46 @@ def note(titre: str, texte: str, ton: str = "primary"):
     )
 
 
+def barre_signee(valeur, borne: float = 40.0, unite: str = "%",
+                 mini: str = "70px", legende: str = "") -> str:
+    """Barre centrée sur un axe : à droite si positive, à gauche sinon.
+
+    Une variation a un signe ; une barre qui part toujours de la gauche le
+    perd, et sa longueur se met alors à dire l'amplitude sans dire le sens.
+    Dans une liste de « pires performances » où cinq valeurs sur huit sont
+    positives, cela donne une longue barre rouge à un titre qui a gagné.
+
+    L'échelle est bornée : au-delà de `borne`, la barre sature. C'est l'ordre
+    de grandeur qui se lit, pas le centième de point. À l'appelant de choisir
+    la borne — un maximum fixe quand l'échelle doit rester comparable d'une
+    lecture à l'autre, le maximum observé quand rien ne doit saturer.
+    """
+    import pandas as _pd
+    if valeur is None or (isinstance(valeur, float) and _pd.isna(valeur)):
+        return "<span style='color:var(--ink-4);'>—</span>"
+    borne = borne or 1.0
+    part = max(-1.0, min(1.0, valeur / borne)) * 50.0
+    couleur = "var(--up)" if valeur >= 0 else "var(--down)"
+    gauche = 50.0 if valeur >= 0 else 50.0 + part
+    titre = legende or f"{valeur:+.2f} {unite}"
+    return (
+        f"<span title='{titre}' "
+        "style='position:relative;display:inline-block;width:100%;"
+        f"min-width:{mini};height:8px;background:var(--bg-sunken);"
+        "border-radius:999px;overflow:hidden;vertical-align:middle;'>"
+        # UN PLANCHER DE DEUX PIXELS. Sur une echelle commune large — le
+        # classement va de −56 a +312 % — une variation de 1,8 % dessine trois
+        # dixiemes de la piste, soit moins d'un pixel : la barre disparait et
+        # le lecteur croit la valeur nulle. `min-width` garantit qu'on VOIT
+        # qu'il y a quelque chose, sans toucher a la proportion des autres.
+        f"<span style='position:absolute;top:0;left:{gauche:.1f}%;"
+        f"width:{abs(part):.1f}%;height:100%;background:{couleur};"
+        + ("min-width:2px;" if valeur else "") + "'></span>"
+        "<span style='position:absolute;top:0;left:50%;width:1px;"
+        "height:8px;background:var(--border-strong);'></span></span>"
+    )
+
+
 def cartes_constats(constats, mini: str = "300px"):
     """Une grille de constats en cartes — le motif `bCards` du canevas.
 

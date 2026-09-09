@@ -135,7 +135,7 @@ même soir, elle porte trois écarts.
 
 | # | Onglet | Écart | État |
 |---|---|---|---|
-| F1 | Classement | **Les barres ignorent le signe.** La largeur vaut `abs(valeur) / max`, et la couleur est fixée par la liste, pas par la valeur. Sur le classement 1 an, **cinq des huit « pires performers » sont positifs** : SITAB (+13,5 %) reçoit une barre rouge de 24 % de largeur, plus longue que celle de la Loterie du Bénin (−5,1 %, 9 %). La barre lue comme une baisse n'en est pas une. La **barre signée** existe déjà dans l'application, sous « Toutes les cotations » | à faire |
+| F1 | Classement | **Les barres ignorent le signe.** La largeur vaut `abs(valeur) / max`, et la couleur est fixée par la liste, pas par la valeur. Sur le classement 1 an, **cinq des huit « pires performers » sont positifs** : SITAB (+13,5 %) reçoit une barre rouge de 24 % de largeur, plus longue que celle de la Loterie du Bénin (−5,1 %, 9 %). La barre lue comme une baisse n'en est pas une. La **barre signée** existe déjà dans l'application, sous « Toutes les cotations » | **fait** — vu au rendu le 08/09, mesuré dans le DOM : positifs à droite de l'axe en vert, négatifs à gauche en rouge, **échelle commune aux deux colonnes** |
 | F2 | Par secteur | « Performance sectorielle » rendue en **graphique de la moyenne** ; le canevas met un **tableau à six colonnes** : Titres, Moyenne, **Médiane**, Position (barre signée), **Étendue**. La médiane et l'étendue disent si la moyenne est représentative ou tirée par un titre — l'application tient déjà ce raisonnement dans l'onglet Risque | à faire |
 | F3 | — | Quatre blocs hors canevas : le **curseur** du nombre de titres, le **sélecteur de secteur** en descente, « Rendement rapporté au risque · 5 ans » et « Comparaison secteurs ». Le sélecteur de période offre par ailleurs 3M/6M/1A/2A/3A/Max là où le canevas propose 1 mois/3 mois/1 an/3 ans/5 ans | à arbitrer (ajouts de l'app) |
 
@@ -143,8 +143,8 @@ même soir, elle porte trois écarts.
 
 | # | Onglet | Écart | État |
 |---|---|---|---|
-| P1 | Performance | Le tableau des positions n'a pas la **barre signée** de variation | à faire |
-| P2 | Performance | L'intro omet « frais d'achat inclus dans le coût de revient » | à faire |
+| P1 | Performance | Le tableau des positions n'a pas la **barre signée** de variation | **fait** — vu au rendu le 08/09. Colonne **Variation** : la barre dit ce que le P&L cache, SGBCI affiche +124 000 F pour +11,5 % quand NSIA affiche +144 900 F pour +73 % |
+| P2 | Performance | L'intro omet « frais d'achat inclus dans le coût de revient » | **fait** — vu au rendu le 08/09, et la phrase dit aussi ce que la nouvelle colonne apporte |
 | P3 | Recommandations | Manque la carte **Concentration 3 lignes** (seuil de vigilance 50 %) | **fait** — vu au rendu le 08/09. La rangée passe de trois à quatre cartes et au gabarit v4 |
 | P4 | Recommandations | Diagnostic en tableau ; le canevas en fait des **cartes** à filet et pastille | **fait** — vu au rendu le 08/09. Composant partagé `cartes_constats`, en grille repliable |
 | P5 | Risque | Manque les **4 cartes de risque** : volatilité du portefeuille, **bêta agrégé**, perte maximale simulée, rendement par unité de risque | **fait** — vu au rendu le 08/09. Trois des quatre mesures n'existaient pas : elles sont calculées sur la série du portefeuille reconstituée aux poids d'aujourd'hui |
@@ -260,5 +260,5 @@ signe** : le calcul, lui, tranche.
 3. ~~Les contrôles segmentés (A2, A5)~~ — **fait le 08/09** ; ~~I1 fait~~. A1 et A6 renvoyés à un arbitrage : ce sont des fonctions nouvelles, pas des habillages.
 4. ~~Les tableaux pédagogiques de Screening (S1, S2)~~ — **fait le 08/09**.
 5. ~~Les blocs à re-rendre : P4 et C1~~ — **fait le 08/09** ; ~~A8 refusé~~.
-6. La barre signée : les positions du portefeuille (P1) **et le classement de Performance des Titres (F1)** — le même composant répond aux deux.
+6. ~~La barre signée : P1 et F1~~ — **fait le 08/09**, par `barre_signee` dans `utils/ui_helpers.py`, extrait du tableau de bord qui l'avait en propre.
 7. Les détails : T1, T2, H1, H2, D2, D3, A9-A13, P2 — ~~I2 fait le 08/09~~.
