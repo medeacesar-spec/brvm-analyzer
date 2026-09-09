@@ -99,19 +99,30 @@ def _find_report_link(ticker: str, fiscal_year: int, pub_type: str):
     return {"id": int(r["id"]), "url": r["url"], "report_type": r["report_type"]}
 
 
-def main():
-    # 1. Lit les pending depuis analysis.publications
+def integrer_en_instance(progres=None) -> dict:
+    """Integre toutes les publications « A integrer ».
+
+    `progres` est un rappel optionnel `progres(rang, total, libelle)`,
+    appele avant chaque publication : c'est par la que l'ecran
+    d'administration alimente sa barre d'avancement. En ligne de commande
+    il reste a None et la fonction ne parle a personne.
+
+    Retourne un dict : compteurs + `lignes`, une liste de tuples
+    (ticker, exercice, type, sort, titre). Le sort vaut "ok", "ok Qn",
+    "no_pdf", "no_data", "no_quarter", ou un message d'erreur prefixe.
+
+    Cette fonction portait le nom `main` et n'avait pour sortie que des
+    `print` : rien d'autre qu'un terminal ne pouvait l'appeler.
+    """
     from analysis.publications import get_publications_with_status
+    vide = {"total": 0, "ok": 0, "sans_pdf": 0, "sans_donnee": 0,
+            "erreurs": 0, "lignes": []}
     pubs = get_publications_with_status(limit=200)
     if pubs.empty:
-        print("Aucune publication.")
-        return
+        return vide
     pending = pubs[pubs["status"] == "À intégrer"].copy()
     if pending.empty:
-        print("Aucune publication À intégrer.")
-        return
-
-    print(f"Pending : {len(pending)} publication(s)\n")
+        return vide
 
     n_ok = 0
     n_skip_no_pdf = 0
@@ -126,6 +137,8 @@ def main():
         pub_id = int(p.get("id")) if p.get("id") is not None else None
         title = p.get("title_pretty") or p.get("title") or ""
         label = f"[{i}/{len(pending)}] {tk:8} {fy} {pt:12}"
+        if progres is not None:
+            progres(i, len(pending), f"{tk} · {fy} · {pt}")
 
         if not fy or pt not in TYPE_MAP:
             print(f"{label} SKIP (type/year non gere)")
@@ -236,18 +249,32 @@ def main():
             _log_attempt(pub_id, tk, fy, pt, link["url"], "save_error",
                           error=str(e))
 
-    # Résumé
-    print()
+    return {
+        "total": len(pending),
+        "ok": n_ok,
+        "sans_pdf": n_skip_no_pdf,
+        "sans_donnee": n_skip_no_data,
+        "erreurs": n_err,
+        "lignes": summary,
+    }
+
+
+def main():
+    res = integrer_en_instance()
+    if not res["total"]:
+        print("Aucune publication À intégrer.")
+        return
+    print(f"Pending : {res['total']} publication(s)\n")
     print("=" * 60)
-    print(f"OK             : {n_ok}")
-    print(f"Skip (no PDF)  : {n_skip_no_pdf}")
-    print(f"Skip (no data) : {n_skip_no_data}")
-    print(f"Erreurs        : {n_err}")
-    if n_skip_no_data or n_err:
+    print(f"OK             : {res['ok']}")
+    print(f"Skip (no PDF)  : {res['sans_pdf']}")
+    print(f"Skip (no data) : {res['sans_donnee']}")
+    print(f"Erreurs        : {res['erreurs']}")
+    if res["sans_donnee"] or res["erreurs"]:
         print()
         print("Detail des cas non traites :")
-        for tk, fy, pt, status, title in summary:
-            if status not in ("ok",) and not status.startswith("ok "):
+        for tk, fy, pt, status, title in res["lignes"]:
+            if status != "ok" and not status.startswith("ok "):
                 print(f"  {tk:8} {fy} {pt:12} : {status}")
 
 

@@ -574,10 +574,187 @@ def _render_news_feed(jours: int = JOURS_FIL):
         _render_extraction_diagnostics(news)
 
 
+def _render_bouton_integration(news_df):
+    """Lance l'integration automatique des rapports en instance.
+
+    Le traitement existait depuis toujours en ligne de commande
+    (`scripts/extract_pending_pubs.py`), ce qui le rendait inaccessible
+    depuis l'application deployee : un rapport en instance y restait
+    jusqu'a ce que quelqu'un ouvre un terminal.
+    """
+    pending = (news_df[news_df["status"] == "À intégrer"]
+               if not news_df.empty else pd.DataFrame())
+    n = len(pending)
+
+    _render_compte_rendu_integration()
+
+    gauche, droite = st.columns([1, 2])
+    with gauche:
+        lance = st.button(
+            f"Intégrer les rapports ({n})",
+            type="primary" if n else "secondary",
+            disabled=(n == 0),
+            use_container_width=True,
+            key="admin_integrer_pending",
+        )
+    with droite:
+        if n:
+            st.caption(
+                f"{n} rapport(s) périodique(s) attendent leurs chiffres. "
+                "Le traitement télécharge le PDF de chacun, en extrait le "
+                "chiffre d'affaires, le résultat net et l'EBIT, puis écrit "
+                "dans `fundamentals` (annuel) ou `quarterly_data` "
+                "(trimestriel, semestriel). Comptez quelques dizaines de "
+                "secondes par rapport : la lecture passe par l'OCR."
+            )
+        else:
+            st.caption(
+                "Aucun rapport en instance. Un rapport n'apparaît ici que "
+                "s'il porte un ticker, un type périodique et un exercice — "
+                "sans quoi rien ne peut le rapprocher d'une ligne comptable."
+            )
+
+    if not lance:
+        return
+
+    from scripts.extract_pending_pubs import integrer_en_instance
+
+    barre = st.progress(0.0, text="Préparation…")
+
+    def _avancement(rang, total, libelle):
+        barre.progress((rang - 1) / max(total, 1),
+                       text=f"[{rang}/{total}] {libelle}")
+
+    try:
+        res = integrer_en_instance(progres=_avancement)
+    except Exception as e:                      # noqa: BLE001
+        barre.empty()
+        st.error(f"L'intégration s'est interrompue : {e}")
+        return
+
+    barre.empty()
+
+    # Le compte rendu est mis de cote AVANT le rerun. Ecrit directement, il
+    # serait balaye par le rechargement que l'integration rend necessaire —
+    # l'utilisateur cliquerait, la page se rafraichirait, et il ne saurait
+    # jamais ce qui est passe.
+    st.session_state["_integration_res"] = res
+    st.rerun()
+
+
+_MOTIFS_ECHEC = {
+    "no_pdf": "aucun PDF dans `report_links`",
+    "no_data": "le PDF s'ouvre mais aucun chiffre n'en sort",
+    "no_quarter": "le trimestre n'est pas lisible dans le nom du fichier",
+}
+
+
+def _render_compte_rendu_integration():
+    """Affiche le compte rendu du dernier passage, puis l'oublie."""
+    res = st.session_state.pop("_integration_res", None)
+    if not res:
+        return
+
+    if not res["total"]:
+        st.info("Rien à intégrer : la liste s'était vidée entre-temps.")
+        return
+
+    st.markdown(
+        f"**{res['ok']} intégré(s)** sur {res['total']} · "
+        f"{res['sans_pdf']} sans PDF · {res['sans_donnee']} sans chiffre "
+        f"lisible · {res['erreurs']} en erreur"
+    )
+
+    echecs = [l for l in res["lignes"]
+              if l[3] != "ok" and not str(l[3]).startswith("ok ")]
+    if echecs:
+        st.caption(
+            "Ce qui n'est pas passé — chaque ligne reste « À intégrer » et "
+            "peut être saisie à la main plus bas :"
+        )
+        for tk, fy, pt, sort, titre in echecs:
+            st.markdown(f"- **{tk}** · {fy} · {pt} — "
+                        f"{_MOTIFS_ECHEC.get(sort, sort)}")
+
+
+def _render_avis_ecartes():
+    """Rend au fil les avis ecartes qu'on veut y voir revenir.
+
+    `ignored = 1` etait un aller sans retour : rien dans l'application ne
+    montrait ce qui avait ete ecarte, ni ne permettait de le reprendre.
+    """
+    from data.storage import get_ignored_publications, restore_publications
+
+    try:
+        ecartes = get_ignored_publications(limit=300)
+    except Exception:                           # noqa: BLE001
+        ecartes = pd.DataFrame()
+
+    rendus = st.session_state.pop("_avis_rendus", None)
+    if rendus is not None:
+        if rendus:
+            st.success(f"{rendus} avis rendu(s) au fil d'actualités.")
+        else:
+            st.warning(
+                "Aucune ligne n'a changé : ces avis étaient déjà au fil."
+            )
+
+    n = 0 if ecartes.empty else len(ecartes)
+    with st.expander(f"Avis écartés du fil ({n})", expanded=bool(rendus)):
+        if not n:
+            st.caption(
+                "Aucun avis écarté. Écarter n'efface rien : la ligne reste "
+                "en base et revient ici, d'où elle peut être rendue au fil."
+            )
+            return
+
+        st.caption(
+            "Cochez ce qui doit revenir au fil d'actualités. Les avis "
+            "écartés ne sont pas supprimés — c'est un drapeau, il se lève "
+            "des deux côtés."
+        )
+
+        types = sorted(t for t in ecartes["pub_type"].dropna().unique())
+        choisis = st.multiselect(
+            "Filtrer par type", types, default=[],
+            key="avis_ecartes_types",
+        )
+        vue = ecartes[ecartes["pub_type"].isin(choisis)] if choisis else ecartes
+
+        with st.form("form_avis_ecartes"):
+            a_rendre = []
+            for _, a in vue.head(60).iterrows():
+                titre = (a.get("title") or "")[:110]
+                quand = _date_courte(a.get("pub_date"))
+                libelle = (f"{quand} · **{a.get('ticker') or '—'}** · "
+                           f"{a.get('pub_type') or '—'} — {titre}")
+                if st.checkbox(libelle, key=f"avis_rendre_{a['id']}"):
+                    a_rendre.append(int(a["id"]))
+            if len(vue) > 60:
+                st.caption(f"{len(vue) - 60} ligne(s) de plus, non listées. "
+                           "Filtrez par type pour les atteindre.")
+            rendu = st.form_submit_button(
+                "Rendre au fil", type="primary", use_container_width=True,
+            )
+
+        if rendu:
+            if not a_rendre:
+                st.warning("Rien de coché.")
+            else:
+                n_faits = restore_publications(a_rendre)
+                # Meme raison que pour l'integration : le message doit
+                # survivre au rerun, sinon personne ne le lit.
+                st.session_state["_avis_rendus"] = n_faits
+                st.rerun()
+
+
 def _render_extraction_diagnostics(news_df):
     """Section admin qui montre les échecs d'extraction récents +
     formulaire de saisie manuelle pour les publications À intégrer."""
     section_heading("Diagnostic extraction (admin)", spacing="loose")
+
+    _render_bouton_integration(news_df)
+    _render_avis_ecartes()
 
     # ── Panneau échecs récents ──
     try:
