@@ -730,3 +730,72 @@ div[class*="st-key-dash_top5_"] button:hover {
 section[data-testid="stSidebar"] .stMarkdown span.badge-role {
     color: #12294B !important;
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   Téléphone
+   ════════════════════════════════════════════════════════════════════
+   Le fichier n'avait AUCUNE règle responsive — pas une seule media query
+   sur 732 lignes. Sur un écran de 375 px, deux choses cassaient :
+
+   1. Les tableaux. L'application en pose une quinzaine, chacun dans une
+      enveloppe arrondie en `overflow:hidden` — indispensable pour que les
+      coins de la bordure rognent la table. Sur un écran étroit, cette même
+      propriété COUPE les colonnes de droite au lieu de les laisser
+      défiler : le « Net » d'un tableau de dividendes disparaissait
+      purement et simplement. Rendre l'enveloppe défilante corrige les
+      quinze d'un coup, sans toucher à quinze styles en ligne.
+
+   2. Les marges. 5 rem de padding latéral sur 375 px, il reste 215 px de
+      texte.                                                              */
+
+/* `[data-testid="stMain"]` et non `.main` : Streamlit a renomme ce
+   conteneur en 1.50. Toute regle ecrite avec `.main` y est inerte — c'est
+   le cas, plus haut dans ce fichier, de « densite +30 % : padding top
+   reduit », qui ne s'applique plus depuis la montee de version. */
+@media (max-width: 640px) {
+
+    /* L'enveloppe défile au lieu de couper. `:has()` est disponible sur
+       Safari iOS 15.4+ et Chrome Android 105+ ; là où il manque, la règle
+       est simplement ignorée et on retrouve le comportement d'avant. */
+    [data-testid="stMain"] .stMarkdown div:has(> table) {
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch;
+    }
+    /* Sans cela la table se comprime au lieu de déborder, et les colonnes
+       se cassent au milieu d'un mot plutôt que de défiler. */
+    [data-testid="stMain"] .stMarkdown div:has(> table) > table {
+        min-width: max-content;
+    }
+
+    [data-testid="stMain"] .block-container {
+        padding-left: 0.9rem !important;
+        padding-right: 0.9rem !important;
+        /* De quoi degager le bouton d'ouverture de la barre, qui se pose
+           par-dessus le contenu en haut a gauche — sans plus, la regle
+           generale ayant volontairement resserre cette page. */
+        padding-top: 1.7rem !important;
+    }
+
+    /* Les titres du canevas sont calibrés pour un écran large. */
+    [data-testid="stMain"] h1 { font-size: 27px !important; letter-spacing: -0.02em; }
+    [data-testid="stMain"] h2 { font-size: 18px !important; }
+
+    /* Les barres d'onglets dépassent à cinq onglets : on les fait défiler
+       plutôt que de les empiler, l'empilement mangeant un demi-écran. */
+    [data-testid="stMain"] div[data-testid="stTabs"] div[role="tablist"] {
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+    [data-testid="stMain"] div[data-testid="stTabs"] div[role="tablist"]::-webkit-scrollbar {
+        display: none;
+    }
+
+    /* Les tableaux Streamlit et les graphiques Plotly ne doivent jamais
+       pousser la page en largeur : c'est ce qui produit le défilement
+       horizontal de la page entière, le plus désagréable sur téléphone. */
+    [data-testid="stMain"] div[data-testid="stDataFrame"],
+    [data-testid="stMain"] div[data-testid="stPlotlyChart"] {
+        max-width: 100% !important;
+        overflow-x: auto;
+    }
+}

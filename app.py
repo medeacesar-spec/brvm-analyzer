@@ -24,7 +24,11 @@ st.set_page_config(
     page_title="BRVM Analyzer",
     page_icon="📊",
     layout="wide",
-    initial_sidebar_state="expanded",
+    # « auto » et non « expanded » : Streamlit replie alors la barre sur un
+    # ecran etroit et la garde ouverte sur un grand. Forcee a « expanded »,
+    # elle couvrait les deux tiers d'un ecran de telephone — le contenu
+    # etait derriere, illisible, des le premier chargement.
+    initial_sidebar_state="auto",
 )
 
 # ─── Design v2 (palette Africain moderne) : CSS externalisé ───
