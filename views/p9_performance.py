@@ -133,6 +133,21 @@ def render():
         st.warning("Aucune donnée de prix disponible.")
         return
 
+    # UN TITRE RETIRE DE LA COTE N'A PLUS DE PERFORMANCE A CLASSER. Le retrait
+    # de SVOC.ci a ete « diffuse partout » le 05/09, mais pas ici : il figurait
+    # encore au classement, et le snapshot le porte sans secteur ni nom — d'ou
+    # une ligne sans intitule dans le tableau sectoriel. Le tableau de bord
+    # applique deja ce filtre ; cette page le rejoint.
+    from config import tickers_retires
+    _hors_cote = tickers_retires()
+    if _hors_cote:
+        perf_df = perf_df[~perf_df["ticker"].isin(_hors_cote)].copy()
+
+    # Ceinture et bretelles : un secteur vide ne fait pas une ligne anonyme.
+    if "sector" in perf_df.columns:
+        perf_df["sector"] = (perf_df["sector"].fillna("").astype(str).str.strip()
+                             .replace("", "Non classé"))
+
     # ─── Ligne titre : caption gauche + period pills droite ───
     col_sub, col_period = st.columns([3, 2])
 
@@ -324,48 +339,87 @@ def render():
                            "toutes les autres.",
                 )
 
-        st.subheader(f"Performance sectorielle — {period}")
+        section_heading(f"Performance sectorielle — {period}", spacing="loose")
 
         sector_perf = (
             valid.groupby("sector")[col_perf]
             .agg(["mean", "median", "count", "min", "max"])
-            .rename(columns={
-                "mean": "Perf. moyenne",
-                "median": "Perf. médiane",
-                "count": "Nb titres",
-                "min": "Min",
-                "max": "Max",
-            })
-            .sort_values("Perf. moyenne", ascending=False)
+            .sort_values("mean", ascending=False)
         )
 
-        # Sector bar chart
-        fig_sector = go.Figure()
-        colors = [COLORS["green"] if v >= 0 else COLORS["red"] for v in sector_perf["Perf. moyenne"]]
-        fig_sector.add_trace(go.Bar(
-            x=sector_perf.index,
-            y=sector_perf["Perf. moyenne"] * 100,
-            marker_color=colors,
-            text=[f"{v:+.1f}%" for v in sector_perf["Perf. moyenne"] * 100],
-            textposition="outside",
-        ))
-        fig_sector.update_layout(
-            title=f"Performance moyenne par secteur — {period}",
-            yaxis_title="Performance (%)",
-            xaxis_title="",
-            plot_bgcolor=COLORS["bg"],
-            paper_bgcolor=COLORS["bg"],
-            font=dict(color=COLORS["text"]),
-            height=400,
-        )
-        st.plotly_chart(fig_sector, use_container_width=True)
+        # UN TABLEAU, PAS UN GRAPHIQUE PUIS LE MEME TABLEAU. L'onglet montrait
+        # un graphique en barres de la MOYENNE, puis un tableau brut qui
+        # redonnait les memes chiffres — et la moyenne seule ne dit pas si un
+        # secteur est homogene ou tire par un titre. Le canevas met une seule
+        # table a six colonnes, ou la MEDIANE et l'ETENDUE repondent
+        # precisement a cette question. C'est le raisonnement que l'onglet
+        # Risque tient deja sur la cote entiere.
+        from utils.ui_helpers import barre_signee
+        _echelle = (max(abs(v) for v in sector_perf["mean"]) * 100
+                    if not sector_perf.empty else 1.0) or 1.0
 
-        # Sector detail table
-        display_sector = sector_perf.copy()
-        for c in ["Perf. moyenne", "Perf. médiane", "Min", "Max"]:
-            display_sector[c] = display_sector[c].apply(_format_pct)
-        display_sector["Nb titres"] = display_sector["Nb titres"].astype(int)
-        st.dataframe(display_sector, use_container_width=True)
+        _th = ("font-size:10.5px;text-transform:uppercase;letter-spacing:0.08em;"
+               "color:var(--ink-3);font-weight:500;padding:9px 12px;"
+               "border-bottom:1px solid var(--border);background:var(--bg-sunken);")
+        _td = "padding:10px 12px;font-size:13px;border-bottom:1px solid var(--border-soft);"
+        _num = _td + "text-align:right;font-variant-numeric:tabular-nums;"
+
+        lignes = (
+            f"<tr>"
+            f"<th style='{_th};text-align:left;'>Secteur</th>"
+            f"<th style='{_th};text-align:right;'>Titres</th>"
+            f"<th style='{_th};text-align:right;'>Moyenne</th>"
+            f"<th style='{_th};text-align:right;'>Médiane</th>"
+            f"<th style='{_th};text-align:left;'>Position</th>"
+            f"<th style='{_th};text-align:right;'>Étendue</th>"
+            f"</tr>"
+        )
+        for secteur, r in sector_perf.iterrows():
+            _moy, _med = r["mean"] * 100, r["median"] * 100
+            _t = "var(--up)" if _moy >= 0 else "var(--down)"
+            lignes += (
+                f"<tr>"
+                f"<td style='{_td};font-weight:600;'>{secteur}</td>"
+                f"<td style='{_num};color:var(--ink-3);'>{int(r['count'])}</td>"
+                f"<td style='{_num};font-weight:600;color:{_t};'>{_moy:+.1f} %</td>"
+                f"<td style='{_num}'>{_med:+.1f} %</td>"
+                f"<td style='{_td};min-width:110px;'>"
+                + barre_signee(_moy, borne=_echelle, mini="90px",
+                               legende=f"moyenne {_moy:+.1f} %") +
+                f"</td>"
+                f"<td style='{_num};color:var(--ink-3);'>"
+                f"{r['min'] * 100:+.0f} / {r['max'] * 100:+.0f}</td>"
+                f"</tr>"
+            )
+        st.markdown(
+            f"<div style='border:1px solid var(--border);border-radius:12px;"
+            f"overflow:hidden;background:var(--bg-elev);'>"
+            f"<table style='width:100%;border-collapse:collapse;'>{lignes}</table></div>",
+            unsafe_allow_html=True,
+        )
+
+        # L'ECART ENTRE MOYENNE ET MEDIANE EST L'INFORMATION. Il se calcule,
+        # plutot que de laisser le lecteur comparer six paires de nombres.
+        _tires = [(i, abs(r["mean"] - r["median"]) * 100)
+                  for i, r in sector_perf.iterrows()
+                  if int(r["count"]) > 1
+                  and abs(r["mean"] - r["median"]) * 100 > max(
+                      3.0, abs(r["median"] * 100))]
+        _phrase = (
+            "La **position** situe la moyenne du secteur sur l'échelle commune "
+            f"à tous, ±{_echelle:.0f} %. L'**étendue** donne le plus faible et "
+            "le plus fort de ses titres : deux secteurs de même moyenne n'ont "
+            "pas la même dispersion."
+        )
+        if _tires:
+            _noms = ", ".join(f"**{n}**" for n, _ in sorted(
+                _tires, key=lambda x: -x[1])[:3])
+            _phrase += (
+                f" Moyenne et médiane s'écartent nettement sur {_noms} : "
+                f"là, le chiffre d'ensemble tient à un titre ou deux, et "
+                f"c'est la médiane qu'il faut lire."
+            )
+        st.caption(_phrase)
 
         # Drill-down by sector
         st.markdown("---")
