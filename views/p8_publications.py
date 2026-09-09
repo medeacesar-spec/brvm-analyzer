@@ -89,41 +89,49 @@ def _refresh_news():
 # Entry
 # ════════════════════════════════════════════════════════════════════
 
+# Le fil brut est le filet de securite : il sert a verifier qu'aucune
+# publication officielle n'est passee a la trappe, et cela demande du recul.
+# Trente jours, fixes — il n'a pas la meme fenetre que la revue, qui est une
+# lecture du jour.
+JOURS_FIL = 30
+
+
 def render():
     st.title("Infos Marché")
     st.caption("Chaque dépêche croise un chiffre calculé par l'app et une "
                "citation textuelle de la source. Rien n'est reformulé.")
 
-    # BARRE D'OUTILS DE PAGE. Le canevas place la période AU-DESSUS des
-    # onglets, et c'est ce qu'elle est : elle gouverne la page, pas un onglet.
-    # Posée sous les onglets, elle semblait ne valoir que pour la revue, alors
-    # que le fil brut couvre la même fenêtre.
-    # SEPT, TROIS, UN. La fenetre allait jusqu'a trente jours et ramenait trop
-    # de lignes pour qu'on y voie quelque chose. Sept jours par defaut : la
-    # plus large des trois, et deja moitie moins que l'ancienne valeur par
-    # defaut. Ce que la fenetre ecarte reste compte, onglet par onglet.
-    barre, _ = st.columns([1, 3])
-    with barre:
-        jours = st.segmented_control(
-            "Période", [1, 3, 7], default=7,
-            format_func=lambda j: f"{j} j", key="infos_periode",
-        ) or 7
-
+    # LA PERIODE NE GOUVERNE PLUS QUE LA REVUE. Elle etait posee au-dessus des
+    # onglets et valait pour les deux, parce que le canevas la met en barre
+    # d'outils de page. A l'usage, les deux onglets ne demandent pas la meme
+    # fenetre : la revue est une lecture du jour — sept jours ramenaient deja
+    # trop de depeches — quand le fil brut sert a verifier qu'aucune
+    # publication n'est passee a la trappe, ce qui demande du recul.
+    #
+    # Arbitrage du 09/09 : la revue va de sept jours a UN par defaut, le fil
+    # est fixe a trente. Le selecteur redescend donc dans l'onglet qu'il
+    # gouverne, sans quoi il promettrait d'agir sur les deux.
     tab0, tab1 = st.tabs([
         "Revue de presse",
         "Fil d'actualités",
     ])
     with tab0:
+        barre, _ = st.columns([1, 3])
+        with barre:
+            jours = st.segmented_control(
+                "Période", [7, 3, 1], default=1,
+                format_func=lambda j: f"{j} j", key="infos_periode",
+            ) or 1
         _render_revue(jours)
     with tab1:
-        _render_news_feed(jours)
+        _render_news_feed(JOURS_FIL)
 
 
 # ════════════════════════════════════════════════════════════════════
 # Tab 0 : Revue de presse
 # ════════════════════════════════════════════════════════════════════
 
-def _render_revue(jours: int = 7):
+def _render_revue(jours: int = 1):
     """Depeches croisees avec les chiffres extraits et le portefeuille.
 
     On ne reformule jamais : chaque entree combine des chiffres CALCULES par
@@ -336,7 +344,7 @@ def _carte_depeche(e: dict) -> str:
 # Tab 1 : Fil d'actualités
 # ════════════════════════════════════════════════════════════════════
 
-def _render_news_feed(jours: int = 7):
+def _render_news_feed(jours: int = JOURS_FIL):
     tickers_data = load_tickers()
     ticker_names = {t["ticker"]: t["name"] for t in tickers_data}
 
@@ -460,7 +468,9 @@ def _render_news_feed(jours: int = 7):
             + (f", dont **{hors_a_integrer}** reste"
                f"{'nt' if hors_a_integrer > 1 else ''} à intégrer"
                if hors_a_integrer else "")
-            + " — élargir la période en tête de page pour les voir."
+            + ". Le fil garde une fenêtre **fixe**, plus large que celle de "
+              "la revue : c'est lui qui sert à vérifier qu'aucune publication "
+              "officielle n'est passée à la trappe."
         )
 
     # ── Appliquer filtre types actifs ──
