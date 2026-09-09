@@ -577,6 +577,11 @@ def render():
                     st.markdown("</div>", unsafe_allow_html=True)
 
         # ═══════════════════════════════════════════════════════════════════
+        # Section Dividendes à venir — calculés, jamais saisis
+        # ═══════════════════════════════════════════════════════════════════
+        _render_dividendes_a_venir(portfolio)
+
+        # ═══════════════════════════════════════════════════════════════════
         # Section Dividendes encaissés
         # ═══════════════════════════════════════════════════════════════════
         section_heading("Dividendes encaissés", spacing="loose")
@@ -987,6 +992,109 @@ def render():
         _render_optimisation(portfolio, cash)
 
     _render_info_box()
+
+
+def _render_dividendes_a_venir(portfolio):
+    """Ce que le portefeuille va encaisser, et quand.
+
+    Rien n'est saisi ici : le Bulletin Officiel donne le brut par action, la
+    date de mise en paiement et les deux taux d'IRVM ; le portefeuille donne
+    les quantites. Le net se calcule. C'est la difference avec la section
+    voisine, « Dividendes encaisses », qui enregistre ce qui est ARRIVE.
+    """
+    from utils.ui_helpers import section_heading, kpi_grille
+    from analysis.dividendes import dividendes_attendus
+
+    section_heading("Dividendes à venir", spacing="loose")
+
+    profil = st.segmented_control(
+        "Régime fiscal", ["physique", "morale"], default="physique",
+        format_func=lambda p: f"Personne {p}", key="pf_div_profil",
+    ) or "physique"
+
+    try:
+        att = dividendes_attendus(portfolio, profil)
+    except Exception as e:                                      # noqa: BLE001
+        st.caption(f"Calcul indisponible : {e}")
+        return
+
+    lignes = att["lignes"]
+    if not lignes:
+        st.caption(
+            "Aucun dividende annoncé sur vos lignes pour l'instant. Cette "
+            "section ne montre que les **annonces en cours** du Bulletin "
+            "Officiel dont la date de mise en paiement n'est pas passée — "
+            "ce qui a déjà été versé est en dessous."
+        )
+    else:
+        prochaine = lignes[0]
+        kpi_grille([
+            {"label": "Net attendu", "value": f"{att['total_net']:,.0f}",
+             "sub": f"{CURRENCY} · {len(lignes)} ligne(s) concernée(s)",
+             "accent": "var(--up)"},
+            {"label": "Brut annoncé", "value": f"{att['total_brut']:,.0f}",
+             "sub": f"avant IRVM ({att['profil']})"},
+            {"label": "Retenue IRVM", "value": f"−{att['total_retenue']:,.0f}",
+             "sub": "prélevée à la source",
+             "accent": "var(--down)", "sub_color": "var(--down)"},
+            {"label": "Prochain versement", "value": _date_fr(prochaine["date"]),
+             "sub": f"{prochaine['emetteur']} · J+{prochaine['jours']}"},
+        ], mini="185px")
+
+        entete = ("font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;"
+                  "color:var(--ink-3);font-weight:500;padding:9px 10px;"
+                  "border-bottom:1px solid var(--border);background:var(--bg-sunken);")
+        cell = "padding:8px 10px;font-size:13px;border-bottom:1px solid var(--border);"
+        nb = cell + "text-align:right;font-variant-numeric:tabular-nums;"
+        html = (f"<tr><th style='{entete};text-align:left;'>Paiement</th>"
+                f"<th style='{entete};text-align:left;'>Titre</th>"
+                f"<th style='{entete};text-align:right;'>Quantité</th>"
+                f"<th style='{entete};text-align:right;'>Brut / action</th>"
+                f"<th style='{entete};text-align:right;'>Brut</th>"
+                f"<th style='{entete};text-align:right;'>IRVM</th>"
+                f"<th style='{entete};text-align:right;'>Net</th></tr>")
+        for l in lignes:
+            html += (
+                f"<tr><td style='{cell}'>{_date_fr(l['date'])}"
+                f"<span style='color:var(--ink-4);font-size:11px;'> · "
+                f"J+{l['jours']}</span></td>"
+                f"<td style='{cell}'><span class='ticker'>{l['ticker']}</span> "
+                f"<span style='color:var(--ink-2);'>{l['emetteur']}</span></td>"
+                f"<td style='{nb}'>{l['quantite']:,.0f}</td>"
+                f"<td style='{nb}'>{l['brut_action']:,.2f}</td>"
+                f"<td style='{nb}'>{l['brut']:,.0f}</td>"
+                f"<td style='{nb};color:var(--down);'>−{l['retenue']:,.0f} "
+                f"<span style='color:var(--ink-4);font-size:11px;'>"
+                f"({l['taux']:.0f} %)</span></td>"
+                f"<td style='{nb};font-weight:600;'>{l['net']:,.0f}</td></tr>")
+        st.markdown(
+            f"<div style='border:1px solid var(--border);border-radius:12px;"
+            f"overflow:hidden;background:var(--bg-elev);margin-top:6px;'>"
+            f"<table style='width:100%;border-collapse:collapse;'>{html}</table>"
+            f"</div>", unsafe_allow_html=True)
+        st.caption(
+            f"Brut par action et taux d'IRVM lus dans le Bulletin Officiel, "
+            f"quantités lues dans vos positions. Le net est **calculé** : "
+            f"quantité × brut, moins la retenue. Rien n'est recopié."
+        )
+
+    # Une annonce sans ticker ne se rattache a aucune ligne. La taire ferait
+    # manquer un versement a qui detient le titre.
+    if att["orphelines"]:
+        noms = ", ".join(f"{o['emetteur']} ({_date_fr(o['date'])})"
+                         for o in att["orphelines"])
+        st.warning(
+            f"Annonce(s) de dividende que le Bulletin ne rattache à aucun "
+            f"ticker : **{noms}**. Si vous détenez ce titre, le montant "
+            f"ci-dessus ne le compte pas."
+        )
+
+
+def _date_fr(iso: str) -> str:
+    """2026-09-16 → 16/09."""
+    t = str(iso or "")
+    return f"{t[8:10]}/{t[5:7]}" if len(t) >= 10 else t
+
 
 
 def _render_risque_ensemble(portfolio):
