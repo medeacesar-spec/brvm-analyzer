@@ -105,9 +105,9 @@ Légende : **à faire** · *en cours* · fait (vu au rendu)
 | A6 | Technique | Pas de sélecteur **Périodicité** (Journalière / Mensuelle) | à faire |
 | A7 | Recommandation | Manque les cartes **Prix actuel** et **Prix cible (modèle)** | **fait** — vu au rendu le 08/09, dans les deux cas : cible unique (BOAS.sn, « +9.5 % vs cours ») et méthodes divergentes (SNTS.sn, fourchette). Les deux tuiles qui répétaient ces chiffres plus bas ont été retirées |
 | A8 | Recommandation | Composition du score en barre empilée ; le canevas montre des **barres pondérées 60/40** | **refusé le 08/09** — voir ci-dessous |
-| A9 | Profil | Actionnariat en carte latérale ; le canevas en fait **3 cartes de KPI** | à faire |
-| A10 | Profil | Le nom de la société est répété en titre de section | à faire |
-| A11 | Risque | Un titre de section « Risque » en trop au-dessus de la note | à faire |
+| A9 | Profil | Actionnariat en carte latérale ; le canevas en fait **3 cartes de KPI** | **fait** — vu au rendu le 08/09. Trois chiffres de structure — titres émis, flottant, actionnaire principal — sortent de la colonne des coordonnées pour ouvrir l'onglet |
+| A10 | Profil | Le nom de la société est répété en titre de section | **fait** — vu au rendu le 08/09 |
+| A11 | Risque | Un titre de section « Risque » en trop au-dessus de la note | **fait** — vu au rendu le 08/09 : l'onglet s'ouvre sur la lecture |
 | A12 | Technique | Emoji résiduel « 📖 Comprendre les indicateurs techniques » | à faire |
 | A13 | Technique | Tendance affichée « Haussiere » sans accent (donnée) | à faire |
 | A14 | Technique | **Niveaux clés incomplet** : le canevas donne 7 lignes — Résistance 2, Résistance 1, Cours, **SMA 50**, **SMA 200**, Support 1, Support 2 — chacune avec son écart au cours. L'application ne construit jamais les lignes de moyenne mobile, alors qu'elles sont tracées sur le graphique juste au-dessus. Sur ABJC.ci : 3 lignes au lieu de 7 | à faire |
@@ -253,6 +253,16 @@ l'échelle de la capture. Vérification faite en rejouant le formateur sur les
 valeurs de la base, tout était juste. **Une capture d'écran ne tranche pas un
 signe** : le calcul, lui, tranche.
 
+## Où en est le chantier
+
+Au 9 septembre : **43 écarts recensés, 36 corrigés**. Il reste **F2** — le
+tableau sectoriel de Performance des Titres — et **cinq arbitrages** qui
+reviennent au donneur d'ordre : A1, A6, F3, H3, et la question du Composite
+Total Return portée au cahier des requêtes (#26).
+
+Les états qui font foi sont ceux des lignes de chaque tableau. La liste
+ci-dessous ne sert qu'à donner l'ordre.
+
 ## Ordre de correction proposé
 
 1. ~~Les 7 cartes de KPI manquantes (P5, P3, A7)~~ — **fait le 08/09**.
@@ -260,5 +270,5 @@ signe** : le calcul, lui, tranche.
 3. Les contrôles segmentés (A2, A5, A6) — ~~I1 fait le 08/09~~.
 4. ~~Les tableaux pédagogiques de Screening (S1, S2)~~ — **fait le 08/09**.
 5. ~~Les blocs à re-rendre : P4 et C1~~ — **fait le 08/09** ; ~~A8 refusé~~.
-6. La barre signée : les positions du portefeuille (P1) **et le classement de Performance des Titres (F1)** — le même composant répond aux deux.
-7. Les détails : T1, T2, H1, H2, D2, D3, A9-A13, P2 — ~~I2 fait le 08/09~~.
+6. ~~La barre signée : P1 et F1~~ — **fait**, par `barre_signee` dans `utils/ui_helpers.py`.
+7. ~~Les détails~~ — **tous faits** : T1, T2, H1, H2, D2, D3, A9, A10, A11, A12, A13, I2, P2.
