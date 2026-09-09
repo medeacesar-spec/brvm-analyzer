@@ -245,10 +245,10 @@ def render_auth_widget():
         if admin:
             badges.append("ADMIN")
         badge_html = "".join(
-            "<span style='font-family:var(--font-mono);font-size:9px;"
-            "font-weight:600;letter-spacing:0.08em;padding:2px 5px;"
+            "<span class='badge-role' style='font-family:var(--font-mono);font-size:10px;"
+            "font-weight:700;letter-spacing:0.06em;padding:2px 6px;"
             "border-radius:4px;background:var(--primary-soft);"
-            f"color:var(--primary-2);'>{b}</span>"
+            f"'>{b}</span>"
             for b in badges
         )
         st.sidebar.markdown(
@@ -278,10 +278,10 @@ def render_auth_widget():
                 "margin-bottom:3px;'>"
                 "<span style='font-size:12.5px;font-weight:600;"
                 "color:var(--on-dark);'>Mode local</span>"
-                "<span style='font-family:var(--font-mono);font-size:9px;"
-                "font-weight:600;letter-spacing:0.08em;padding:2px 5px;"
+                "<span class='badge-role' style='font-family:var(--font-mono);font-size:10px;"
+                "font-weight:700;letter-spacing:0.06em;padding:2px 6px;"
                 "border-radius:4px;background:var(--primary-soft);"
-                "color:var(--primary-2);'>ADMIN</span></div>"
+                "'>ADMIN</span></div>"
                 "<span style='font-family:var(--font-mono);font-size:10.5px;"
                 "color:var(--on-dark-3);'>Instance mono-utilisateur</span>"
                 "</div>",
