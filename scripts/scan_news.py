@@ -53,6 +53,24 @@ SOURCES = [
 # bas de page. 15 par rubrique couvre largement une journee.
 LIMITE_PAR_RUBRIQUE = 15
 
+# ── Autres sources regionales, par flux RSS ───────────────────────────────
+# Le RSS plutot que le scraping : un flux change de forme bien plus rarement
+# qu'une page, et il porte deja titre, date et chapeau.
+#
+# Agence Ecofin est declaree alors qu'elle repond 403 a toute requete, y
+# compris avec un en-tete de navigateur (verifie le 09/09/2026 sur six
+# chemins differents ; seul /rss passe, et il rend un flux VIDE). Elle reste
+# ici pour deux raisons : le jour ou le blocage tombe, la collecte reprend
+# sans qu'on y touche ; et surtout un echec doit se VOIR dans le journal,
+# pas disparaitre parce qu'on a retire la source de la liste.
+FLUX_RSS = [
+    ("financialafrik", "https://www.financialafrik.com/feed/"),
+    ("jeuneafrique", "https://www.jeuneafrique.com/feed/"),
+    ("agenceecofin", "https://www.agenceecofin.com/rss"),
+]
+
+LIMITE_PAR_FLUX = 30
+
 # Une depeche sikafinance a une URL en /marches/<slug>_<id>
 ARTICLE_RE = re.compile(r"^/marches/.+_(\d+)$")
 DATE_RE = re.compile(r"\b(\d{2})/(\d{2})/(\d{4})\b")
@@ -240,6 +258,80 @@ def scan_listing(rubrique: str, url: str, vus: set) -> list:
     return items
 
 
+def scan_rss(nom: str, url: str, vus: set) -> list:
+    """Depeches d'un flux RSS : titre, lien, date et chapeau y sont deja.
+
+    On ne va pas chercher le corps de l'article sur ces sources : le chapeau
+    d'un flux fait deja deux a quatre phrases, ce qui suffit a ponderer et a
+    citer. Aller chercher trente articles complets a chaque passage, sur des
+    sites qu'on ne maitrise pas, se paierait en blocages.
+    """
+    import xml.etree.ElementTree as ET
+    from email.utils import parsedate_to_datetime
+
+    try:
+        brut = _get(url).encode("utf-8", "ignore")
+        racine = ET.fromstring(brut)
+    except Exception as e:
+        log(f"[{nom}] flux inaccessible : {type(e).__name__}: {e}")
+        return []
+
+    articles = racine.findall(".//item") or racine.findall(
+        "{http://www.w3.org/2005/Atom}entry")
+    if not articles:
+        log(f"[{nom}] flux vide (0 article) — source a verifier")
+        return []
+
+    items = []
+    for a in articles:
+        titre = (a.findtext("title") or "").strip()
+        lien = (a.findtext("link") or "").strip()
+        if not titre or not lien or lien in vus:
+            continue
+        vus.add(lien)
+
+        # La date se lit dans trois formats selon la source. Jeune Afrique
+        # met de l'ISO 8601 dans `pubDate`, la ou la norme RSS demande du
+        # RFC 822 ; sans les deux essais, trente depeches arrivent sans date
+        # et sortent du plafond journalier faute de jour ou les ranger.
+        date_pub = None
+        DC = "{http://purl.org/dc/elements/1.1/}date"
+        ATOM = "{http://www.w3.org/2005/Atom}published"
+        brut_date = (a.findtext("pubDate") or a.findtext(DC)
+                     or a.findtext(ATOM) or a.findtext("date") or "").strip()
+        if brut_date:
+            for lecture in (
+                lambda v: parsedate_to_datetime(v),
+                lambda v: datetime.fromisoformat(v.replace("Z", "+00:00")),
+            ):
+                try:
+                    date_pub = lecture(brut_date).strftime("%Y-%m-%d")
+                    break
+                except Exception:
+                    continue
+            if date_pub is None:
+                log(f"[{nom}] date illisible : {brut_date[:32]!r}")
+
+        chapeau = (a.findtext("description") or "").strip()
+        if chapeau:
+            # Les chapeaux RSS arrivent souvent en HTML echappe.
+            chapeau = BeautifulSoup(chapeau, "lxml").get_text(" ", strip=True)
+            chapeau = re.sub(r"\s+", " ", chapeau)[:600]
+
+        items.append({
+            "source": nom,
+            "url": lien,
+            "title": titre,
+            "lead": chapeau,
+            "published_at": date_pub,
+        })
+        if len(items) >= LIMITE_PAR_FLUX:
+            break
+
+    log(f"[{nom}] {len(items)} depeche(s)")
+    return items
+
+
 def fetch_body(url: str) -> str:
     """Corps de l'article. Sikafinance le rend dans #containerPage."""
     try:
@@ -313,8 +405,22 @@ def main(dry_run: bool = False):
     vus = set()
     for rubrique, url in SOURCES:
         items.extend(scan_listing(rubrique, url, vus))
+    for nom, url in FLUX_RSS:
+        items.extend(scan_rss(nom, url, vus))
 
     for it in items:
+        # Le corps ne se recupere que chez sikafinance, dont on connait la
+        # structure. Ailleurs, le chapeau du flux tient lieu de texte.
+        if not it["source"].startswith("sikafinance/"):
+            it["body"] = ""
+            entete = f"{it['title']} {it['lead']}"
+            sujets = detect_tickers(entete)
+            it["tickers"] = sujets
+            it["tickers_cites"] = []
+            it["secteurs"] = detect_secteurs(entete) if not sujets else []
+            it["theme"] = detect_theme(it["title"], bool(sujets))
+            continue
+
         # Le chapeau de la liste suffit a cerner une depeche macro. On ne va
         # chercher l'article complet que s'il touche la cote — sikafinance
         # coupe la connexion quand on enchaine trop de requetes.
