@@ -719,3 +719,14 @@ div[class*="st-key-dash_top5_"] button:hover {
     color: var(--ink);
     border-color: var(--border);
 }
+
+/* ── Badge de rôle dans la barre latérale ────────────────────────────
+   La règle qui précède force TOUTES les spans de la barre latérale en
+   `--on-dark-2`, parce qu'elles vivent sur du navy. Un badge, lui, porte
+   son propre fond clair : la règle générale le rendait bleu pâle sur bleu
+   pâle — 1,21:1, illisible. Et la couleur ne peut pas venir du style en
+   ligne : l'assainisseur de Streamlit retire `color` de ces spans. Elle
+   passe donc par cette classe, plus spécifique que la règle générale. */
+section[data-testid="stSidebar"] .stMarkdown span.badge-role {
+    color: #12294B !important;
+}

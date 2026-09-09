@@ -379,10 +379,13 @@ def titre_admin(texte: str):
     """
     st.markdown(
         f"# {texte} "
-        "<span style=\"font-family:var(--font-mono);font-size:9.5px;"
-        "font-weight:600;letter-spacing:0.08em;padding:3px 6px;"
-        "border-radius:4px;background:var(--primary-bg);"
-        "color:var(--primary-2);vertical-align:middle;\">ADMIN</span>",
+        # 9,5 px en capitales espacees, a cote d'un titre de quarante, se
+        # devinait plus qu'il ne se lisait. Le contraste, lui, etait bon —
+        # 12,2:1 — c'est la taille qui manquait.
+        "<span style=\"font-family:var(--font-mono);font-size:11px;"
+        "font-weight:700;letter-spacing:0.06em;padding:3px 8px;"
+        "border-radius:5px;background:var(--primary-soft);"
+        "color:#12294B;vertical-align:middle;\">ADMIN</span>",
         unsafe_allow_html=True,
     )
 
