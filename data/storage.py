@@ -34,8 +34,24 @@ def _resolve_user(user_id: Optional[str]) -> str:
     return user_id if user_id else current_user_id()
 
 
-def init_db():
-    """Crée les tables si elles n'existent pas."""
+# init_db() rejoue 29 CREATE/ALTER a chaque appel, soit ~13 s sur une base
+# distante. Il tourne au moins deux fois par demarrage a froid : a l'import
+# de ce module, puis a l'ouverture de session dans app.py. Vingt-six des
+# soixante-douze secondes de demarrage servaient a creer des tables qui
+# existaient deja.
+_schema_reconcilie = False
+
+
+def init_db(forcer: bool = False):
+    """Crée les tables si elles n'existent pas.
+
+    Ne fait le travail qu'une fois par processus : le schema ne change pas
+    entre deux appels d'une meme execution. `forcer=True` le rejoue — utile
+    apres une migration appliquee dans le meme processus.
+    """
+    global _schema_reconcilie
+    if _schema_reconcilie and not forcer:
+        return
     conn = get_connection()
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS fundamentals (
@@ -397,6 +413,7 @@ def init_db():
 
     conn.commit()
     conn.close()
+    _schema_reconcilie = True
 
 
 def _table_columns(conn, table: str) -> list:

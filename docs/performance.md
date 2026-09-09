@@ -84,7 +84,7 @@ aller-retour évité vaut 0,29 s.
 Par rapport entre le gain et le risque. Les gains ne s'additionnent pas
 exactement — le second lève une part du premier — mais l'ordre est le bon.
 
-### 1. Réutiliser la connexion — gain ≈ 14 s par clic
+### 1. Réutiliser la connexion — gain ≈ 14 s par clic · **FAIT le 09/09**
 
 Faire porter la connexion par `@st.cache_resource` au lieu de la rouvrir.
 
@@ -106,7 +106,7 @@ Deux formes acceptables :
 Dans les deux cas, le Transaction Pooler de Supabase impose déjà
 `prepare_threshold=None` : cette contrainte ne change pas.
 
-### 2. N'appeler `init_db()` qu'une fois — gain ≈ 26 s au démarrage
+### 2. N'appeler `init_db()` qu'une fois — gain ≈ 26 s au démarrage · **FAIT le 09/09**
 
 Deux corrections, indépendantes :
 
@@ -122,6 +122,39 @@ lance quand le schéma change, pas dans le chemin de chaque ouverture de page.
 Le commentaire d'`app.py:420` explique pourquoi elle est là — éviter
 `UndefinedColumn` sur une installation ancienne — et c'est une bonne raison
 d'avoir une migration, pas de la rejouer à chaque fois.
+
+**Forme retenue** : une connexion **par session Streamlit**, tenue dans
+`st.session_state`, et non un pool. La revue hésitait entre les deux ; la
+mesure a tranché. Les huit connexions se paient **dans une seule exécution de
+script** : les réutiliser à l'intérieur d'une session capture presque tout le
+gain, sans jamais partager un objet psycopg entre deux sessions. La dépendance
+`psycopg[pool]` n'a donc pas été ajoutée.
+
+`close()` change de sens et non de signature : les soixante appelants restent
+inchangés, mais la connexion est rendue au lieu d'être fermée. Un compteur de
+profondeur protège les appels imbriqués, et un `ROLLBACK` la rend propre —
+sauté quand elle est déjà `IDLE`, ce qui rend le retour gratuit après un
+`commit`.
+
+`BRVM_DB_REUSE=0` rétablit l'ancien comportement.
+
+**Mesuré** — même instrument, `AppTest` sur `app.py` :
+
+| | Avant | Après |
+|---|---|---|
+| Connexions par ré-exécution | 8 | **0** |
+| Connexions par démarrage à froid | 16 | **1** |
+| Ré-exécution | 19,2 s | **5,5 – 7,3 s** |
+
+Et dos à dos sur trois lectures applicatives, réseau identique :
+33,6 s → 12,3 s, puis 17,7 s → 9,0 s.
+
+**Ce qu'il reste dans cette ligne** : le `ROLLBACK` de nettoyage coûte encore
+un aller-retour complet (327 ms mesurés) après chaque lecture, puisqu'un
+`SELECT` ouvre une transaction. Le supprimer demanderait de passer la
+connexion en `autocommit` et d'encadrer les écritures explicitement — un
+changement de sémantique qui ne se fait pas en passant. Le point 3 le rend de
+toute façon secondaire : une lecture mise en cache ne coûte rien du tout.
 
 ### 3. Mettre en cache les lectures — gain sur toutes les ré-exécutions
 
@@ -160,14 +193,20 @@ autres.
 
 ## Cible
 
-| | Aujourd'hui | Après les points 1 et 2 |
-|---|---|---|
-| Démarrage à froid | 72 s | ≈ 20 s |
-| Ré-exécution | 19 s | ≈ 5 s |
+| | Avant | Estimé | **Constaté le 09/09** |
+|---|---|---|---|
+| Démarrage à froid | 72 s | ≈ 20 s | 53 s (voir réserve) |
+| Ré-exécution | 19 s | ≈ 5 s | **5,5 – 7,3 s** |
 
-Estimation, pas promesse : 8 requêtes × 0,37 s = 3 s, plus une connexion
-initiale. Le point 3 doit ramener la plupart des ré-exécutions sous la
-seconde, puisqu'elles ne toucheront plus la base du tout.
+La ré-exécution tient l'estimation. Le démarrage à froid, non : les points 1
+et 2 en retirent bien les connexions et la moitié de la DDL, mais il reste
+une centaine de requêtes à 0,37 s. C'est le point 3 qui les vise.
+
+**Réserve sur le démarrage à froid** : mesuré entre 53 s et 266 s pour un
+code identique, selon l'état du réseau au moment de la mesure. Le chiffre de
+53 s est le meilleur relevé, pas une valeur typique ; le nombre de connexions
+(16 → 1), lui, ne dépend pas du réseau. Sur le même réseau dégradé,
+l'ancien code dépassait 400 s là où le nouveau finissait.
 
 ---
 

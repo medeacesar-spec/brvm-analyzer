@@ -202,10 +202,16 @@ class _PostgresCursor:
 
 
 class _PostgresWrapper:
-    """Wrapper psycopg.Connection → API compatible sqlite3.Connection."""
+    """Wrapper psycopg.Connection → API compatible sqlite3.Connection.
 
-    def __init__(self, conn):
+    `etat` est le dict qui detient la connexion reutilisee (voir
+    `_etat_partage`). Quand il est fourni, `close()` ne ferme pas la
+    connexion : il la rend propre et la laisse ouverte pour l'appel suivant.
+    """
+
+    def __init__(self, conn, etat=None):
         self._conn = conn
+        self._etat = etat
 
     def _run(self, query: str, params=None):
         # Traduction SQLite → Postgres (inclut INSERT OR IGNORE/REPLACE, placeholders, PRAGMA)
@@ -274,7 +280,43 @@ class _PostgresWrapper:
         self._conn.rollback()
 
     def close(self):
-        self._conn.close()
+        """Rend la connexion. Ne la ferme que si elle n'est pas partagee.
+
+        Les 60+ appelants de `close()` restent inchanges : c'est ici que le
+        sens du mot change. Un compteur de profondeur protege les appels
+        imbriques — une fonction qui ouvre une connexion et en appelle une
+        autre qui fait de meme ne doit pas voir sa transaction annulee par
+        le `close()` de l'appelee.
+        """
+        etat = self._etat
+        if etat is None:
+            self._conn.close()
+            return
+        etat["profondeur"] = max(int(etat.get("profondeur", 0)) - 1, 0)
+        if etat["profondeur"] > 0:
+            return
+        # Profondeur nulle : on rend la connexion dans un etat propre.
+        # `rollback` et non `commit` — un ecrivain valide explicitement son
+        # travail avant de fermer ; ce qui reste ici est une transaction de
+        # lecture, qui tiendrait un instantane et bloquerait le vacuum.
+        #
+        # Le ROLLBACK coute un aller-retour complet (327 ms mesures). On ne
+        # le paie que si une transaction est reellement ouverte : apres un
+        # commit, la connexion est deja IDLE et il n'y a rien a annuler.
+        try:
+            from psycopg.pq import TransactionStatus
+            if self._conn.info.transaction_status == TransactionStatus.IDLE:
+                return
+        except Exception:
+            pass
+        try:
+            self._conn.rollback()
+        except Exception:
+            try:
+                self._conn.close()
+            except Exception:
+                pass
+            etat["conn"] = None
 
     def cursor(self):
         return _PostgresCursor(self._conn.cursor())
@@ -311,29 +353,85 @@ def _hybrid_row_factory(cursor):
     return make_row
 
 
+# État de la connexion réutilisée, hors Streamlit (scripts, CI).
+_partage_global = {"conn": None, "profondeur": 0}
+
+
+def _etat_partage():
+    """Retourne le dict où vit la connexion réutilisée.
+
+    Sur Streamlit, il vit dans `st.session_state` : **une connexion par
+    session**, jamais partagée entre sessions. C'est ce qui rend la
+    réutilisation sûre — une connexion psycopg n'est pas faite pour deux
+    fils d'exécution simultanés, et Streamlit sérialise les exécutions de
+    script d'une même session.
+
+    Hors Streamlit (scripts en ligne de commande, CI), un dict de module
+    suffit : ces processus sont mono-fil.
+    """
+    try:
+        import streamlit as st
+        from streamlit.runtime.scriptrunner import get_script_run_ctx
+        if get_script_run_ctx() is not None:
+            etat = st.session_state.get("_brvm_connexion")
+            if etat is None:
+                etat = {"conn": None, "profondeur": 0}
+                st.session_state["_brvm_connexion"] = etat
+            return etat
+    except Exception:
+        pass
+    return _partage_global
+
+
+def _ouvrir_postgres(url):
+    import psycopg
+    # prepare_threshold=None désactive les prepared statements psycopg.
+    # Nécessaire avec le Transaction Pooler Supabase (port 6543) qui ne
+    # conserve pas les prepared statements entre requêtes, provoquant
+    # `DuplicatePreparedStatement` sur toute 2e requête similaire.
+    return psycopg.connect(
+        url,
+        row_factory=_hybrid_row_factory,
+        autocommit=False,
+        prepare_threshold=None,
+    )
+
+
 def get_connection():
     """Retourne une connexion SQLite ou Postgres.
-    Interface identique côté appelant (execute, fetchone, commit, close)."""
+    Interface identique côté appelant (execute, fetchone, commit, close).
+
+    En Postgres, la connexion est **réutilisée** pour la durée de la session.
+    Ouvrir une connexion coûte environ six allers-retours réseau, la requête
+    qu'on y fait passer un seul : mesuré le 09/09/2026, une exécution de
+    script ouvrait huit connexions et passait 76 % de son temps en poignées
+    de main. Poser `BRVM_DB_REUSE=0` rétablit l'ancien comportement.
+    """
     if is_postgres():
         try:
-            import psycopg
+            import psycopg  # noqa: F401
         except ImportError as e:
             raise ImportError(
                 "DATABASE_URL pointe vers Postgres mais psycopg n'est pas installé. "
                 "Lancer : pip install 'psycopg[binary]'"
             ) from e
         url = _get_database_url()
-        # prepare_threshold=None désactive les prepared statements psycopg.
-        # Nécessaire avec le Transaction Pooler Supabase (port 6543) qui ne
-        # conserve pas les prepared statements entre requêtes, provoquant
-        # `DuplicatePreparedStatement` sur toute 2e requête similaire.
-        conn = psycopg.connect(
-            url,
-            row_factory=_hybrid_row_factory,
-            autocommit=False,
-            prepare_threshold=None,
-        )
-        return _PostgresWrapper(conn)
+
+        if os.environ.get("BRVM_DB_REUSE") == "0":
+            return _PostgresWrapper(_ouvrir_postgres(url))
+
+        etat = _etat_partage()
+        conn = etat.get("conn")
+        if conn is not None and getattr(conn, "closed", False):
+            conn = None
+            etat["conn"] = None
+            etat["profondeur"] = 0
+        if conn is None:
+            conn = _ouvrir_postgres(url)
+            etat["conn"] = conn
+            etat["profondeur"] = 0
+        etat["profondeur"] = int(etat.get("profondeur", 0)) + 1
+        return _PostgresWrapper(conn, etat)
 
     # SQLite (défaut)
     conn = sqlite3.connect(DB_PATH)
