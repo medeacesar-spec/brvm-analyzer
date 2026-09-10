@@ -42,6 +42,7 @@ from analysis.backtest import (HORIZONS, Marche, agreger, entete,        # noqa:
                                ligne, moyennes, par_periode,
                                par_tranche, rendements_futurs,
                                series_mensuelles_cours, volumes_mensuels)
+from analysis.indices import INDICE_MARCHE, est_indice     # noqa: E402
 from analysis.technical import (compute_all_indicators,          # noqa: E402
                                 compute_technical_breakdown)
 
@@ -49,15 +50,15 @@ from analysis.technical import (compute_all_indicators,          # noqa: E402
 # En deçà il rend 25, un score neutre qui ne mesure rien.
 MINIMUM_HISTORIQUE = 8
 
-INDICES = {"BRVMC", "BRVM30"}
+
 
 
 def observations(depuis: int = 0) -> list:
     series = series_mensuelles_cours()
-    if "BRVMC" not in series:
+    if INDICE_MARCHE not in series:
         print("Composite absent de price_monthly : rien à mesurer contre.")
         return []
-    marche = Marche(series["BRVMC"])
+    marche = Marche(series[INDICE_MARCHE])
     # CORRECTION DU 10/09/2026. Ce backtest passait une colonne de volumes
     # a zero. `compute_technical_score` exige `volume_sma20 > 0` : le
     # sous-critere volume ne marquait donc JAMAIS, et le score mesure ici
@@ -67,7 +68,7 @@ def observations(depuis: int = 0) -> list:
 
     tout = []
     for ticker, points in sorted(series.items()):
-        if ticker in INDICES or len(points) < MINIMUM_HISTORIQUE + max(HORIZONS):
+        if est_indice(ticker) or len(points) < MINIMUM_HISTORIQUE + max(HORIZONS):
             continue
         vols = volumes.get(ticker, {})
         df = pd.DataFrame({"date": pd.to_datetime([d for d, _ in points]),

@@ -41,10 +41,11 @@ from analysis.backtest import (HORIZONS, Marche, agreger, entete,        # noqa:
                                exercice_connu_le, ligne, moyennes,
                                par_periode, par_tranche, rendements_futurs,
                                series_mensuelles_cours)
+from analysis.indices import INDICE_MARCHE, est_indice     # noqa: E402
 from analysis.fundamental import compute_ratios                  # noqa: E402
 from data.db import read_sql_df                                  # noqa: E402
 
-INDICES = {"BRVMC", "BRVM30"}
+
 
 # En deçà, `compute_ratios` rend un score de remplissage qui ne mesure rien.
 CHAMPS_INDISPENSABLES = ("revenue", "net_income")
@@ -68,15 +69,15 @@ def liasses() -> dict:
 
 def observations(depuis: int = 0) -> list:
     series = series_mensuelles_cours()
-    if "BRVMC" not in series:
+    if INDICE_MARCHE not in series:
         print("Composite absent de price_monthly : rien à mesurer contre.")
         return []
-    marche = Marche(series["BRVMC"])
+    marche = Marche(series[INDICE_MARCHE])
     etats = liasses()
 
     tout, sans_liasse = [], defaultdict(int)
     for ticker, points in sorted(series.items()):
-        if ticker in INDICES or len(points) < 1 + min(HORIZONS):
+        if est_indice(ticker) or len(points) < 1 + min(HORIZONS):
             continue
         dernier = len(points) - 1 - min(HORIZONS)
         for i in range(dernier + 1):

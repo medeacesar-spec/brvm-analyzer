@@ -1223,11 +1223,20 @@ def get_all_cached_prices() -> dict:
     """Retourne {ticker: DataFrame} pour TOUS les tickers en une seule requête.
     Utile pour les pages qui bouclent sur tous les titres (Signaux, Comparateur)
     → évite ~48 round-trips Supabase en réduisant à 1."""
+    # Les indices sont EXCLUS ici, et pas seulement pour la proprete du
+    # resultat : les sept indices sectoriels historiques portent 6 300
+    # seances chacun depuis 1999. Les charger a chaque ouverture de Signaux
+    # ou du tableau de bord ajouterait ~82 000 lignes en memoire pour des
+    # series qu'aucun des deux appelants ne consulte.
+    from analysis.indices import CODES
+    trous = ", ".join(["?"] * len(CODES))
     conn = get_connection()
     try:
         df = read_sql_df(
             "SELECT ticker, date, open, high, low, close, volume "
-            "FROM price_cache ORDER BY ticker, date",
+            f"FROM price_cache WHERE ticker NOT IN ({trous}) "
+            "ORDER BY ticker, date",
+            params=tuple(sorted(CODES)),
             parse_dates=["date"],
         )
     finally:
