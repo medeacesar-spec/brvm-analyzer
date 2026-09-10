@@ -41,9 +41,9 @@ import pandas as pd                                              # noqa: E402
 from analysis.backtest import (HORIZONS, Marche, agreger, entete,        # noqa: E402
                                ligne, moyennes, par_periode,
                                par_tranche, rendements_futurs,
-                               series_mensuelles_cours)
+                               series_mensuelles_cours, volumes_mensuels)
 from analysis.technical import (compute_all_indicators,          # noqa: E402
-                                compute_technical_score)
+                                compute_technical_breakdown)
 
 # Huit mois : le minimum que `compute_technical_score` exige en mensuel.
 # En deçà il rend 25, un score neutre qui ne mesure rien.
@@ -58,14 +58,22 @@ def observations(depuis: int = 0) -> list:
         print("Composite absent de price_monthly : rien à mesurer contre.")
         return []
     marche = Marche(series["BRVMC"])
+    # CORRECTION DU 10/09/2026. Ce backtest passait une colonne de volumes
+    # a zero. `compute_technical_score` exige `volume_sma20 > 0` : le
+    # sous-critere volume ne marquait donc JAMAIS, et le score mesure ici
+    # valait en realite 45 points, pas 50. Les volumes existent dans
+    # price_monthly (97 % des mois) — ils sont desormais lus.
+    volumes = volumes_mensuels()
 
     tout = []
     for ticker, points in sorted(series.items()):
         if ticker in INDICES or len(points) < MINIMUM_HISTORIQUE + max(HORIZONS):
             continue
+        vols = volumes.get(ticker, {})
         df = pd.DataFrame({"date": pd.to_datetime([d for d, _ in points]),
                            "close": [c for _, c in points],
-                           "volume": [0.0] * len(points)})
+                           "volume": [vols.get((d.year, d.month))
+                                      for d, _ in points]})
         df = compute_all_indicators(df)
 
         dernier = len(points) - 1 - min(HORIZONS)
@@ -73,13 +81,14 @@ def observations(depuis: int = 0) -> list:
             jour = points[i][0]
             if jour.year < depuis:
                 continue
-            score = compute_technical_score(df.iloc[:i + 1])
+            detail = compute_technical_breakdown(df.iloc[:i + 1])
             bruts = rendements_futurs(points, i)
             relatifs = {}
             for h in HORIZONS:
                 r, m = bruts.get(h), marche.rendement(jour, h)
                 relatifs[h] = (r - m) if (r is not None and m is not None) else None
-            tout.append({"ticker": ticker, "jour": jour, "score": score,
+            tout.append({"ticker": ticker, "jour": jour,
+                         "score": detail["total"], "detail": detail,
                          "rendements": bruts, "relatifs": relatifs})
     return tout
 

@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import importlib.util as _u
 import os
+import random as _random
 import statistics as st
 import sys
 
@@ -87,11 +88,16 @@ def mesurer(lot: list, poids: float) -> dict:
     rendements = [r for _, _, r in lot]
     rho = _rho(scores, rendements)
 
-    apparies = sorted(zip(scores, rendements))
-    n = len(apparies)
+    # Les ex aequo sont departages par un tirage fixe et NON par le
+    # rendement : trier (score, rendement) mettrait les meilleurs resultats
+    # en haut de chaque groupe d'ex aequo et gonflerait le cinquieme
+    # superieur avec la reponse qu'on cherche. Voir backtest_souscriteres.
+    alea = _random.Random(20260910)
+    ordre = sorted(range(len(scores)), key=lambda i: (scores[i], alea.random()))
+    n = len(ordre)
     taille = max(n // 5, 1)
-    bas = [r for _, r in apparies[:taille]]
-    haut = [r for _, r in apparies[-taille:]]
+    bas = [rendements[i] for i in ordre[:taille]]
+    haut = [rendements[i] for i in ordre[-taille:]]
     return {
         "n": n,
         "rho": rho,

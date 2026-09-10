@@ -71,6 +71,27 @@ def series_mensuelles_cours() -> dict:
     return dict(series)
 
 
+def volumes_mensuels() -> dict:
+    """{ticker: {(annee, mois): volume}} — le volume echange chaque mois.
+
+    Il vit a part de `series_mensuelles_cours` parce que les cours et les
+    volumes n'ont pas la meme fiabilite : 97 % des mois portent un volume,
+    3 % non, et une seance sans transaction n'est pas une seance a volume
+    nul. Le sous-critere volume doit pouvoir dire « je ne sais pas » plutot
+    que de compter zero — c'est la difference entre une absence de donnee et
+    un jugement defavorable.
+    """
+    d = read_sql_df("SELECT ticker, date, volume FROM price_monthly "
+                    "WHERE volume > 0 ORDER BY ticker, date")
+    par_titre = defaultdict(dict)
+    for _, r in d.iterrows():
+        jour = r["date"]
+        if not isinstance(jour, date):
+            jour = pd.Timestamp(jour).date()
+        par_titre[r["ticker"]][(jour.year, jour.month)] = float(r["volume"])
+    return dict(par_titre)
+
+
 def rendements_futurs(points: list, i: int) -> dict:
     """Rendement du titre à 1, 3, 6 et 12 mois après le point `i`."""
     sortie = {}

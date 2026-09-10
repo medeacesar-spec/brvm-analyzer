@@ -102,6 +102,7 @@ def observations(depuis: int = 0) -> list:
                 r, m = bruts.get(h), marche.rendement(jour, h)
                 relatifs[h] = (r - m) if (r is not None and m is not None) else None
             tout.append({"ticker": ticker, "jour": jour, "score": score,
+                         "detail": ratios.get("fundamental_breakdown") or {},
                          "exercice": exercice_connu_le(jour),
                          "rendements": bruts, "relatifs": relatifs})
 
