@@ -389,11 +389,23 @@ def _ouvrir_postgres(url):
     # Nécessaire avec le Transaction Pooler Supabase (port 6543) qui ne
     # conserve pas les prepared statements entre requêtes, provoquant
     # `DuplicatePreparedStatement` sur toute 2e requête similaire.
+    # Les keepalives ne sont pas un reglage de confort. Sans eux, une
+    # connexion coupee en cours de route — cela arrive sur le pooler, sur un
+    # gros transfert — laisse psycopg en attente de lecture SANS DELAI. Le
+    # 10/09/2026, un import est reste bloque soixante-dix minutes a 0 % de
+    # processeur, sans requete cote serveur : le socket etait mort et
+    # personne ne le savait. Avec ces quatre reglages, la meme coupure leve
+    # une erreur au bout d'une minute, et l'appelant peut la traiter.
     return psycopg.connect(
         url,
         row_factory=_hybrid_row_factory,
         autocommit=False,
         prepare_threshold=None,
+        connect_timeout=15,
+        keepalives=1,
+        keepalives_idle=30,
+        keepalives_interval=10,
+        keepalives_count=3,
     )
 
 
