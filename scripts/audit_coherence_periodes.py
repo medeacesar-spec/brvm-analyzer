@@ -62,6 +62,61 @@ AUTONOMES = {
 CUMUL_PUIS_AUTONOME = {("STBC.ci", 2023)}
 
 
+# Valeurs SIGNALEES par les controles mais VERIFIEES JUSTES au PDF de
+# l'emetteur, le 10/09/2026. Un controle statistique ne sait pas
+# distinguer une erreur d'extraction d'un exercice reellement mauvais :
+# ces douze-la sont des exercices reellement mauvais, ou des produits
+# exceptionnels. Sans cette liste, le prochain qui lance l'audit relit
+# les memes douze PDF pour retrouver les memes douze reponses.
+#
+# Toute correction de la ligne fait tomber l'exemption : elle porte la
+# valeur verifiee, et si la valeur change, la verification ne vaut plus.
+VERIFIEES = {
+    ("NEIC.ci", 2025, "T1"): (48_534_243, -189_949_576,
+        "editeur : 48,5 M de CA au T1 et perte structurelle ; rapport T1 2025"),
+    ("NEIC.ci", 2026, "T1"): (115_101_101, -168_857_204,
+        "meme profil ; l'OCR lisait -768 la ou le PDF dit -168 857 204"),
+    ("UNXC.ci", 2025, "T1"): (7_844_497_968, 8_205_765_710,
+        "resultat net superieur au CA : cession du terrain de la societe"),
+    ("UNXC.ci", 2023, "S1"): (18_075_556_478, 167_637_701,
+        "semestre a -82,9 % de resultat, dit par le rapport lui-meme"),
+    ("UNXC.ci", 2026, "S1"): (15_752_453_379, 771_279_466,
+        "rapport S1 2026, colonne 1er semestre 2026"),
+    ("BNBC.ci", 2025, "T1"): (11_207_239_658, 16_147_474,
+        "16 M de resultat sur 11 Md de CA : le rapport le confirme"),
+    ("PALC.ci", 2026, "T1"): (49_384_116_000, 1_594_480_000,
+        "resultat net en repli de 86 %, dit par le rapport"),
+    ("SDSC.ci", 2023, "T1"): (23_470_387_000, 611_980_000,
+        "petit trimestre, valeurs exactes du rapport T1 2023"),
+    ("SDSC.ci", 2024, "T1"): (21_706_375_000, -416_350_000,
+        "trimestre en perte ; comparatif du rapport T1 2025"),
+    ("SDSC.ci", 2025, "T1"): (23_057_029_000, -193_185_000,
+        "trimestre en perte, rapport T1 2025"),
+    ("SDSC.ci", 2025, "S1"): (44_452_596_088, -427_470_498,
+        "semestre en perte : absence de dividendes des filiales"),
+}
+
+
+def _est_verifiee(r) -> bool:
+    """La ligne porte-t-elle exactement la valeur verifiee au PDF ?"""
+    try:
+        cle = (r["ticker"], int(r["fiscal_year"]), str(r["periode"]))
+    except (TypeError, ValueError):
+        return False
+    attendu = VERIFIEES.get(cle)
+    if attendu is None:
+        return False
+    for valeur, ref in ((r["revenue"], attendu[0]), (r["net_income"], attendu[1])):
+        if ref is None:
+            continue
+        if pd.isna(valeur):
+            return False
+        # 0,5 % de tolerance : la base arrondit parfois au millier.
+        if abs(float(valeur) - ref) > max(abs(ref) * 0.005, 1):
+            return False
+    return True
+
+
 def _charger() -> pd.DataFrame:
     d = read_sql_df(
         "SELECT id, ticker, fiscal_year, periode, revenue, net_income "
@@ -73,6 +128,8 @@ def _charger() -> pd.DataFrame:
 def controle_impossible(d: pd.DataFrame) -> list:
     out = []
     for _, r in d.iterrows():
+        if _est_verifiee(r):
+            continue
         rev, ni = r["revenue"], r["net_income"]
         if pd.notna(rev) and rev <= 0:
             out.append((r, f"chiffre d'affaires nul ou negatif ({rev:,.0f})"))
@@ -95,6 +152,8 @@ def controle_echelle(d: pd.DataFrame, seuil: float) -> list:
             for _, r in g.iterrows():
                 v = r[col]
                 if pd.isna(v) or v == 0:
+                    continue
+                if _est_verifiee(r):
                     continue
                 v = abs(float(v))
                 if v > med * seuil:
@@ -167,6 +226,8 @@ def main() -> int:
 
     print(f"\n{total} signalement(s). Chacun se tranche en lisant le PDF de "
           f"l'emetteur, jamais en divisant par mille.")
+    print(f"{len(VERIFIEES)} ligne(s) deja verifiees au PDF ne sont plus "
+          f"signalees (voir VERIFIEES).")
     return 1 if total else 0
 
 
