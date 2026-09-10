@@ -49,7 +49,8 @@ def render():
     # vendre. Charge une fois pour toute la page.
     try:
         from analysis.risque import toutes_les_mesures, formater as _fmt_risque
-        mesures_risque = toutes_les_mesures()
+        from utils.ui_helpers import fenetre_risque as _fenetre_risque
+        mesures_risque = toutes_les_mesures(_fenetre_risque())
     except Exception:                                           # noqa: BLE001
         mesures_risque, _fmt_risque = {}, None
 

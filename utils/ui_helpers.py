@@ -710,3 +710,47 @@ def kpi_grille(cartes, mini: str = "150px"):
         f"{blocs}</div>",
         unsafe_allow_html=True,
     )
+
+
+# ── Fenêtre des mesures de risque ────────────────────────────────────
+# Un seul réglage pour toute l'application. Le portefeuille, le screening,
+# le classement et la fiche d'un titre lisent la même valeur : régler la
+# fenêtre à quatre endroits différents produirait quatre vérités, et c'est
+# exactement ce qu'une mesure de risque ne supporte pas.
+CLE_FENETRE_RISQUE = "fenetre_risque"
+
+
+def fenetre_risque() -> int:
+    """La fenêtre choisie, en mois. `None` = tout l'historique."""
+    from analysis.risque import FENETRE_DEFAUT
+    return st.session_state.get(CLE_FENETRE_RISQUE, FENETRE_DEFAUT)
+
+
+def selecteur_fenetre_risque(cle: str, aide: bool = True) -> int:
+    """Pose le sélecteur et renvoie la fenêtre retenue.
+
+    `cle` distingue les widgets d'une page à l'autre ; la VALEUR, elle, est
+    partagée par `CLE_FENETRE_RISQUE`. Streamlit exige des clés de widget
+    uniques, ce qui interdit de poser le même sélecteur deux fois — d'où ce
+    détour.
+    """
+    from analysis.risque import FENETRES
+    libelles = [lib for lib, _ in FENETRES]
+    par_libelle = dict(FENETRES)
+    actuelle = fenetre_risque()
+    courant = next((lib for lib, v in FENETRES if v == actuelle), libelles[-1])
+
+    choix = st.segmented_control(
+        "Fenêtre de mesure", libelles, default=courant, key=cle,
+    ) or courant
+    st.session_state[CLE_FENETRE_RISQUE] = par_libelle[choix]
+
+    if aide:
+        st.caption(
+            "Le risque n'a pas de valeur absolue : il dépend de la période "
+            "regardée. Un titre calme sur trois ans peut avoir traversé une "
+            "chute violente au huitième. **Changer cette fenêtre change les "
+            "classements et les recommandations** — c'est normal, et c'est "
+            "précisément pourquoi elle s'affiche."
+        )
+    return par_libelle[choix]

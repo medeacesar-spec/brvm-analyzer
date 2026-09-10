@@ -2117,7 +2117,9 @@ def _render_risque(ticker, fundamentals):
                                  EXPLICATIONS, RESUMES, TAUX_SANS_RISQUE)
 
     try:
-        profil = profil_de_risque(ticker, fundamentals.get("sector"))
+        from utils.ui_helpers import fenetre_risque as _fenetre_risque
+        profil = profil_de_risque(ticker, fundamentals.get("sector"),
+                                  _fenetre_risque())
     except Exception as err:                                    # noqa: BLE001
         st.caption(f"Mesures de risque indisponibles : {err}")
         return

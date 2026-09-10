@@ -417,70 +417,81 @@ def generate_signals(df: pd.DataFrame) -> list:
     return signals
 
 
-def compute_technical_score(df: pd.DataFrame) -> float:
+def compute_technical_breakdown(df: pd.DataFrame) -> dict:
+    """Le score technique, sous-critere par sous-critere.
+
+    Bareme historique, inchange (total sur 50) :
+      tendance 15 · rsi 10 · macd 10 · bollinger 5 · volume 5 · momentum 5
+
+    La decomposition existe pour deux raisons. La premiere est l'affichage :
+    dire « 32/50 » n'apprend rien, dire « la tendance porte le score et la
+    valorisation technique est tendue » se lit. La seconde est la mesure :
+    sans sous-scores separes, impossible de savoir lequel des six porte le
+    pouvoir predictif — et donc impossible de justifier les poids ci-dessus
+    autrement que par l'habitude. Voir `scripts/backtest_souscriteres.py`.
+
+    Chaque cle vaut None quand la donnee manque (volume absent, RSI pas
+    encore calculable). Zero et None ne sont PAS la meme chose : zero est un
+    jugement defavorable, None une absence de jugement. Le total additionne
+    les sous-scores connus, ce qui reproduit exactement le comportement
+    historique de `compute_technical_score`.
     """
-    Calcule un score technique sur 50 points.
-    Pondération :
-    - Tendance (MM alignment): 15 pts
-    - RSI: 10 pts
-    - MACD: 10 pts
-    - Bollinger position: 5 pts
-    - Volume: 5 pts
-    - Momentum (prix vs supports): 5 pts
-    """
+    vide = {"tendance": None, "rsi": None, "macd": None, "bollinger": None,
+            "volume": None, "momentum": None}
+
     freq = df.attrs.get("frequency", _detect_frequency(df)) if not df.empty else "daily"
     min_len = 8 if freq == "monthly" else 50
     if df.empty or len(df) < min_len:
-        return 25  # Score neutre
+        return {**vide, "total": 25, "suffisant": False}
 
-    score = 0
+    parts = dict(vide)
     last = df.iloc[-1]
 
     # Tendance (15 pts)
     trend = detect_trend(df)
     if trend["trend"] == "haussiere":
         if trend["strength"] == "forte":
-            score += 15
+            parts["tendance"] = 15
         elif trend["strength"] == "moderee":
-            score += 10
+            parts["tendance"] = 10
         else:
-            score += 7
+            parts["tendance"] = 7
     elif trend["trend"] == "neutre":
-        score += 7
+        parts["tendance"] = 7
     else:  # baissiere
         if trend["strength"] == "forte":
-            score += 0
+            parts["tendance"] = 0
         elif trend["strength"] == "moderee":
-            score += 3
+            parts["tendance"] = 3
         else:
-            score += 5
+            parts["tendance"] = 5
 
     # RSI (10 pts) - score maximal autour de 40-60
     rsi = last.get("rsi")
     if rsi is not None and not pd.isna(rsi):
         if 40 <= rsi <= 60:
-            score += 7
+            parts["rsi"] = 7
         elif 30 <= rsi < 40:
-            score += 10  # Survente = opportunité
+            parts["rsi"] = 10  # Survente = opportunité
         elif rsi < 30:
-            score += 8
+            parts["rsi"] = 8
         elif 60 < rsi <= 70:
-            score += 5
+            parts["rsi"] = 5
         else:  # > 70
-            score += 2
+            parts["rsi"] = 2
 
     # MACD (10 pts)
     macd = last.get("macd")
     macd_hist = last.get("macd_histogram")
     if macd is not None and not pd.isna(macd):
         if macd > 0 and macd_hist is not None and macd_hist > 0:
-            score += 10
+            parts["macd"] = 10
         elif macd > 0:
-            score += 7
+            parts["macd"] = 7
         elif macd_hist is not None and macd_hist > 0:
-            score += 5
+            parts["macd"] = 5
         else:
-            score += 2
+            parts["macd"] = 2
 
     # Bollinger (5 pts)
     bb_lower = last.get("bb_lower")
@@ -492,13 +503,13 @@ def compute_technical_score(df: pd.DataFrame) -> float:
         if bb_range > 0:
             position = (price - bb_lower) / bb_range
             if 0.2 <= position <= 0.5:
-                score += 5  # Bonne zone d'achat
+                parts["bollinger"] = 5  # Bonne zone d'achat
             elif position < 0.2:
-                score += 4  # Survente
+                parts["bollinger"] = 4  # Survente
             elif 0.5 < position <= 0.8:
-                score += 3
+                parts["bollinger"] = 3
             else:
-                score += 1
+                parts["bollinger"] = 1
 
     # Volume (5 pts)
     vol = last.get("volume")
@@ -506,25 +517,48 @@ def compute_technical_score(df: pd.DataFrame) -> float:
     if vol is not None and vol_avg is not None and not pd.isna(vol_avg) and vol_avg > 0:
         vol_ratio = vol / vol_avg
         if 0.8 <= vol_ratio <= 1.5:
-            score += 4
+            parts["volume"] = 4
         elif vol_ratio > 1.5:
-            score += 5  # Volume élevé = intérêt
+            parts["volume"] = 5  # Volume élevé = intérêt
         else:
-            score += 2
+            parts["volume"] = 2
 
     # Momentum (5 pts) - Performance récente
     lookback = 3 if freq == "monthly" else 20
     if len(df) >= lookback:
         perf_20d = (df["close"].iloc[-1] / df["close"].iloc[-lookback] - 1) if df["close"].iloc[-lookback] != 0 else 0
         if 0 < perf_20d <= 0.05:
-            score += 5
+            parts["momentum"] = 5
         elif 0.05 < perf_20d <= 0.10:
-            score += 4
+            parts["momentum"] = 4
         elif perf_20d > 0.10:
-            score += 3  # Suracheté
+            parts["momentum"] = 3  # Suracheté
         elif -0.05 <= perf_20d <= 0:
-            score += 3
+            parts["momentum"] = 3
         else:
-            score += 1
+            parts["momentum"] = 1
 
-    return score
+    parts["total"] = sum(v for v in parts.values() if v is not None)
+    parts["suffisant"] = True
+    return parts
+
+
+# Le bareme, expose pour que l'affichage et les backtests lisent la meme
+# source que le calcul. Modifier un poids ici sans le modifier dans
+# `compute_technical_breakdown` produirait deux verites.
+POIDS_TECHNIQUES = {"tendance": 15, "rsi": 10, "macd": 10,
+                    "bollinger": 5, "volume": 5, "momentum": 5}
+
+
+def compute_technical_score(df: pd.DataFrame) -> float:
+    """
+    Calcule un score technique sur 50 points.
+    Pondération :
+    - Tendance (MM alignment): 15 pts
+    - RSI: 10 pts
+    - MACD: 10 pts
+    - Bollinger position: 5 pts
+    - Volume: 5 pts
+    - Momentum (prix vs supports): 5 pts
+    """
+    return compute_technical_breakdown(df)["total"]
