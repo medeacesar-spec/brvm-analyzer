@@ -273,6 +273,26 @@ signe** : le calcul, lui, tranche.
 6. ~~La barre signée : P1 et F1~~ — **fait le 08/09**, par `barre_signee` dans `utils/ui_helpers.py`, extrait du tableau de bord qui l'avait en propre.
 7. ~~Les détails : T1, T2, H1, H2, D2, D3, A9-A13, P2~~ — **fait les 08 et 09/09** ; ~~I2 fait le 08/09~~.
 
+## Un écart assumé, créé après la clôture
+
+**Le 10/09/2026, la fenêtre des mesures de risque passe de cinq à huit ans.**
+Le canevas dit « 5 ans » en trois endroits — le KPI « Rendement annualisé,
+dividendes compris », la phrase « aucun mois immobile sur cinq ans » du profil
+de risque, et « la pire baisse simulée sur cinq ans » du portefeuille.
+L'application dira désormais huit ans à ces trois endroits.
+
+La raison n'est pas esthétique. La contrainte était matérielle : la base ne
+tenait que soixante et un mois. L'import de l'historique RichBourse la lève —
+1998 pour Sonatel, 2016 pour la SIB. Arbitrage du donneur d'ordre : *« sur les
+tableaux de comparaison, on a besoin d'un socle commun, choisir 8 ans ; pour
+les tableaux à titre unique, aller aussi loin que la donnée disponible. »*
+
+Huit et non dix : à dix ans on écarterait Ecobank, NSIA, Coris, Sucrivoire et
+Unilever, qui ont neuf ans de cotation et seraient perdus à quelques mois près.
+
+Les trois autres « 5 ans » du canevas sont des **sélecteurs de période** de la
+page Performance. Ils ne sont pas concernés et ne bougent pas.
+
 ## Le registre est clos
 
 Au 9 septembre 2026, les quarante-trois écarts sont traités :

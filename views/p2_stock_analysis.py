@@ -1077,13 +1077,16 @@ def _render_technical(ticker, price_df, result):
             st.info("L'administrateur doit charger les prix historiques.")
             return
         st.info("Cliquez sur le bouton ci-dessous pour charger les prix historiques.")
-        if st.button("Charger les prix (5 ans mensuel)"):
+        if st.button("Charger les prix (historique mensuel)"):
             with st.spinner("Téléchargement en cours..."):
                 try:
-                    price_df = fetch_historical_prices_page(ticker, period="mensuel", years_back=5)
+                    # Repli d'administration : la base porte desormais
+                    # l'historique long (1998 pour les plus anciens), ce
+                    # bouton ne sert que si un titre y manque encore.
+                    price_df = fetch_historical_prices_page(ticker, period="mensuel", years_back=30)
                     if not price_df.empty:
                         cache_prices(ticker, price_df)
-                        st.success(f"{len(price_df)} points de données chargés (mensuel 5 ans)")
+                        st.success(f"{len(price_df)} points de données chargés (mensuel)")
                         st.rerun()
                     else:
                         st.error("Aucune donnée trouvée")
@@ -2488,7 +2491,8 @@ def _render_recommendation(result, fundamentals):
             f"Il ne tient <b>aucun compte du risque</b> : deux titres au même "
             f"score peuvent s'obtenir au prix d'un calme plat ou d'une descente "
             f"de deux ans.<br><br>"
-            f"{_situation}Sur cinq ans, ce titre a bougé de <b>"
+            f"{_situation}Sur {_m.get('observations', 0) // 12} ans "
+            f"d'historique, ce titre a bougé de <b>"
             f"{_m['volatilite'] * 100:.0f} %</b> par an, {_tempo}. Sa pire "
             f"chute a été de <b>{abs(_m['perte_maximale']) * 100:.0f} %</b>, et "
             f"il a {_phrase}.{_alerte}{_synthese}"

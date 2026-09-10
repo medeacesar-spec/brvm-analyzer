@@ -578,14 +578,22 @@ def _render_rendement_rapporte_au_risque():
         ((v.get("sharpe"), t, v) for t, v in mesures.items()
          if v.get("sharpe") is not None), reverse=True)
 
-    section_heading("Rendement rapporté au risque · 5 ans", spacing="loose")
+    section_heading("Rendement rapporté au risque", spacing="loose")
     st.caption(
         "Classement par **ratio de Sharpe** : le gain au-delà du taux sans "
         "risque, divisé par l'agitation qu'il a fallu supporter. Rendement "
-        "**total, dividendes compris**, sur soixante mois — donc sans rapport "
-        "avec les performances de période des autres onglets, qui sont des "
-        "cours à court terme. La colonne **Échangé** rappelle qu'un bon "
-        "classement ne sert à rien si l'on ne peut pas entrer ni sortir."
+        "**total, dividendes compris**, sur **tout l'historique disponible "
+        "de chaque titre** — donc sans rapport avec les performances de "
+        "période des autres onglets, qui sont des cours à court terme.\n\n"
+        "Aucune fenêtre commune n'est imposée : rien ne l'exige "
+        "mathématiquement, et en imposer une jetterait de la donnée. La "
+        "colonne **Historique** dit combien de mois ont servi — de "
+        "**45 à 336** selon le titre. Un Sharpe sur quatre ans et un Sharpe "
+        "sur vingt-huit sont l'un et l'autre justes, mais le second est "
+        "mesuré plus finement et traverse d'autres marchés : le rang se lit "
+        "avec cette colonne sous les yeux.\n\n"
+        "La colonne **Échangé** rappelle qu'un bon classement ne sert à rien "
+        "si l'on ne peut pas entrer ni sortir."
     )
 
     # Une tete de lecture : quarante-sept lignes ne se lisent pas d'un coup
@@ -607,7 +615,7 @@ def _render_rendement_rapporte_au_risque():
              "sub": "titres au Sharpe ≥ 1",
              "accent": "var(--up)" if n_bons else "var(--ink-4)"},
             {"label": "Rapport négatif", "value": f"{n_negatifs}",
-             "sub": "moins bien que le sans-risque, sur cinq ans",
+             "sub": "moins bien que le sans-risque, sur leur historique",
              "accent": "var(--down)" if n_negatifs else "var(--ink-4)",
              "sub_color": "var(--down)" if n_negatifs else ""},
         ], mini="190px")
@@ -630,7 +638,8 @@ def _render_rendement_rapporte_au_risque():
             f"<th style='{entete};text-align:right;'>Rendement</th>"
             f"<th style='{entete};text-align:right;'>Volatilité</th>"
             f"<th style='{entete};text-align:right;'>Pire chute</th>"
-            f"<th style='{entete};text-align:right;'>Échangé/mois</th></tr>")
+            f"<th style='{entete};text-align:right;'>Échangé/mois</th>"
+            f"<th style='{entete};text-align:right;'>Historique</th></tr>")
     for rang, (sharpe, ticker, v) in enumerate(lignes, 1):
         nom, _secteur = noms.get(ticker, (ticker, ""))
         teinte = ("var(--up)" if sharpe >= 1 else
@@ -651,7 +660,8 @@ def _render_rendement_rapporte_au_risque():
             f"<td style='{nb}'>"
             f"{formater('perte_maximale', v.get('perte_maximale'))}</td>"
             f"<td style='{nb}'>"
-            f"{formater('montant_echange', v.get('montant_echange'))}</td></tr>")
+            f"{formater('montant_echange', v.get('montant_echange'))}</td>"
+            + _cellule_historique(v.get("observations"), nb) + "</tr>")
 
     st.markdown(
         f"<div style='border:1px solid var(--border);border-radius:12px;"
@@ -666,6 +676,32 @@ def _render_rendement_rapporte_au_risque():
             f"cotation, donc aucune mesure fiable. Une introduction récente "
             f"n'est pas un mauvais titre, elle est seulement trop jeune pour "
             f"être jugée ici.")
+
+
+# En deca, la mesure existe mais l'intervalle de confiance est large : cinq
+# ans est le seuil au-dela duquel un Sharpe commence a vouloir dire quelque
+# chose sur cette place.
+MOIS_CONFORTABLE = 60
+
+
+def _cellule_historique(mois, style: str) -> str:
+    """Combien d'annees ont reellement servi a la mesure.
+
+    Aucune fenetre commune n'est imposee : un titre de quatre ans et un
+    titre de vingt-huit figurent au meme classement. Les deux Sharpe sont
+    justes ; ils ne sont pas mesures avec la meme finesse, et ils ne
+    traversent pas les memes marches. Le dire dans la colonne vaut mieux
+    que de l'ecrire en note de bas de page que personne ne lit.
+    """
+    if not mois:
+        return f"<td style='{style};color:var(--ink-3);'>—</td>"
+    mois = int(mois)
+    annees = mois / 12
+    court = mois < MOIS_CONFORTABLE
+    teinte = "var(--warn)" if court else "var(--ink-3)"
+    return (f"<td style='{style};color:{teinte};'>{annees:.0f} ans"
+            + (" <span style='font-size:10px;'>court</span>" if court else "")
+            + "</td>")
 
 
 def _render_comparaison_secteurs():
