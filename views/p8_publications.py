@@ -168,14 +168,19 @@ def _render_revue(jours: int = 1):
         )
         return
 
-    from analysis.revue import MAX_PAR_JOUR
-    total = sum(len(v or []) for v in rubriques.values())
+    from analysis.revue import MAX_AFFICHEES, RUBRIQUES as _RUB
+    total = sum(len(rubriques.get(c) or []) for c, _ in _RUB)
+    ecartees = rubriques.get("_ecartees") or 0
+    examinees = rubriques.get("_examinees") or total
     st.caption(
-        f"**{total} dépêche(s)** retenues sur la période, au plus "
-        f"**{MAX_PAR_JOUR} par jour**, choisies sur leur pertinence pour la "
-        f"cote et non sur leur heure de publication. Sources : sikafinance, "
-        f"Financial Afrik, Jeune Afrique. Le nombre gris de chaque carte est "
-        f"sa note ; survolez-le pour en voir le détail."
+        f"**{total} dépêche(s)** affichées sur {examinees} examinées — au "
+        f"plus **{MAX_AFFICHEES}**, choisies sur leur pertinence pour la cote "
+        f"et non sur leur heure de publication"
+        + (f", {ecartees} écartée(s) par le plafond" if ecartees else "")
+        + ". Sources : richbourse, sikafinance, BCEAO, Financial Afrik, "
+        "Jeune Afrique, RFI Afrique, Le Monde Afrique. Le nombre gris de "
+        "chaque carte est sa note ; survolez-le pour en voir le détail. Le "
+        "fil brut, lui, reste complet dans l'onglet voisin."
     )
 
     for cle, titre in RUBRIQUES:

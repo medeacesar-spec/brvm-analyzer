@@ -64,12 +64,32 @@ LIMITE_PAR_RUBRIQUE = 15
 # sans qu'on y touche ; et surtout un echec doit se VOIR dans le journal,
 # pas disparaitre parce qu'on a retire la source de la liste.
 FLUX_RSS = [
+    # La banque centrale de la zone : quand elle bouge un taux, toute la
+    # cote bancaire bouge. La source la plus directement pertinente apres
+    # la BRVM elle-meme.
+    ("bceao", "https://www.bceao.int/fr/rss.xml"),
     ("financialafrik", "https://www.financialafrik.com/feed/"),
     ("jeuneafrique", "https://www.jeuneafrique.com/feed/"),
+    ("rfi-afrique", "https://www.rfi.fr/fr/afrique/rss"),
+    ("lemonde-afrique", "https://www.lemonde.fr/afrique/rss_full.xml"),
     ("agenceecofin", "https://www.agenceecofin.com/rss"),
 ]
 
+# RFI et Le Monde couvrent tout le continent : l'essentiel de ce qu'ils
+# publient n'a rien a voir avec la cote. Ils entrent quand meme, parce que
+# la ponderation fait le tri — une breve sur l'Angola tombe a -30 et ne
+# sort jamais dans les vingt-cinq. Elargir le panier sans ponderation
+# aurait noye la revue ; avec elle, cela ne coute que du volume collecte.
 LIMITE_PAR_FLUX = 30
+
+# Richbourse n'expose aucun flux (404 sur /rss, /feed). Sa liste
+# d'actualites, elle, est deja scrapee par scan_publications pour les
+# publications d'emetteurs — on relit la meme page pour les depeches.
+RICHBOURSE_LISTE = [
+    "https://www.richbourse.com/common/actualite",
+    "https://www.richbourse.com/common/actualite/index",
+]
+LIMITE_RICHBOURSE = 25
 
 # Une depeche sikafinance a une URL en /marches/<slug>_<id>
 ARTICLE_RE = re.compile(r"^/marches/.+_(\d+)$")
@@ -332,6 +352,76 @@ def scan_rss(nom: str, url: str, vus: set) -> list:
     return items
 
 
+def scan_richbourse(vus: set) -> list:
+    """Depeches de la liste d'actualites richbourse.
+
+    Le slug porte la date ET le titre : `12-09-2026-sonatel-resultats-...`.
+    On n'a donc pas besoin d'ouvrir l'article pour savoir de quoi il parle,
+    ce qui evite vingt-cinq requetes de plus a chaque passage.
+    """
+    # Richbourse refuse l'en-tete de navigateur que sikafinance exige :
+    # elle ne repond qu'a un client sobre. `scan_publications` le savait
+    # deja (HEADERS_RB = curl) ; `_get` ne le savait pas, et la liste
+    # revenait « inaccessible » a chaque passage.
+    html = None
+    for url in RICHBOURSE_LISTE:
+        try:
+            r = requests.get(url, headers={"User-Agent": "curl/8.7.1",
+                                           "Accept": "*/*"},
+                             timeout=45, verify=False)
+            if r.status_code == 200 and r.text:
+                html = r.text
+                break
+        except Exception:
+            continue
+    if html is None:
+        log("[richbourse] liste inaccessible")
+        return []
+
+    try:
+        from utils.text import prettify_publication_title
+    except Exception:
+        prettify_publication_title = None
+
+    soup = BeautifulSoup(html, "lxml")
+    items = []
+    for a in soup.find_all("a", href=True):
+        m = re.search(r"/common/actualite/details/(.+)$", a["href"])
+        if not m:
+            continue
+        slug = m.group(1)
+        lien = f"https://www.richbourse.com/common/actualite/details/{slug}"
+        if lien in vus:
+            continue
+
+        jour = re.match(r"(\d{2})-(\d{2})-(\d{4})-(.+)$", slug)
+        if not jour:
+            continue
+        j, mois, an, reste = jour.groups()
+        titre = re.sub(r"\s+", " ", reste.replace("-", " ")).strip()
+        if prettify_publication_title:
+            try:
+                titre = prettify_publication_title(titre)
+            except Exception:
+                titre = titre.capitalize()
+        if len(titre) < 15:
+            continue
+
+        vus.add(lien)
+        items.append({
+            "source": "richbourse",
+            "url": lien,
+            "title": titre,
+            "lead": "",
+            "published_at": f"{an}-{mois}-{j}",
+        })
+        if len(items) >= LIMITE_RICHBOURSE:
+            break
+
+    log(f"[richbourse] {len(items)} depeche(s)")
+    return items
+
+
 def fetch_body(url: str) -> str:
     """Corps de l'article. Sikafinance le rend dans #containerPage."""
     try:
@@ -407,6 +497,7 @@ def main(dry_run: bool = False):
         items.extend(scan_listing(rubrique, url, vus))
     for nom, url in FLUX_RSS:
         items.extend(scan_rss(nom, url, vus))
+    items.extend(scan_richbourse(vus))
 
     for it in items:
         # Le corps ne se recupere que chez sikafinance, dont on connait la

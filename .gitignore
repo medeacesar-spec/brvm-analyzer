@@ -34,3 +34,7 @@ env/
 # IDE
 .vscode/
 .idea/
+
+# Exports RichBourse : donnees brutes, importees en base par
+# scripts/importer_historique_richbourse.py
+csv/
