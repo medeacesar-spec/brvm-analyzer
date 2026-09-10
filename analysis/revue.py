@@ -25,11 +25,15 @@ RUBRIQUES = [
     ("secteur", "Contexte sectoriel et macro"),
 ]
 
-# Plafond journalier. La collecte s'ouvrant a d'autres sources regionales,
-# le volume a triple : sans plafond, la rubrique « Contexte sectoriel » avale
-# la page. Vingt-cinq par jour, retenues sur la PONDERATION et non sur
-# l'heure de publication — c'est la difference entre une revue et un fil.
-MAX_PAR_JOUR = 25
+# Plafond d'affichage. VINGT-CINQ EN TOUT, et non par jour : une fenetre de
+# sept jours en aurait alors laisse passer cent soixante-quinze, ce qui est
+# un fil, pas une revue. Le choix se fait sur la PONDERATION — les
+# vingt-cinq plus pertinentes de la fenetre, quelle que soit leur heure.
+# La fenetre, elle, reste au selecteur 1 j / 3 j / 7 j.
+MAX_AFFICHEES = 25
+
+# Conserve pour compatibilite : d'anciens appels s'y referent encore.
+MAX_PAR_JOUR = MAX_AFFICHEES
 
 _THEME_RUBRIQUE = {
     "resultats": "resultats",
@@ -256,35 +260,35 @@ def build_revue(jours: int = 10, portefeuille: list | None = None) -> dict:
         entree["_jour"] = str(r["published_at"] or "")[:10] or "sans date"
         retenues.append(entree)
 
-    for entree in _plafonner_par_jour(retenues):
+    gardees, ecartees = _plafonner(retenues)
+    for entree in gardees:
         rubriques[entree["rubrique"]].append(entree)
+    rubriques["_ecartees"] = ecartees
+    rubriques["_examinees"] = len(retenues)
 
     return rubriques
 
 
-def _plafonner_par_jour(entrees: list) -> list:
-    """Garde au plus MAX_PAR_JOUR depeches par journee, les mieux notees.
+def _plafonner(entrees: list) -> tuple:
+    """Garde les MAX_AFFICHEES depeches les mieux notees de la fenetre.
 
-    Le tri se fait sur la ponderation, pas sur l'heure : une depeche de fin
-    de journee qui porte sur un emetteur cote passe devant cinq breves du
-    matin sans rapport avec la cote. Les depeches du portefeuille sont
-    conservees en plus du plafond — les ecarter serait ecarter la seule
-    rubrique que le lecteur vient chercher.
+    Retourne (gardees, nombre_ecartees).
+
+    Le tri se fait sur la ponderation, jamais sur l'heure : une depeche de
+    fin de journee qui porte sur un emetteur cote passe devant cinq breves
+    du matin sans rapport avec la cote. C'est toute la difference entre une
+    revue et un fil — le fil brut reste dans l'onglet voisin, complet.
+
+    Les depeches du portefeuille sont conservees EN PLUS du plafond : les
+    ecarter serait ecarter la seule rubrique que le lecteur vient chercher
+    nommement.
     """
-    par_jour = {}
-    for e in entrees:
-        par_jour.setdefault(e["_jour"], []).append(e)
-
-    gardees = []
-    for jour in sorted(par_jour, reverse=True):
-        lot = par_jour[jour]
-        siennes = [e for e in lot if e["rubrique"] == "portefeuille"]
-        autres = sorted((e for e in lot if e["rubrique"] != "portefeuille"),
-                        key=lambda e: (-e["score"], e["titre"]))
-        place = max(MAX_PAR_JOUR - len(siennes), 0)
-        gardees.extend(siennes + autres[:place])
-
-    # Ordre d'affichage final : du jour le plus recent au plus ancien, et a
-    # l'interieur d'une journee, de la depeche la plus pertinente a la moins.
+    siennes = [e for e in entrees if e["rubrique"] == "portefeuille"]
+    autres = sorted((e for e in entrees if e["rubrique"] != "portefeuille"),
+                    key=lambda e: (-e["score"], e["_jour"], e["titre"]))
+    place = max(MAX_AFFICHEES - len(siennes), 0)
+    gardees = siennes + autres[:place]
+    # A l'affichage, du plus recent au plus ancien puis du mieux note au
+    # moins bien : la selection est faite, l'ordre redevient chronologique.
     gardees.sort(key=lambda e: (e["_jour"], e["score"]), reverse=True)
-    return gardees
+    return gardees, max(len(autres) - place, 0)
