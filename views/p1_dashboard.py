@@ -1316,7 +1316,8 @@ def render():
     # tombe sous 0,30 ne décrit presque rien — il s'affiche en gris.
     try:
         from analysis.risque import toutes_les_mesures as _mesures_risque
-        _risque = _mesures_risque()
+        from utils.ui_helpers import fenetre_risque as _fenetre_risque
+        _risque = _mesures_risque(_fenetre_risque())
     except Exception:                                           # noqa: BLE001
         _risque = {}
 

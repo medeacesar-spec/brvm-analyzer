@@ -82,6 +82,23 @@ MINIMUM_MOIS = 24                 # en deçà, aucune mesure n'est publiée
 # l'indice, le tableau le dirait au lieu de laisser croire à une mesure
 # complète.
 FENETRE_COMMUNE = None
+
+# Fenetres proposees a l'ecran. `None` = tout l'historique du titre.
+#
+# Elles ne sont pas decoratives : le donneur d'ordre a constate sur son
+# portefeuille que les recommandations tenant compte du risque changent
+# fortement entre cinq et huit ans. C'est attendu — un titre calme sur les
+# soixante derniers mois peut avoir traverse une chute violente au
+# quatre-vingt-dixieme — mais ce n'est utile que si la fenetre se choisit
+# et s'affiche. Une mesure de risque sans sa periode ne veut rien dire.
+FENETRES = [
+    ("3 ans", 36),
+    ("5 ans", 60),
+    ("8 ans", 96),
+    ("10 ans", 120),
+    ("Tout l'historique", None),
+]
+FENETRE_DEFAUT = None
 MINIMUM_PAIRS = 3                 # une médiane sur deux sociétés décrit une société
 IMMOBILITE_SUSPECTE = 0.20        # au-delà, l'immobilité mérite une explication
 
@@ -645,7 +662,7 @@ def lecture(profil: dict) -> list:
 
 
 @_maybe_cache_data(ttl=300)
-def toutes_les_mesures() -> dict:
+def toutes_les_mesures(fenetre: int = FENETRE_DEFAUT) -> dict:
     """Les mesures de tous les titres d'un coup, pour les pages qui listent.
 
     `profil_de_risque` sert une fiche : il calcule toute la cote pour situer un
@@ -657,7 +674,7 @@ def toutes_les_mesures() -> dict:
     Les indices sont ecartes : ils n'ont pas leur place dans un classement de
     titres, et fausseraient les medianes.
     """
-    series = series_mensuelles()
+    series = series_mensuelles(fenetre)
     marche = _serie_marche(series)
     mesures = {t: _mesures(*v, marche=marche) for t, v in series.items()
                if t not in ("BRVMC", "BRVM30")}
@@ -670,7 +687,8 @@ def toutes_les_mesures() -> dict:
 
 
 @_maybe_cache_data(ttl=300)
-def profil_de_risque(ticker: str, secteur: Optional[str] = None) -> Optional[dict]:
+def profil_de_risque(ticker: str, secteur: Optional[str] = None,
+                     fenetre: int = FENETRE_DEFAUT) -> Optional[dict]:
     """Mesures du titre, et les memes mesures medianes chez ses pairs.
 
     Le repere sectoriel ne se publie qu'a partir de trois pairs — une mediane
@@ -678,7 +696,7 @@ def profil_de_risque(ticker: str, secteur: Optional[str] = None) -> Optional[dic
     entier et on le DIT : `portee` vaut « secteur » ou « marché ». Ecrire
     « secteur » quand on montre le marche a deja trompe des lecteurs.
     """
-    series = series_mensuelles()
+    series = series_mensuelles(fenetre)
     if ticker not in series:
         return None
     cnx = get_connection()
@@ -732,6 +750,8 @@ def profil_de_risque(ticker: str, secteur: Optional[str] = None) -> Optional[dic
         "nb_pairs_secteur": len(pairs),
         "nb_titres": len(tous),
         "taux_sans_risque": TAUX_SANS_RISQUE,
+        "fenetre": fenetre,
+        "mois_utilises": tous[ticker].get("observations"),
     }
     profil["lecture"] = lecture(profil)
     profil["synthese"] = synthese(profil)

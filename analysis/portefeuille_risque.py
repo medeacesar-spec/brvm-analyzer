@@ -25,7 +25,8 @@ import math
 import statistics as st
 from typing import Optional
 
-from analysis.risque import (series_mensuelles, toutes_les_mesures,
+from analysis.risque import (FENETRE_DEFAUT, series_mensuelles,
+                             toutes_les_mesures,
                              _serie_marche, MINIMUM_MOIS, TAUX_SANS_RISQUE)
 from data.db import get_connection
 from data.storage import _maybe_cache_data
@@ -141,7 +142,8 @@ def _mesures_trajectoire(rendements: list, mois: Optional[list],
 
 
 @_maybe_cache_data(ttl=300)
-def mesures_portefeuille(positions: tuple) -> Optional[dict]:
+def mesures_portefeuille(positions: tuple,
+                         fenetre: int = FENETRE_DEFAUT) -> Optional[dict]:
     """Risque, concentration et liquidite d'un ensemble de positions.
 
     `positions` est un tuple de (ticker, valeur en francs) — un tuple et non un
@@ -159,8 +161,8 @@ def mesures_portefeuille(positions: tuple) -> Optional[dict]:
     if not total:
         return None
 
-    series = series_mensuelles()
-    mesures_titres = toutes_les_mesures()
+    series = series_mensuelles(fenetre)
+    mesures_titres = toutes_les_mesures(fenetre)
 
     poids = {t: v / total for t, v in valeurs.items()}
     # On ne mesure que les lignes dont on a l'historique ; les autres sont
@@ -313,6 +315,7 @@ SEANCES_DE_SORTIE_ACCEPTABLES = 5
 
 @_maybe_cache_data(ttl=300)
 def candidats_amelioration(positions: tuple, cash: float = 0.0,
+                           fenetre: int = FENETRE_DEFAUT,
                            seuil_illiquidite: Optional[float] = None) -> Optional[dict]:
     """Quels titres ameliorent le couple rendement-risque du portefeuille.
 
@@ -352,8 +355,8 @@ def candidats_amelioration(positions: tuple, cash: float = 0.0,
     if not total:
         return None
 
-    series = series_mensuelles()
-    mesures = toutes_les_mesures()
+    series = series_mensuelles(fenetre)
+    mesures = toutes_les_mesures(fenetre)
     seuil = seuil_illiquidite
     if seuil is None and mesures:
         seuil = next(iter(mesures.values())).get("seuil_illiquidite")
@@ -497,7 +500,8 @@ def _volatilite_et_rendement(valeurs, cov, moyennes):
 @_maybe_cache_data(ttl=300)
 def allocation_suggeree(positions: tuple, cash: float, scores: tuple,
                         seuil_illiquidite: Optional[float] = None,
-                        nombre_max: int = 3) -> Optional[dict]:
+                        nombre_max: int = 3,
+                        fenetre: int = FENETRE_DEFAUT) -> Optional[dict]:
     """La meilleure repartition du cash — sur une, deux ou trois lignes.
 
     ON N'EST PAS OBLIGE D'ALLER JUSQU'A TROIS. Trois lignes valent mieux que
@@ -542,7 +546,7 @@ def allocation_suggeree(positions: tuple, cash: float, scores: tuple,
         if valeur and valeur > 0:
             valeurs[ticker] = valeurs.get(ticker, 0) + valeur
 
-    series = series_mensuelles()
+    series = series_mensuelles(fenetre)
     concernes = set(valeurs) | {c["ticker"] for c in eligibles}
     suivis = [t for t in concernes if t in series]
     n = min(len(series[t][0]) for t in suivis)

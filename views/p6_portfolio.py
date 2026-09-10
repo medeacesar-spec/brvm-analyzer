@@ -21,7 +21,8 @@ from data.scraper import fetch_daily_quotes
 from analysis.scoring import compute_hybrid_score, compute_consolidated_verdict
 from utils.charts import pie_chart
 from utils.nav import ticker_analyze_button
-from utils.ui_helpers import section_heading
+from utils.ui_helpers import (section_heading,
+                              fenetre_risque as _fenetre_risque)
 
 import json as _json
 
@@ -1002,7 +1003,8 @@ def _render_dividendes_a_venir(portfolio):
     les quantites. Le net se calcule. C'est la difference avec la section
     voisine, « Dividendes encaisses », qui enregistre ce qui est ARRIVE.
     """
-    from utils.ui_helpers import section_heading, kpi_grille
+    from utils.ui_helpers import (section_heading, kpi_grille,
+                                  fenetre_risque as _fenetre_risque)
     from analysis.dividendes import dividendes_attendus
 
     section_heading("Dividendes à venir", spacing="loose")
@@ -1111,7 +1113,8 @@ def _render_risque_ensemble(portfolio):
     Aucune mesure titre par titre ne peut le dire : cela ne se voit que dans
     l'ensemble.
     """
-    from utils.ui_helpers import section_heading, kpi_grille
+    from utils.ui_helpers import (section_heading, kpi_grille,
+                                  selecteur_fenetre_risque)
     from analysis.risque import formater
     try:
         from analysis.portefeuille_risque import (mesures_portefeuille,
@@ -1119,14 +1122,27 @@ def _render_risque_ensemble(portfolio):
         positions = tuple(sorted(
             (r["ticker"], float(r.get("current_value") or 0))
             for _, r in portfolio.iterrows()))
-        p = mesures_portefeuille(positions)
+    except Exception as err:                                    # noqa: BLE001
+        st.caption(f"Risque d'ensemble indisponible : {err}")
+        return
+    if not positions:
+        return
+
+    section_heading("Risque d'ensemble", spacing="loose")
+
+    # Le reglage vit ici parce que c'est ici qu'il se voit. Et il est pose
+    # AVANT le calcul, pas apres : un selecteur Streamlit rendu apres la
+    # mesure ne l'influence qu'au rerun SUIVANT — la page semblait alors
+    # ignorer le clic, et le reglage paraissait mort.
+    fenetre = selecteur_fenetre_risque("pf_fenetre_risque")
+
+    try:
+        p = mesures_portefeuille(positions, fenetre)
     except Exception as err:                                    # noqa: BLE001
         st.caption(f"Risque d'ensemble indisponible : {err}")
         return
     if not p or not p.get("lignes"):
         return
-
-    section_heading("Risque d'ensemble", spacing="loose")
 
     phrases = lecture_portefeuille(p)
     if phrases:
@@ -1947,7 +1963,7 @@ def _render_recommandations_ajustees(portfolio):
         positions = tuple(sorted(
             (r["ticker"], float(r.get("current_value") or 0))
             for _, r in portfolio.iterrows()))
-        p = mesures_portefeuille(positions)
+        p = mesures_portefeuille(positions, _fenetre_risque())
     except Exception as err:                                    # noqa: BLE001
         st.caption(f"Ajustement au risque indisponible : {err}")
         return
@@ -2051,7 +2067,8 @@ def _render_optimisation(portfolio, cash):
         positions = tuple(sorted(
             (r["ticker"], float(r.get("current_value") or 0))
             for _, r in portfolio.iterrows()))
-        r = candidats_amelioration(positions, float(cash or 0))
+        r = candidats_amelioration(positions, float(cash or 0),
+                                   fenetre=_fenetre_risque())
     except Exception as err:                                    # noqa: BLE001
         st.caption(f"Optimisation indisponible : {err}")
         return
@@ -2079,7 +2096,9 @@ def _render_optimisation(portfolio, cash):
                  "classement : un titre qui ne s'échange pas paraît décorrélé "
                  "sans l'être.")
     if abs(seuil_m * 1e6 - (r.get("seuil_illiquidite") or 0)) > 1:
-        r = candidats_amelioration(positions, float(cash or 0), seuil_m * 1e6)
+        r = candidats_amelioration(positions, float(cash or 0),
+                                   fenetre=_fenetre_risque(),
+                                   seuil_illiquidite=seuil_m * 1e6)
         if not r:
             return
     with col_effet:

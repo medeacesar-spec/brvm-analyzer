@@ -555,10 +555,11 @@ def _render_rendement_rapporte_au_risque():
     cours a court terme. Melanger les deux horizons dans un meme tableau
     donnerait des lignes qui ne se comparent pas.
     """
-    from utils.ui_helpers import section_heading
+    from utils.ui_helpers import section_heading, selecteur_fenetre_risque
+    fenetre = selecteur_fenetre_risque("p9_fenetre_risque", aide=False)
     try:
         from analysis.risque import toutes_les_mesures, formater
-        mesures = toutes_les_mesures()
+        mesures = toutes_les_mesures(fenetre)
     except Exception as err:                                    # noqa: BLE001
         st.caption(f"Mesures de risque indisponibles : {err}")
         return
