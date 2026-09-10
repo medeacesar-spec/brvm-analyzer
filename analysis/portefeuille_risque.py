@@ -330,7 +330,8 @@ def candidats_amelioration(positions: tuple, cash: float = 0.0,
     TROIS RESERVES, et elles sont serieuses.
 
     Le rendement passe n'est pas le rendement attendu. Ce classement dit ce qui
-    AURAIT ameliore le portefeuille sur cinq ans, pas ce qui l'ameliorera. Il
+    AURAIT ameliore le portefeuille sur l'historique connu, pas ce qui
+    l'ameliorera. Il
     designe des candidats a examiner, il ne decide de rien.
 
     Soixante observations pour quarante-cinq titres : un optimiseur de Markowitz

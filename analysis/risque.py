@@ -36,6 +36,52 @@ from data.storage import _maybe_cache_data
 
 TAUX_SANS_RISQUE = 0.06
 MINIMUM_MOIS = 24                 # en deçà, aucune mesure n'est publiée
+
+# FENETRE DE CALCUL, en mois. `None` = tout l'historique disponible.
+#
+# La contrainte était matérielle jusqu'au 10/09/2026 : la base ne tenait que
+# soixante et un mois. L'import de l'historique RichBourse la lève — 1998
+# pour Sonatel, 2016 pour la SIB, 2025 pour BIIC Bénin.
+#
+# C'est précisément ce qui rend un socle nécessaire. Un ratio de Sharpe
+# calculé sur vingt-sept ans et un autre sur neuf ans ne se rangent pas dans
+# la même colonne : ils ne mesurent pas la même chose. Sans borne commune, le
+# classement comparerait des périodes, pas des titres.
+#
+# Huit ans plutôt que dix : à dix ans on écarterait Ecobank (106 mois), NSIA
+# (108), Coris (118), Sucrivoire (118) et Unilever (118) — cinq sociétés qui
+# ont pourtant neuf ans de cotation, perdues à quelques mois près. À huit ans,
+# on n'écarte que les introductions réellement récentes : 43 titres sur 47,
+# contre 44 à cinq ans.
+#
+# ARBITRAGE DU 10/09/2026 : PAS DE SOCLE COMMUN.
+#
+# La question posée était la bonne : un socle commun est-il une contrainte
+# TECHNIQUE, ou un choix ? Vérification faite, c'est un choix — et il coûte
+# de la donnée. Le ratio de Sharpe, la volatilité, la pire chute et le
+# rendement annualisé ne demandent que la série du titre : rien n'interdit
+# de ranger côte à côte un titre de quatre ans et un titre de vingt-huit,
+# pourvu que la durée de chacun soit ÉCRITE dans le tableau.
+#
+# Ce qui change entre les deux, ce n'est pas la validité du calcul, c'est la
+# largeur de l'intervalle de confiance — et la période traversée. Le lecteur
+# doit pouvoir en tenir compte ; il ne le peut que si on la lui montre. D'où
+# la colonne « Historique ».
+#
+# UNE VRAIE LIMITE TECHNIQUE A EXISTÉ, brièvement, et elle est levée. Le bêta
+# et la corrélation se mesurent CONTRE L'INDICE : tant que le Composite
+# s'arrêtait à 61 mois en base, ces deux mesures étaient bornées à cinq ans
+# quelle que soit la profondeur du titre. L'import du Composite (6 639
+# séances depuis septembre 1998, soit 337 mois) l'a levée — `observations_beta`
+# égale désormais `observations` pour tous les titres.
+#
+# Le BRVM 30 reste court, mais il ne sert pas de référence de marché : c'est
+# un indice de 2023, `_serie_marche` s'appuie sur le Composite.
+#
+# `observations_beta` reste publié : si un titre reprenait du retard sur
+# l'indice, le tableau le dirait au lieu de laisser croire à une mesure
+# complète.
+FENETRE_COMMUNE = None
 MINIMUM_PAIRS = 3                 # une médiane sur deux sociétés décrit une société
 IMMOBILITE_SUSPECTE = 0.20        # au-delà, l'immobilité mérite une explication
 
@@ -63,7 +109,7 @@ def _seuil_illiquidite(montants) -> float:
 
 
 @_maybe_cache_data(ttl=300)
-def series_mensuelles() -> dict:
+def series_mensuelles(fenetre: int = FENETRE_COMMUNE) -> dict:
     """Les series de rendement de toute la cote, memoisees.
 
     Elles sont lues par le profil d'un titre, par le tableau de la cote, par le
@@ -73,12 +119,12 @@ def series_mensuelles() -> dict:
     """
     cnx = get_connection()
     try:
-        return _rendements_mensuels(cnx)
+        return _rendements_mensuels(cnx, fenetre)
     finally:
         cnx.close()
 
 
-def _rendements_mensuels(cnx) -> dict:
+def _rendements_mensuels(cnx, fenetre: int = FENETRE_COMMUNE) -> dict:
     """Rendement total mois par mois, pour tous les titres a la fois.
 
     Une seule lecture pour toute la cote : la page compare le titre a ses
@@ -108,6 +154,9 @@ def _rendements_mensuels(cnx) -> dict:
 
     series = {}
     for ticker, points in cours.items():
+        # Socle commun : les mois les plus récents, autant pour tout le monde.
+        if fenetre:
+            points = points[-fenetre:]
         if len(points) < MINIMUM_MOIS:
             continue
         connus = [p[1] for p in dividendes.get(ticker, {}).values() if p[1]]
