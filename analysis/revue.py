@@ -25,15 +25,26 @@ RUBRIQUES = [
     ("secteur", "Contexte sectoriel et macro"),
 ]
 
-# Plafond d'affichage. VINGT-CINQ EN TOUT, et non par jour : une fenetre de
-# sept jours en aurait alors laisse passer cent soixante-quinze, ce qui est
-# un fil, pas une revue. Le choix se fait sur la PONDERATION — les
-# vingt-cinq plus pertinentes de la fenetre, quelle que soit leur heure.
-# La fenetre, elle, reste au selecteur 1 j / 3 j / 7 j.
-MAX_AFFICHEES = 25
+# LA REVUE SE LIT PAR PAGES : 1 j, 3 j, 7 j. Arbitrage du 15/09/2026.
+#
+# Vingt depeches AU PLUS par page, portefeuille compris : a cinquante, on
+# ne lit plus. Le plafond precedent de vingt-cinq etait deja « au total »
+# sur main, mais l'app deployee plafonnait encore PAR JOUR — et « 1 j »
+# couvre deux dates, d'ou les cinquante observees.
+#
+# Les pages sont DISJOINTES. « 3 j » ne remontre pas ce que « 1 j » a deja
+# montre : elle prend les vingt plus pertinentes des trois derniers jours
+# PARMI CELLES QUE « 1 j » N'A PAS RETENUES, et « 7 j » fait de meme apres
+# les deux autres. Passer d'une page a l'autre apporte donc toujours du neuf.
+#
+# Le choix se fait sur la pertinence, et sur elle seule. Les lignes du
+# portefeuille passent devant a l'interieur de la page, mais ne la depassent
+# plus : elles comptent dans les vingt.
+PAGES = (1, 3, 7)
+PAR_PAGE = 20
 
-# Conserve pour compatibilite : d'anciens appels s'y referent encore.
-MAX_PAR_JOUR = MAX_AFFICHEES
+# Le libelle de la vue lisait ce nom ; il reste un alias du plafond.
+MAX_AFFICHEES = PAR_PAGE
 
 _THEME_RUBRIQUE = {
     "resultats": "resultats",
@@ -185,33 +196,55 @@ def _extrait(texte: str, maxi: int = 420) -> str:
     return (coupe[:point + 1] if point > maxi // 2 else coupe).strip() + " […]"
 
 
-def build_revue(jours: int = 10, portefeuille: list | None = None) -> dict:
-    """Rubriques de la revue, chacune une liste d'entrees pretes a afficher."""
+def _limite(jours: int) -> str:
+    """Premiere date couverte par une fenetre de `jours` jours.
+
+    `published_at` est une date sans heure : la fenetre « 1 j » couvre
+    aujourd'hui ET hier. C'est voulu — le matin, avant la collecte de 16 h,
+    une page limitee au seul jour serait presque vide.
+    """
+    return (pd.Timestamp.today() - pd.Timedelta(days=jours)).strftime("%Y-%m-%d")
+
+
+def _cle(entree: dict) -> str:
+    """Ce qui fait qu'une depeche est « la meme ».
+
+    L'URL ne suffit pas : sikafinance publie parfois le meme article sous
+    deux rubriques, « brvm » et « economie », avec deux adresses. Le titre
+    normalise les rapproche.
+    """
+    titre = re.sub(r"\W+", " ", str(entree.get("titre") or "").lower()).strip()
+    return titre or str(entree.get("url") or "")
+
+
+def build_revue(jours: int = 1, portefeuille: list | None = None) -> dict:
+    """La page `jours` de la revue : au plus PAR_PAGE depeches, par rubrique.
+
+    Retourne {rubrique: [entrees]} plus `_examinees` (depeches de la fenetre
+    encore disponibles pour cette page) et `_ecartees`.
+    """
     portefeuille = set(portefeuille or [])
     noms = _noms()
     par_secteur = _secteurs()
-    trimestres = _table_trimestres()
 
+    # Filtre de date EN BASE, et plus de LIMIT 400 : la semaine du 9 au 15
+    # septembre compte a elle seule 402 depeches, et la page « 7 j » perdait
+    # silencieusement son premier jour.
     try:
         df = read_sql_df(
             """SELECT source, url, title, published_at, lead, body,
                       tickers, tickers_cites, secteurs, theme
                FROM news_articles
-               ORDER BY published_at DESC NULLS LAST, id DESC
-               LIMIT 400"""
+               WHERE published_at >= ?
+               ORDER BY published_at DESC, id DESC""",
+            params=(_limite(jours),),
         )
     except Exception:
         return {}
     if df is None or df.empty:
         return {}
 
-    if jours:
-        limite = (pd.Timestamp.today() - pd.Timedelta(days=jours)).strftime("%Y-%m-%d")
-        df = df[(df["published_at"].isna()) | (df["published_at"] >= limite)]
-
-    rubriques = {cle: [] for cle, _ in RUBRIQUES}
     retenues = []
-
     for _, r in df.iterrows():
         sujets = _liste(r["tickers"])
         cites = _liste(r["tickers_cites"])
@@ -230,7 +263,12 @@ def build_revue(jours: int = 10, portefeuille: list | None = None) -> dict:
         en_portefeuille = sorted(portefeuille & nommes)
         exposees = sorted(portefeuille & set(exposes))
 
-        entree = {
+        note, motifs = score_depeche(
+            titre=r["title"], texte=r["body"] or r["lead"],
+            tickers_sujets=sujets, tickers_cites=cites,
+            secteurs=secteurs, theme=r["theme"])
+
+        retenues.append({
             "titre": r["title"],
             "date": r["published_at"] or "",
             "url": r["url"],
@@ -242,53 +280,76 @@ def build_revue(jours: int = 10, portefeuille: list | None = None) -> dict:
             "portefeuille": [(t, noms.get(t, t)) for t in en_portefeuille],
             "exposees": [(t, noms.get(t, t)) for t in exposees],
             "texte": _extrait(r["body"] or r["lead"]),
-            "chiffres": chiffres_recents(sujets[0], trimestres) if sujets else "",
-            "chiffres_detail": chiffres_detail(sujets[0], trimestres) if sujets else [],
-        }
+            "chiffres": "",
+            "chiffres_detail": [],
+            "score": note,
+            "motifs": motifs,
+            "rubrique": ("portefeuille" if en_portefeuille
+                         else _THEME_RUBRIQUE.get(r["theme"], "secteur")),
+            "_jour": str(r["published_at"])[:10],
+        })
 
-        note, motifs = score_depeche(
-            titre=r["title"], texte=r["body"] or r["lead"],
-            tickers_sujets=sujets, tickers_cites=cites,
-            secteurs=secteurs, theme=r["theme"])
-        # Une depeche qui touche une ligne du portefeuille n'est jamais
-        # ecartee par le plafond : c'est la seule rubrique que le lecteur
-        # vient chercher nommement.
-        entree["score"] = note
-        entree["motifs"] = motifs
-        entree["rubrique"] = ("portefeuille" if en_portefeuille
-                              else _THEME_RUBRIQUE.get(r["theme"], "secteur"))
-        entree["_jour"] = str(r["published_at"] or "")[:10] or "sans date"
-        retenues.append(entree)
+    page, examinees = _page(retenues, jours)
 
-    gardees, ecartees = _plafonner(retenues)
-    for entree in gardees:
+    # Les chiffres ne se calculent que pour les depeches affichees : les
+    # calculer pour les quatre cents de la semaine, c'etait autant de travail
+    # jete a chaque ouverture.
+    trimestres = _table_trimestres() if any(e["sujets"] for e in page) else None
+    rubriques = {cle: [] for cle, _ in RUBRIQUES}
+    for entree in page:
+        if entree["sujets"]:
+            ticker = entree["sujets"][0][0]
+            entree["chiffres"] = chiffres_recents(ticker, trimestres)
+            entree["chiffres_detail"] = chiffres_detail(ticker, trimestres)
         rubriques[entree["rubrique"]].append(entree)
-    rubriques["_ecartees"] = ecartees
-    rubriques["_examinees"] = len(retenues)
-
+    rubriques["_examinees"] = examinees
+    rubriques["_ecartees"] = max(examinees - len(page), 0)
     return rubriques
 
 
-def _plafonner(entrees: list) -> tuple:
-    """Garde les MAX_AFFICHEES depeches les mieux notees de la fenetre.
+def _choisir(candidates: list, deja: set) -> list:
+    """Les PAR_PAGE meilleures, sans doublon ni depeche deja montree.
 
-    Retourne (gardees, nombre_ecartees).
-
-    Le tri se fait sur la ponderation, jamais sur l'heure : une depeche de
-    fin de journee qui porte sur un emetteur cote passe devant cinq breves
-    du matin sans rapport avec la cote. C'est toute la difference entre une
-    revue et un fil — le fil brut reste dans l'onglet voisin, complet.
-
-    Les depeches du portefeuille sont conservees EN PLUS du plafond : les
-    ecarter serait ecarter la seule rubrique que le lecteur vient chercher
-    nommement.
+    Ordre de choix : une ligne du portefeuille d'abord, puis la note, puis
+    la plus recente. L'heure ne sert qu'a departager deux notes egales.
     """
-    siennes = [e for e in entrees if e["rubrique"] == "portefeuille"]
-    autres = sorted((e for e in entrees if e["rubrique"] != "portefeuille"),
-                    key=lambda e: (-e["score"], e["_jour"], e["titre"]))
-    place = max(MAX_AFFICHEES - len(siennes), 0)
-    gardees = siennes + autres[:place]
-    # A l'affichage, du plus recent au plus ancien puis du mieux note au
-    # moins bien : la selection est faite, l'ordre redevient chronologique.
-    gardees.sort(key=lambda e: (e["_jour"], e["score"]), reverse=True)
-    return gardees, max(len(autres) - place, 0)
+    ordre = sorted(candidates, key=lambda e: e["_jour"], reverse=True)
+    ordre.sort(key=lambda e: (e["rubrique"] != "portefeuille", -e["score"]))
+    choisies, vues = [], set(deja)
+    for entree in ordre:
+        cle = _cle(entree)
+        if cle in vues:
+            continue
+        vues.add(cle)
+        choisies.append(entree)
+        if len(choisies) == PAR_PAGE:
+            break
+    return choisies
+
+
+def _page(entrees: list, jours: int) -> tuple:
+    """La page demandee, apres retrait de ce que les pages plus courtes montrent.
+
+    Retourne (entrees de la page, nombre de candidates de sa fenetre).
+
+    Pour la page « 3 j », on rejoue d'abord la page « 1 j » : ce qu'elle
+    retient est retire, puis on choisit parmi le reste des trois jours. Pour
+    « 7 j », on rejoue « 1 j » puis « 3 j ». Le calcul est le meme que celui
+    que le lecteur a vu en passant d'une page a l'autre, donc aucune depeche
+    ne peut apparaitre deux fois.
+    """
+    paliers = sorted({p for p in PAGES if p < jours} | {jours})
+    deja = set()
+    page, examinees = [], 0
+    for palier in paliers:
+        limite = _limite(palier)
+        candidates = [e for e in entrees
+                      if e["_jour"] >= limite and _cle(e) not in deja]
+        page = _choisir(candidates, deja)
+        examinees = len({_cle(e) for e in candidates})
+        deja |= {_cle(e) for e in page}
+
+    # A l'affichage, du plus recent au mieux note : la selection est faite,
+    # l'ordre redevient chronologique.
+    page.sort(key=lambda e: (e["_jour"], e["score"]), reverse=True)
+    return page, examinees

@@ -168,19 +168,19 @@ def _render_revue(jours: int = 1):
         )
         return
 
-    from analysis.revue import MAX_AFFICHEES, RUBRIQUES as _RUB
+    from analysis.revue import PAR_PAGE, RUBRIQUES as _RUB
     total = sum(len(rubriques.get(c) or []) for c, _ in _RUB)
-    ecartees = rubriques.get("_ecartees") or 0
     examinees = rubriques.get("_examinees") or total
+    suite = ("" if jours == 1 else
+             " Celles déjà montrées sur une période plus courte sont retirées : "
+             "cette page n'apporte que du neuf.")
     st.caption(
-        f"**{total} dépêche(s)** affichées sur {examinees} examinées — au "
-        f"plus **{MAX_AFFICHEES}**, choisies sur leur pertinence pour la cote "
-        f"et non sur leur heure de publication"
-        + (f", {ecartees} écartée(s) par le plafond" if ecartees else "")
-        + ". Sources : richbourse, sikafinance, BCEAO, Financial Afrik, "
-        "Jeune Afrique, RFI Afrique, Le Monde Afrique. Le nombre gris de "
-        "chaque carte est sa note ; survolez-le pour en voir le détail. Le "
-        "fil brut, lui, reste complet dans l'onglet voisin."
+        f"**{total} dépêche(s)**, au plus **{PAR_PAGE}**, les plus pertinentes "
+        f"parmi {examinees} disponibles sur la période.{suite} Sources : "
+        "richbourse, sikafinance, BCEAO, Financial Afrik, Jeune Afrique, "
+        "RFI Afrique, Le Monde Afrique. Le nombre gris de chaque "
+        "carte est sa note ; survolez-le pour en voir le détail. Le fil brut, "
+        "lui, reste complet dans l'onglet voisin."
     )
 
     for cle, titre in RUBRIQUES:
