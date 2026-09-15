@@ -18,7 +18,7 @@ from data.storage import (
 )
 from data.db import read_sql_df
 from utils.ui_helpers import section_heading
-from utils.auth import is_admin
+from utils.auth import is_admin, is_logged_in, oauth_enabled
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -131,6 +131,26 @@ def render():
 # Tab 0 : Revue de presse
 # ════════════════════════════════════════════════════════════════════
 
+def _lignes_du_visiteur() -> tuple:
+    """(tickers detenus, etat) — etat vaut « anonyme », « vide » ou « ok ».
+
+    « Vos lignes » et les étoiles du bulletin officiel sont PERSONNELS : ils
+    ne s'affichent que pour une personne connectée, sur son propre
+    portefeuille. Un visiteur non connecté n'en voit aucun — jusqu'au
+    15/09/2026, il voyait ceux du compte 'local'. La garde est double : ici,
+    et dans `current_user_id`, qui ne rend plus 'local' à un visiteur.
+    """
+    if oauth_enabled() and not is_logged_in():
+        return [], "anonyme"
+    try:
+        df_pf = get_portfolio()
+    except Exception:
+        return [], "vide"
+    if df_pf is None or df_pf.empty:
+        return [], "vide"
+    return df_pf["ticker"].dropna().unique().tolist(), "ok"
+
+
 def _render_revue(jours: int = 1):
     """Depeches croisees avec les chiffres extraits et le portefeuille.
 
@@ -148,12 +168,14 @@ def _render_revue(jours: int = 1):
     # en paiement et le taux de retenue applicable.
     _render_boc()
 
-    try:
-        df_pf = get_portfolio()
-        portefeuille = (df_pf["ticker"].dropna().unique().tolist()
-                        if df_pf is not None and not df_pf.empty else [])
-    except Exception:
-        portefeuille = []
+    portefeuille, etat = _lignes_du_visiteur()
+    if etat == "anonyme":
+        st.caption("Connectez-vous pour voir en tête de la revue les dépêches "
+                   "qui concernent vos lignes.")
+    elif etat == "vide":
+        st.caption("Votre portefeuille est vide : les dépêches sont classées "
+                   "sur leur seule pertinence. Ajoutez vos positions dans "
+                   "**Portefeuille** pour voir en tête celles qui vous concernent.")
 
     try:
         rubriques = build_revue(jours=jours, portefeuille=portefeuille)
@@ -229,11 +251,7 @@ def _render_boc():
         return
 
     # Les lignes du portefeuille passent devant
-    try:
-        pf = get_portfolio()
-        detenus = set(pf["ticker"].dropna()) if pf is not None and not pf.empty else set()
-    except Exception:
-        detenus = set()
+    detenus = set(_lignes_du_visiteur()[0])
 
     divid = ops[ops["type"] == "dividende"].copy()
     autres = ops[ops["type"] != "dividende"]
