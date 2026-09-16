@@ -168,14 +168,14 @@ def _render_revue(jours: int = 1):
     # en paiement et le taux de retenue applicable.
     _render_boc()
 
+    # Visiteur non connecte et portefeuille vide : MEME affichage (arbitrage
+    # du 16/09/2026). Dans les deux cas il n'y a aucune ligne a mettre en
+    # tete ; le lien vers Portefeuille demande la connexion a qui ne l'a pas.
     portefeuille, etat = _lignes_du_visiteur()
-    if etat == "anonyme":
-        st.caption("Connectez-vous pour voir en tête de la revue les dépêches "
-                   "qui concernent vos lignes.")
-    elif etat == "vide":
-        st.caption("Votre portefeuille est vide : les dépêches sont classées "
-                   "sur leur seule pertinence. Ajoutez vos positions dans "
-                   "**Portefeuille** pour voir en tête celles qui vous concernent.")
+    if etat != "ok":
+        st.caption("Les dépêches sont classées sur leur seule pertinence. "
+                   "Ajoutez vos positions dans **Portefeuille** pour voir en "
+                   "tête celles qui vous concernent.")
 
     try:
         rubriques = build_revue(jours=jours, portefeuille=portefeuille)
