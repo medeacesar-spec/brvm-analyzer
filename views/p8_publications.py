@@ -168,14 +168,14 @@ def _render_revue(jours: int = 1):
     # en paiement et le taux de retenue applicable.
     _render_boc()
 
+    # Visiteur non connecte et portefeuille vide : MEME affichage (arbitrage
+    # du 16/09/2026). Dans les deux cas il n'y a aucune ligne a mettre en
+    # tete ; le lien vers Portefeuille demande la connexion a qui ne l'a pas.
     portefeuille, etat = _lignes_du_visiteur()
-    if etat == "anonyme":
-        st.caption("Connectez-vous pour voir en tête de la revue les dépêches "
-                   "qui concernent vos lignes.")
-    elif etat == "vide":
-        st.caption("Votre portefeuille est vide : les dépêches sont classées "
-                   "sur leur seule pertinence. Ajoutez vos positions dans "
-                   "**Portefeuille** pour voir en tête celles qui vous concernent.")
+    if etat != "ok":
+        st.caption("Les dépêches sont classées sur leur seule pertinence. "
+                   "Ajoutez vos positions dans **Portefeuille** pour voir en "
+                   "tête celles qui vous concernent.")
 
     try:
         rubriques = build_revue(jours=jours, portefeuille=portefeuille)
@@ -190,15 +190,14 @@ def _render_revue(jours: int = 1):
         )
         return
 
-    from analysis.revue import PAR_PAGE, RUBRIQUES as _RUB
-    total = sum(len(rubriques.get(c) or []) for c, _ in _RUB)
-    examinees = rubriques.get("_examinees") or total
+    # Le decompte « 20 dépêche(s), au plus 20, parmi N disponibles » a ete
+    # retire le 16/09/2026 : il n'apprenait rien au lecteur. Restent ce qui
+    # aide a lire la page.
     suite = ("" if jours == 1 else
-             " Celles déjà montrées sur une période plus courte sont retirées : "
-             "cette page n'apporte que du neuf.")
+             "Celles déjà montrées sur une période plus courte sont retirées : "
+             "cette page n'apporte que du neuf. ")
     st.caption(
-        f"**{total} dépêche(s)**, au plus **{PAR_PAGE}**, les plus pertinentes "
-        f"parmi {examinees} disponibles sur la période.{suite} Sources : "
+        f"{suite}Sources : "
         "richbourse, sikafinance, BCEAO, Financial Afrik, Jeune Afrique, "
         "RFI Afrique, Le Monde Afrique. Le nombre gris de chaque "
         "carte est sa note ; survolez-le pour en voir le détail. Le fil brut, "
