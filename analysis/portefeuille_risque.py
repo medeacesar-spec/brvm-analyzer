@@ -25,6 +25,7 @@ import math
 import statistics as st
 from typing import Optional
 
+from analysis.indices import est_indice
 from analysis.risque import (FENETRE_DEFAUT, series_mensuelles,
                              toutes_les_mesures,
                              _serie_marche, MINIMUM_MOIS, TAUX_SANS_RISQUE)
@@ -382,7 +383,7 @@ def candidats_amelioration(positions: tuple, cash: float = 0.0,
 
     candidats = []
     for ticker, serie in rendements.items():
-        if ticker in ("BRVMC", "BRVM30"):
+        if est_indice(ticker):
             continue
         mesure = mesures.get(ticker) or {}
         echange_titre = mesure.get("montant_echange")
