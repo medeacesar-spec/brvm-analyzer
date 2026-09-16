@@ -440,13 +440,35 @@ def get_connection():
     return conn
 
 
+# L'identifiant d'un visiteur NON CONNECTE sur l'application en ligne. Aucune
+# ligne ne lui appartient : portefeuille, reglages, profil et notes sont vides.
+ANONYME = "anonyme"
+
+
+def _oauth_configure(st) -> bool:
+    try:
+        return bool(st.secrets.get("auth", {}).get("redirect_uri"))
+    except Exception:
+        return False
+
+
 def current_user_id() -> str:
     """Retourne l'identifiant (email) de l'utilisateur connecté.
 
-    - Mode local (pas d'auth) : 'local'
-    - Streamlit avec st.user (auth Google OAuth, v1.42+) : renvoie l'email
-    - Si une clé 'user_id' est définie dans st.session_state (par ex. lors d'un
-      changement de compte), elle est prioritaire.
+    - Connecte (Google, ou raccourci developpeur) : son email
+    - Visiteur non connecte d'une application ou Google est configure :
+      ANONYME, qui ne possede aucune donnee
+    - Script, ou instance locale sans Google : 'local'
+    - Si une clé 'user_id_override' est définie dans st.session_state, elle
+      est prioritaire.
+
+    CORRECTION DU 15/09/2026. Le visiteur non connecte recevait 'local' dans
+    tous les cas. Or la base est commune a l'instance locale et a
+    l'application publique : sur brvm-analyzer.streamlit.app, n'importe quel
+    visiteur voyait dans « Infos Marché » les lignes du portefeuille 'local' —
+    « ★ SGBCI en portefeuille », « ★ Ecobank CI, Sonatel en portefeuille ».
+    'local' veut dire « le proprietaire d'une instance sans authentification »,
+    jamais « quiconque n'est pas connecte ».
     """
     try:
         import streamlit as st
@@ -454,6 +476,9 @@ def current_user_id() -> str:
         override = st.session_state.get("user_id_override") if hasattr(st, "session_state") else None
         if override:
             return override
+        dev = st.session_state.get("dev_user_email") if hasattr(st, "session_state") else None
+        if dev:
+            return dev
         user = getattr(st, "user", None)
         if user is not None:
             is_logged = getattr(user, "is_logged_in", False)
@@ -461,6 +486,12 @@ def current_user_id() -> str:
                 email = getattr(user, "email", None)
                 if email:
                     return email
+        # Une page servie, Google configure, personne de connecte : un
+        # visiteur. Hors page (scripts, jobs), le contexte est absent et
+        # l'identifiant reste 'local'.
+        from streamlit.runtime.scriptrunner import get_script_run_ctx
+        if get_script_run_ctx() is not None and _oauth_configure(st):
+            return ANONYME
     except Exception:
         pass
     return "local"
