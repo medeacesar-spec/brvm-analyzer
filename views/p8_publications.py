@@ -190,15 +190,14 @@ def _render_revue(jours: int = 1):
         )
         return
 
-    from analysis.revue import PAR_PAGE, RUBRIQUES as _RUB
-    total = sum(len(rubriques.get(c) or []) for c, _ in _RUB)
-    examinees = rubriques.get("_examinees") or total
+    # Le decompte « 20 dépêche(s), au plus 20, parmi N disponibles » a ete
+    # retire le 16/09/2026 : il n'apprenait rien au lecteur. Restent ce qui
+    # aide a lire la page.
     suite = ("" if jours == 1 else
-             " Celles déjà montrées sur une période plus courte sont retirées : "
-             "cette page n'apporte que du neuf.")
+             "Celles déjà montrées sur une période plus courte sont retirées : "
+             "cette page n'apporte que du neuf. ")
     st.caption(
-        f"**{total} dépêche(s)**, au plus **{PAR_PAGE}**, les plus pertinentes "
-        f"parmi {examinees} disponibles sur la période.{suite} Sources : "
+        f"{suite}Sources : "
         "richbourse, sikafinance, BCEAO, Financial Afrik, Jeune Afrique, "
         "RFI Afrique, Le Monde Afrique. Le nombre gris de chaque "
         "carte est sa note ; survolez-le pour en voir le détail. Le fil brut, "
