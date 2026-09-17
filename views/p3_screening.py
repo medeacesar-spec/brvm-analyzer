@@ -240,7 +240,13 @@ def render():
         try:
             ratios = compute_ratios(data)
             dy = ratios.get("dividend_yield")
-            if not dy and data.get("market_dividend_yield"):
+            # Le rendement collecte sur le web ne sert QUE si la base ne
+            # connait aucun dividende pour le titre. Il remplacait jusqu'ici
+            # tout rendement nul — y compris ceux qu'un exercice partiel mis
+            # en reference rendait nuls a tort — et il est faux pour la
+            # plupart des titres : 6,11 % pour Sonatel, 4,76 % pour NSIA
+            # Banque, quand les dividendes encaisses donnent 4,48 et 3,14 %.
+            if data.get("dps") is None and data.get("market_dividend_yield"):
                 dy = data["market_dividend_yield"]
 
             verdict, hybrid = verdicts.get(ticker, (None, None))
