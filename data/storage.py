@@ -895,6 +895,79 @@ def exercices_annuels(tickers=None) -> dict:
     return sortie
 
 
+def _choisir_exercice(candidats: list, annuels: set) -> Optional[dict]:
+    """L'exercice de reference d'un titre — LA regle, et la seule.
+
+    `candidats` : les exercices du titre ayant chiffre d'affaires ET resultat
+    net, du plus recent au plus ancien. `annuels` : les exercices pour
+    lesquels un document annuel est reference.
+
+    1. Le plus recent qui dispose d'un document ANNUEL. Le cycle UEMOA publie
+       l'exercice N au printemps N+1 : pendant l'annee N il n'existe que des
+       trimestriels, et une ligne « 2026 » en septembre 2026 porte un
+       trimestre, pas une annee.
+    2. A defaut de document, l'ordre de grandeur : un chiffre d'affaires
+       inferieur a la moitie de la mediane du titre est une fraction d'annee.
+    3. Rien de concluant : le plus recent, marque `_exercice_incertain`.
+
+    Elle sert a la fiche d'un titre ET au chargement groupe (screening,
+    comparateur, portefeuille, signaux, instantane quotidien). Jusqu'au
+    17/09/2026, le chargement groupe avait sa propre regle, restee a « la
+    derniere annee avec chiffre d'affaires et resultat » : dix-huit titres
+    sur quarante-huit y etaient lus sur leur trimestre 2026. Sans dividende
+    sur cette ligne, leur rendement tombait a 0 % dans le portefeuille, et le
+    screening le remplacait par le rendement scrape, faux pour Sonatel.
+    """
+    if not candidats:
+        return None
+    for candidat in candidats:
+        if candidat.get("fiscal_year") in annuels:
+            return candidat
+    montants = sorted(abs(c["revenue"]) for c in candidats if c.get("revenue"))
+    repere = montants[len(montants) // 2] if montants else None
+    for candidat in candidats:
+        if (repere and candidat.get("revenue")
+                and abs(candidat["revenue"]) < 0.5 * repere):
+            continue
+        return candidat
+    incertain = dict(candidats[0])
+    incertain["_exercice_incertain"] = True
+    return incertain
+
+
+def meilleurs_exercices() -> dict:
+    """{ticker: exercice de reference}, pour toute la cote, en deux requetes.
+
+    Meme regle que `get_fundamentals`, memes replis : a defaut d'exercice
+    complet, le plus recent qui porte un chiffre d'affaires OU un resultat,
+    puis le plus recent tout court.
+    """
+    conn = get_connection()
+    try:
+        lignes = [dict(l) for l in conn.execute(
+            """SELECT ticker, fiscal_year, revenue, net_income FROM fundamentals
+               WHERE fiscal_year IS NOT NULL
+               ORDER BY ticker, fiscal_year DESC""").fetchall()]
+    finally:
+        conn.close()
+    annuels = exercices_annuels()
+
+    par_titre = {}
+    for ligne in lignes:
+        par_titre.setdefault(ligne["ticker"], []).append(ligne)
+
+    sortie = {}
+    for ticker, exercices in par_titre.items():
+        complets = [e for e in exercices if e.get("revenue") and e.get("net_income")]
+        choix = _choisir_exercice(complets, annuels.get(ticker, set()))
+        if choix is None:
+            partiels = [e for e in exercices
+                        if e.get("revenue") or e.get("net_income")]
+            choix = partiels[0] if partiels else exercices[0]
+        sortie[ticker] = int(choix["fiscal_year"])
+    return sortie
+
+
 def get_fundamentals(ticker: str, fiscal_year: Optional[int] = None) -> Optional[dict]:
     """Récupère les données fondamentales d'un titre.
     Sans fiscal_year, prend la dernière année ayant revenue + net_income.
@@ -937,33 +1010,8 @@ def get_fundamentals(ticker: str, fiscal_year: Optional[int] = None) -> Optional
             # pendant l'année N, il n'existe que des trimestriels et des
             # semestriels. Un exercice sans document annuel n'est donc pas un
             # exercice clos, quoi qu'en dise la table.
-            annuels = exercices_annuels([ticker]).get(ticker, set())
-
-            for candidat in candidats:
-                if candidat.get("fiscal_year") in annuels:
-                    row = candidat
-                    break
-
-            # Second critère, de repli quand aucun document n'est référencé :
-            # l'ordre de grandeur. Un chiffre d'affaires inférieur à la moitié
-            # de la médiane du titre n'est pas une année, c'est une fraction
-            # d'année.
-            if row is None:
-                montants = sorted(abs(c["revenue"]) for c in candidats
-                                  if c.get("revenue"))
-                repere = (montants[len(montants) // 2] if montants else None)
-                for candidat in candidats:
-                    if (repere and candidat.get("revenue")
-                            and abs(candidat["revenue"]) < 0.5 * repere):
-                        continue
-                    row = candidat
-                    break
-
-            # Rien de concluant : on garde le plus récent plutôt que rien,
-            # mais on le signale pour que l'écran puisse le dire.
-            if row is None:
-                row = dict(candidats[0])
-                row["_exercice_incertain"] = True
+            row = _choisir_exercice(
+                candidats, exercices_annuels([ticker]).get(ticker, set()))
         if not row:
             row = conn.execute(
                 """SELECT * FROM fundamentals WHERE ticker=?
@@ -1063,27 +1111,20 @@ def get_fundamentals(ticker: str, fiscal_year: Optional[int] = None) -> Optional
 
 
 def _best_year_subquery() -> str:
-    """Sous-requête SQL pour trouver la meilleure année par ticker.
-    Priorité : dernière année avec revenue+net_income (income statement complet).
-    Equity n'est PLUS un critère de sélection : si manquant, on le récupère d'une
-    année antérieure via get_all_stocks_for_analysis (fallback Python).
+    """Sous-requete (ticker, max_year) : l'exercice de reference de chaque titre.
+
+    Les annees sont choisies en Python par `meilleurs_exercices`, avec la
+    meme regle que la fiche d'un titre, puis livrees a SQL sous forme de
+    lignes litterales. Une regle ecrite deux fois — une fois en SQL, une fois
+    en Python — avait fini par diverger.
     """
-    return """
-        SELECT ticker,
-            COALESCE(
-                (SELECT MAX(fiscal_year) FROM fundamentals f2
-                 WHERE f2.ticker = f1.ticker
-                   AND f2.revenue IS NOT NULL AND f2.revenue != 0
-                   AND f2.net_income IS NOT NULL AND f2.net_income != 0),
-                (SELECT MAX(fiscal_year) FROM fundamentals f2
-                 WHERE f2.ticker = f1.ticker
-                   AND (f2.revenue IS NOT NULL AND f2.revenue != 0
-                        OR f2.net_income IS NOT NULL AND f2.net_income != 0)),
-                MAX(fiscal_year)
-            ) as max_year
-        FROM fundamentals f1
-        GROUP BY ticker
-    """
+    choix = meilleurs_exercices()
+    if not choix:
+        return "SELECT NULL AS ticker, NULL AS max_year WHERE 1 = 0"
+    return " UNION ALL ".join(
+        "SELECT '{}' AS ticker, {} AS max_year".format(
+            str(t).replace("'", "''"), int(a))
+        for t, a in sorted(choix.items()))
 
 
 def get_all_fundamentals() -> pd.DataFrame:
