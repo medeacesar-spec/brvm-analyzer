@@ -24,9 +24,17 @@ CE QUE LA MESURE DIT
   pieges que l'etalon ne contenait pas y sont apparus — la regle brut-net
   prenait la colonne « variation » (N - N-1 = variation), et la regle des
   tetes coupees recollait un renvoi de note (« 4.2 1 776 443 » chez Sonatel).
-  Tous deux corriges ; au 25/09, 174 concordances avec la base, et une
-  seule erreur du lecteur en mode sur, due a une ancre fausse EN BASE
-  (SODECI 2023, voir la PR de correction).
+  Tous deux corriges. Trois autres ensuite, toujours a grande echelle :
+  l'ancre acceptait la premiere colonne a 1 % (Vivo 2025 : 604 978 et
+  600 708 different de 0,7 %) — elle retient desormais la plus proche, a
+  3 pour mille ; une mention « en millions » s'appliquait a un tableau en
+  francs (plafond de 10^14 FCFA) ; et parmi plusieurs lignes, celle ou
+  l'ancre se retrouve passe devant (Onatel).
+
+  Au 25/09 : 171 concordances a un pour mille. Deux ecarts seulement
+  opposent encore le document lu en mode sur a la fiche : SODECI 2024,
+  dont l'ancre est fausse EN BASE, et SITAB 2024, ou le document ecrit
+  44 730 358 142 sur trois lignes quand la fiche dit 44,174 Md.
 
   PAR MODE DE CHOIX DE LA COLONNE (voir `lire_detaille`) : 25 valeurs par
   l'ancre, 1 par brut - amortissements = net, 8 par l'en-tete — toutes

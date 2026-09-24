@@ -438,18 +438,27 @@ def _colonne_par_ancre(valeurs: list, ancre, facteur: float):
     retombe sur ce que nous savons deja est donc le comparatif, et l'autre
     est celle que l'on cherche. Aucune devinette.
     """
-    if ancre is None or len(valeurs) < 2:
+    if not ancre or len(valeurs) < 2:
         return None
-    for i, valeur in enumerate(valeurs):
-        montant = valeur * facteur
-        if not ancre or abs(abs(montant) - abs(ancre)) > 0.01 * abs(ancre):
-            continue
-        # Le voisin de la MEME PAIRE, pas le suivant dans la ligne. Chez Palm
-        # CI, « Resultat net 15 508 655 15 861 643 Services exterieurs
-        # -23 133 174 » porte quatre montants : l'ancre tombe sur le second,
-        # et prendre « le suivant » ramenait les services exterieurs.
-        return i - 1 if i > 0 else i + 1
-    return None
+    # LA COLONNE LA PLUS PROCHE, pas la premiere a 1 % pres. Vivo : 604 978
+    # (2025) et 600 708 (2024) different de 0,7 % ; l'ancre 600 708 acceptait
+    # donc la PREMIERE colonne, et le lecteur rendait 2024 pour 2025.
+    ecarts = [(abs(abs(v * facteur) - abs(ancre)) / abs(ancre), i)
+              for i, v in enumerate(valeurs)]
+    ecart, i = min(ecarts)
+    # TROIS POUR MILLE. La base porte des montants exacts, ou arrondis au
+    # million : l'ecart reel est bien en dessous. A 1 %, l'ancre reconnaissait
+    # des notions VOISINES — chez TotalEnergies Senegal, un chiffre
+    # d'affaires 2024 de 484,9 Md « retrouve » dans des ventes de
+    # marchandises de 481,0 Md. Mieux vaut une lecture devinee, jamais
+    # proposee, qu'une lecture sure a tort.
+    if ecart > 0.003:
+        return None
+    # Le voisin de la MEME PAIRE, pas le suivant dans la ligne. Chez Palm
+    # CI, « Resultat net 15 508 655 15 861 643 Services exterieurs
+    # -23 133 174 » porte quatre montants : l'ancre tombe sur le second,
+    # et prendre « le suivant » ramenait les services exterieurs.
+    return i - 1 if i > 0 else i + 1
 
 
 TITRE_REFERENTIEL = re.compile(r"\b(syscohada|ifrs)\b")
@@ -607,45 +616,76 @@ def lire_detaille(texte: str, echelle: float = None, ancres: dict = None) -> dic
         candidates = (_lignes_du_champ(lignes, motifs, echelles)
                       or _lignes_du_champ(lignes, LIBELLES_SECOURS.get(champ, ()),
                                           echelles))
-        for _, ligne, reste, valeurs, facteur in candidates:
-            _MINIMUM_CHIFFRES[0] = 3 if facteur >= 1_000_000 else 4
-            ancre = (ancres or {}).get(champ)
-            choix = _colonne_par_ancre(valeurs, ancre, facteur)
-            if choix is not None:
-                # L'ANCRE PEUT SE RETROUVER DANS UNE LECTURE QUI A PERDU UN
-                # CHIFFRE. « Resultat net 2 2 318 122 7 313 440 » chez Bernabe :
-                # la lecture normale jette le « 2 » isole, trop court pour un
-                # montant, rend 2 318 122 et 7 313 440 — et l'ancre, qui vaut
-                # 7 313 440, s'y retrouve. Le resultat lu etait dix fois trop
-                # petit. Si la lecture aux tetes recollees differe ET retombe
-                # elle aussi sur l'ancre, c'est elle qui explique tous les
-                # chiffres de la ligne.
-                recollee = montants_tetes_fusionnees(reste)
-                autre = _colonne_par_ancre(recollee, ancre, facteur)
-                if recollee != valeurs and autre is not None:
-                    valeurs, choix = recollee, autre
-            if choix is None and ancre:
-                # L'ancre ne reconnait rien : peut-etre deux montants colles
-                # dont le groupe de tete est court. On tente la lecture de
-                # secours, et on ne la garde que si l'ancre s'y retrouve.
-                for lecture in (montants_alternatifs, montants_tetes_fusionnees):
-                    secours = lecture(reste)
-                    autre = _colonne_par_ancre(secours, ancre, facteur)
-                    if autre is not None:
-                        valeurs, choix = secours, autre
-                        break
-            if choix is not None:
-                mode = "ancre"
-            else:
-                choix = _colonne_nette(valeurs) if champ == "total_assets" else None
-                mode = "brut-net" if choix is not None else "en-tete"
-            index = choix if choix is not None else colonne
-            valeur = valeurs[min(index, len(valeurs) - 1)] * facteur
-            if valeur < 0 and champ not in SIGNE_LIBRE:
-                valeur = abs(valeur)
-            sortie[champ] = (valeur, mode)
-            break
+        ancre = (ancres or {}).get(champ)
+        lues = [_lire_candidate(champ, c, ancre, colonne) for c in candidates]
+        # LA LIGNE OU L'ANCRE SE RETROUVE, D'ABORD. Onatel porte trois lignes
+        # « resultat net » : un resume sans unite (« 21 129 21 471 »), puis
+        # l'etat en francs (« 21 471 148 928 21 129 276 785 »). La premiere,
+        # lue en francs, rendait 21 129 francs ; la troisieme contient le
+        # resultat de l'exercice precedent, a l'unite pres — c'est la ligne de
+        # l'etat. A defaut de ligne sure, la premiere, comme avant.
+        sures = [l for l in lues if l and l[1] != "en-tete"]
+        retenue = sures[0] if sures else next((l for l in lues if l), None)
+        if retenue:
+            sortie[champ] = retenue
     return sortie
+
+
+# Aucun emetteur de la cote n'approche cent mille milliards de FCFA : le plus
+# gros bilan est de l'ordre de 20 000 Md. Au-dela, l'unite de la ligne est
+# fausse — une mention « en millions » plus haut dans le document appliquee a
+# un tableau en francs (Sonatel 2024 : 1,38 x 10^18).
+PLAFOND = 1e14
+
+
+def _lire_candidate(champ, candidate, ancre, colonne):
+    """(montant, mode) lu sur une ligne candidate, ou None."""
+    rang, ligne, reste, valeurs, facteur = candidate
+    _MINIMUM_CHIFFRES[0] = 3 if facteur >= 1_000_000 else 4
+    choix = _colonne_par_ancre(valeurs, ancre, facteur)
+    if choix is not None:
+        # L'ANCRE PEUT SE RETROUVER DANS UNE LECTURE QUI A PERDU UN
+        # CHIFFRE. « Resultat net 2 2 318 122 7 313 440 » chez Bernabe :
+        # la lecture normale jette le « 2 » isole, trop court pour un
+        # montant, rend 2 318 122 et 7 313 440 — et l'ancre, qui vaut
+        # 7 313 440, s'y retrouve. Le resultat lu etait dix fois trop
+        # petit. Si la lecture aux tetes recollees differe ET retombe
+        # elle aussi sur l'ancre, c'est elle qui explique tous les
+        # chiffres de la ligne.
+        recollee = montants_tetes_fusionnees(reste)
+        autre = _colonne_par_ancre(recollee, ancre, facteur)
+        if recollee != valeurs and autre is not None:
+            valeurs, choix = recollee, autre
+    if choix is None and ancre:
+        # L'ancre ne reconnait rien : peut-etre deux montants colles
+        # dont le groupe de tete est court. On tente la lecture de
+        # secours, et on ne la garde que si l'ancre s'y retrouve.
+        for lecture in (montants_alternatifs, montants_tetes_fusionnees):
+            secours = lecture(reste)
+            autre = _colonne_par_ancre(secours, ancre, facteur)
+            if autre is not None:
+                valeurs, choix = secours, autre
+                break
+    if choix is not None:
+        mode = "ancre"
+    else:
+        choix = _colonne_nette(valeurs) if champ == "total_assets" else None
+        mode = "brut-net" if choix is not None else "en-tete"
+    if not valeurs:
+        return None
+    index = choix if choix is not None else colonne
+    valeur = valeurs[min(index, len(valeurs) - 1)] * facteur
+    if abs(valeur) > PLAFOND:
+        # Le plafond juge la valeur FINALE : « 97 819 112 928 » en millions
+        # depasse le plafond tant qu'il est colle, pas une fois coupe en deux.
+        if facteur > 1:
+            return _lire_candidate(champ, (rang, ligne, reste,
+                                           _montants_bruts(reste) or valeurs, 1.0),
+                                   ancre, colonne)
+        return None
+    if valeur < 0 and champ not in SIGNE_LIBRE:
+        valeur = abs(valeur)
+    return (valeur, mode)
 
 
 def lire(texte: str, echelle: float = None, ancres: dict = None) -> dict:

@@ -13,7 +13,7 @@ le lecteur sur tout le fonds documentaire et ne retenir que le sur.
 
 TROIS ISSUES POUR CHAQUE VALEUR SURE
 
-  concorde  la base porte la meme valeur, a 1 % pres ;
+  concorde  la base porte la meme valeur, a un pour mille pres ;
   ecart     la base porte autre chose — a LIRE a la main. C'est ainsi que
             les totaux de bilan de Vivo et d'Erium ont ete trouves faux ;
   trou      la base est vide pour ce champ : une valeur a PROPOSER, apres
@@ -123,8 +123,13 @@ def main(avec_ocr: bool, titre: str = None, avec_fiches: bool = False) -> None:
     base = read_sql_df("SELECT ticker, fiscal_year, " + ", ".join(CHAMPS)
                        + " FROM fundamentals")
     connu = {(r.ticker, int(r.fiscal_year)): r for r in base.itertuples()}
-    fichiers = sorted(f for f in os.listdir(DOSSIER)
-                      if FICHIER.match(f) and not f.startswith("."))
+    # LE SYSCOHADA AVANT L'IFRS. La base et les fiches societe suivent les
+    # comptes SYSCOHADA ; quand un exercice a les deux documents,
+    # TotalEnergies Senegal par exemple, l'ordre alphabetique mettait
+    # « ifrs » devant « syscohada ».
+    fichiers = sorted((f for f in os.listdir(DOSSIER)
+                       if FICHIER.match(f) and not f.startswith(".")),
+                      key=lambda f: (FICHIER.match(f).groups(), "ifrs" in f.lower(), f))
     if titre:
         fichiers = [f for f in fichiers if f.startswith(titre)]
 
@@ -159,7 +164,10 @@ def main(avec_ocr: bool, titre: str = None, avec_fiches: bool = False) -> None:
                 issues["devine"].append(fiche)
             elif en_base is None:
                 issues["trou"].append(fiche)
-            elif abs(abs(valeur) - abs(en_base)) <= 0.01 * abs(en_base):
+            # UN POUR MILLE, pas un pour cent : un tableau en millions n'a
+            # pas d'arrondi de 124 M. A 1 %, le resultat SGBCI 2025 recopie
+            # de 2024 (101 228 au lieu de 101 352) passait pour concordant.
+            elif abs(abs(valeur) - abs(en_base)) <= max(0.001 * abs(en_base), 1e6):
                 issues["concorde"].append(fiche)
             else:
                 issues["ecart"].append(fiche)
@@ -175,10 +183,18 @@ def main(avec_ocr: bool, titre: str = None, avec_fiches: bool = False) -> None:
         for t_, a, c, v, b, m, f in sorted(issues[cle]):
             fiche = (fiches.get(t_) or {}).get(a, {}).get(c)
             verdict = ""
-            if fiche:
-                proche = lambda x: x and abs(abs(x) - abs(fiche)) <= 0.02 * abs(fiche)
-                verdict = ("  => la BASE a tort (fiche = document)" if proche(v)
-                           else "  => le LECTEUR a tort (fiche = base)" if proche(b)
+            if "ifrs" in f.lower():
+                verdict = "  => document IFRS : autre referentiel que la base"
+            elif fiche:
+                # La fiche est en millions : a un pour mille pres, pas a 2 %.
+                # A 2 %, elle « confirmait » a la fois 604 978 et 600 708 chez
+                # Vivo, et donnait tort a une base verifiee a la main.
+                proche = lambda x: x and abs(abs(x) - abs(fiche)) <= max(0.001 * abs(fiche), 1e6)
+                verdict = ("  => fiche d'accord avec les deux : ecart d'arrondi" if proche(v) and proche(b)
+                           else "  => la BASE a tort (fiche = document)" if proche(v)
+                           # La base a souvent ete REMPLIE depuis la fiche :
+                           # « fiche = base » n'est alors qu'une source.
+                           else "  => document seul contre fiche = base : a lire" if proche(b)
                            else f"  => fiche {fiche/Md:.3f} Md : trois sources, trois valeurs")
             print(f"  {t_:9} {a} {c:16} lu {v/Md:12.3f} Md"
                   + (f" · base {b/Md:12.3f} Md · x{v/b:6.2f}" if b else "")
