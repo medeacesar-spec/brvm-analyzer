@@ -129,8 +129,11 @@ def _compute_period_performance(quotes: pd.DataFrame) -> dict:
         "ytd_start": year_start.date(),
     }
 
-    # 1 seule requête pour tous les tickers (mise en cache 5 min)
-    all_prices = get_all_cached_prices()
+    # 1 seule requête pour tous les tickers (mise en cache 5 min).
+    # QUATRE CENTS JOURS, pas tout l'historique : la plus longue fenetre
+    # calculee ici est « depuis le 1er janvier ». Lire les vingt-huit ans de
+    # price_cache coutait vingt-six secondes par appel.
+    all_prices = get_all_cached_prices(depuis_jours=400)
 
     for _, row in quotes.iterrows():
         ticker, name, last_price = row.get("ticker", ""), row.get("name", ""), row.get("last", 0)

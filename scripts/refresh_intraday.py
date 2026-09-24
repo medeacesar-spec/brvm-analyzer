@@ -224,9 +224,22 @@ def refresh_intraday() -> dict:
         pass
 
     conn.close()
+
+    # Les indices du jour, tant qu'on est hors de toute attente humaine.
+    # L'application les lisait elle-meme a chaque ouverture de session, ce qui
+    # la faisait patienter jusqu'a trente secondes quand brvm.org tardait.
+    # Ici, un echec ne coute rien : le cache precedent reste servi.
+    try:
+        from data.indices_marche import rafraichir_indices
+        n_indices = rafraichir_indices(delai=25)
+    except Exception as err:                                   # noqa: BLE001
+        print(f"  [indices] KO (non bloquant) : {type(err).__name__}: {err}")
+        n_indices = 0
+
     duration = round(time.time() - t0, 2)
     return {
         "status": "ok",
+        "indices": n_indices,
         "quotes": len(quotes),
         "market_data_updated": n_market,
         "price_cache_updated": n_cache,

@@ -124,108 +124,10 @@ def _sync_daily_quotes():
     return updated
 
 
-def _scrape_brvm_indices():
-    """Scrape les 12 indices BRVM depuis brvm.org/fr/indices."""
-    import re
-    import requests
-    from bs4 import BeautifulSoup
-
-    resp = requests.get(
-        "https://www.brvm.org/fr/indices",
-        headers={"User-Agent": "Mozilla/5.0"},
-        timeout=30, verify=False,
-    )
-    resp.raise_for_status()
-    soup = BeautifulSoup(resp.text, "lxml")
-
-    def _parse_num(text):
-        if not text:
-            return None
-        c = text.replace("\xa0", "").replace(" ", "")
-        if "," in c:
-            c = c.replace(".", "").replace(",", ".")
-        c = re.sub(r"[^\d.\-]", "", c)
-        try:
-            return float(c)
-        except (ValueError, TypeError):
-            return None
-
-    indices = []
-    for table in soup.find_all("table", class_="table"):
-        thead = table.find("thead")
-        if not thead or "Fermeture" not in thead.get_text():
-            continue
-        tbody = table.find("tbody")
-        if not tbody:
-            continue
-        for tr in tbody.find_all("tr"):
-            cells = tr.find_all("td")
-            if len(cells) < 4:
-                continue
-            name = cells[0].get_text(strip=True)
-            close = _parse_num(cells[2].get_text(strip=True))
-            var_span = cells[3].find("span", class_=["text-bad", "text-good"])
-            variation = _parse_num(var_span.get_text(strip=True)) if var_span else None
-            if var_span and "text-bad" in var_span.get("class", []) and variation and variation > 0:
-                variation = -variation
-            ytd = None
-            if len(cells) >= 5:
-                ytd_span = cells[4].find("span", class_=["text-bad", "text-good"])
-                ytd = _parse_num(ytd_span.get_text(strip=True)) if ytd_span else None
-                if ytd_span and "text-bad" in ytd_span.get("class", []) and ytd and ytd > 0:
-                    ytd = -ytd
-            if name and close is not None:
-                cat = "total_return" if "TOTAL RETURN" in name.upper() else \
-                      "principal" if any(s in name.upper() for s in ["COMPOSITE", "BRVM-30", "PRESTIGE", "PRINCIPAL"]) else \
-                      "sectoriel"
-                indices.append((name, close, variation, ytd, cat))
-
-    if not indices:
-        return
-
-    # Dédoublonnage par nom : brvm.org affiche parfois le même indice
-    # (ex. BRVM-30) dans plusieurs tables (principaux, total_return, etc.).
-    # On garde la première occurrence rencontrée pour éviter le
-    # UniqueViolation sur la PK `name` lors des INSERT suivants.
-    _seen_names = set()
-    indices = [idx for idx in indices
-               if not (idx[0] in _seen_names or _seen_names.add(idx[0]))]
-
-    conn = get_connection()
-    # Ensure columns exist (idempotent, tolerant des drivers abortant la txn).
-    try:
-        conn.execute("SELECT prev_close FROM indices_cache LIMIT 1")
-    except Exception:
-        # Postgres abort la transaction sur un SELECT en erreur → rollback obligatoire
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-        for col, ctype in [("prev_close", "REAL"), ("ytd_variation", "REAL"), ("category", "TEXT")]:
-            try:
-                conn.execute(f"ALTER TABLE indices_cache ADD COLUMN {col} {ctype}")
-                conn.commit()
-            except Exception:
-                try:
-                    conn.rollback()
-                except Exception:
-                    pass
-    conn.execute("DELETE FROM indices_cache")
-    # INSERT idempotent : même si un nom apparaît plusieurs fois dans le
-    # scrape (cf brvm.org qui répète parfois un indice dans plusieurs
-    # sections), ON CONFLICT DO UPDATE met à jour au lieu de lever.
-    for name, close, var, ytd, cat in indices:
-        conn.execute(
-            "INSERT INTO indices_cache (name, value, variation, ytd_variation, category, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP) "
-            "ON CONFLICT (name) DO UPDATE SET "
-            "  value = EXCLUDED.value, variation = EXCLUDED.variation, "
-            "  ytd_variation = EXCLUDED.ytd_variation, category = EXCLUDED.category, "
-            "  updated_at = CURRENT_TIMESTAMP",
-            (name, close, var, ytd, cat),
-        )
-    conn.commit()
-    conn.close()
+def _scrape_brvm_indices(delai: int = None):
+    """Relais vers `data.indices_marche` — le scrape vit desormais la-bas."""
+    from data.indices_marche import DELAI_DEFAUT, rafraichir_indices
+    return rafraichir_indices(delai or DELAI_DEFAUT)
 
 
 def _sync_full_details():
@@ -455,15 +357,23 @@ if not st.session_state.get("db_verified"):
                     st.session_state.daily_sync_error = f"{type(_e).__name__}: {_e}"
             st.session_state.sync_done = True
             st.rerun()
-        # Indices BRVM : rafraîchissement léger une fois par session, pour TOUS
-        # (1 requête HTTP ~1s, indépendant de la fraîcheur des cotations).
+        # Indices BRVM : EN DERNIER RECOURS SEULEMENT.
+        #
+        # Ce scrape tournait a chaque ouverture de session, avant le premier
+        # affichage, avec trente secondes d'attente. Le 24/09/2026 brvm.org a
+        # depasse ce delai : la page se faisait attendre, puis l'administrateur
+        # lisait « Indices : ReadTimeout ». Les taches planifiees rafraichissent
+        # maintenant le cache quatre fois par jour ; l'application ne tente sa
+        # chance que si ce cache a plus de six heures, et pour huit secondes.
         if not st.session_state.get("indices_synced"):
-            try:
-                _scrape_brvm_indices()
-                st.session_state.indices_error = None
-            except Exception as _e:
-                st.session_state.indices_error = f"{type(_e).__name__}: {_e}"
+            from data.indices_marche import cache_perime
             st.session_state.indices_synced = True
+            if cache_perime():
+                try:
+                    _scrape_brvm_indices()
+                    st.session_state.indices_error = None
+                except Exception as _e:
+                    st.session_state.indices_error = f"{type(_e).__name__}: {_e}"
     else:
         # count == 0 : vraiment vide (ou erreur de connexion)
         # On tente un sync complet MAIS on ne boucle pas indéfiniment
