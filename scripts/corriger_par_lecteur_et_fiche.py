@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Dix-huit montants que le document ET la fiche societe contredisent.
+"""Vingt-sept montants que le document ET la fiche societe contredisent.
 
 COMMENT ILS ONT ETE TROUVES
 
@@ -92,6 +92,27 @@ VALEURS = {
                          "Rapport annuel de gestion - exercice 2024 - Onatel, en francs"),
     ("TTLS.sn", 2024): ({"net_income": 7_091_000_000}, "fiche 7,091 Md",
                         "Rapport annuel - exercice 2024 - TotalEnergies Senegal, en millions"),
+    # --- Lus dans des SCANS, par l'OCR en rangees (passe du 25/09) ----------
+    ("BOAM.ml", 2022): ({"revenue": 35_307_377_468}, "fiche 35,307 Md",
+                        "Etats financiers certifies 2022 - BOA Mali (scan)"),
+    # Quasi-copie de 2024 (36,157 -> 36,159) que la sonde « fige » ne voyait pas.
+    ("BOAM.ml", 2025): ({"revenue": 37_996_330_474}, "fiche 37,997 Md",
+                        "Etats financiers - exercice 2025 - BOA Mali (scan)"),
+    ("BOAN.ne", 2023): ({"net_income": 10_076_732_131}, "fiche 10,077 Md",
+                        "Etats financiers - exercice 2023 - BOA Niger (scan)"),
+    ("ECOC.ci", 2022): ({"revenue": 99_155_000_000}, "fiche 99,155 Md",
+                        "Etats financiers - exercice 2022 - Ecobank CI (scan)"),
+    # PERTE : l'OCR perd le signe, la fiche et la base le donnent negatif.
+    ("FTSC.ci", 2021): ({"revenue": 41_473_743_000, "net_income": -1_276_336_000},
+                        "fiche 41,474 et -1,276 Md",
+                        "Etats financiers - exercice 2021 - Filtisac (scan), en milliers"),
+    ("NEIC.ci", 2024): ({"revenue": 6_744_255_774}, "fiche 6,744 Md",
+                        "Etats financiers approuves - exercice 2024 - NEI-CEDA (scan)"),
+    # PERTE, meme remarque : fiche -8,756 Md, base -6,99 Md.
+    ("SCRC.ci", 2022): ({"net_income": -8_755_668_861}, "fiche -8,756 Md",
+                        "Etats financiers SYSCOHADA - exercice 2022 - Sucrivoire (scan)"),
+    ("SDSC.ci", 2022): ({"revenue": 86_997_124_000}, "fiche 86,997 Md",
+                        "Etats financiers - exercice 2022 - AGL CI (scan), en milliers"),
     ("SDCC.ci", 2023): ({"revenue": 175_458_474_000}, "fiche 175,5 Md",
                         "Etats financiers - exercice 2024 - SODECI, colonne 2023, en milliers"),
 }
