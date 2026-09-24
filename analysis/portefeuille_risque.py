@@ -522,7 +522,10 @@ def allocation_suggeree(positions: tuple, cash: float, scores: tuple,
     se juge sur des chiffres plutot que sur une autorite.
     """
     scores = dict(scores)
-    base = candidats_amelioration(positions, cash, seuil_illiquidite)
+    # LA FENETRE SE TRANSMET JUSQU'AU BOUT. Les candidats etaient classes sur
+    # tout l'historique quand la simulation, elle, tournait sur la fenetre
+    # choisie : le plan repondait a une question que personne n'avait posee.
+    base = candidats_amelioration(positions, cash, fenetre, seuil_illiquidite)
     if not base or cash <= 0:
         return None
 
