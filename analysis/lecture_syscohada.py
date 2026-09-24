@@ -29,7 +29,7 @@ import unicodedata
 # des lettres, colle des mots, confond « l » et « I ». On cible les suites de
 # caracteres qui survivent le mieux.
 LIBELLES = {
-    "revenue": (r"chiffre\s*d.?\s*affaires?(?!\s*hao)",
+    "revenue": (r"chiffre\s*d.?\s*[a@]ffaires?(?!\s*hao)",
                 r"produit\s*net\s*bancaire", r"\bPNB\b"),
     "net_income": (r"r[ée]sultat\s*net\s*(de\s*l.?\s*exercice)?",
                    r"r[ée]sultat\s*de\s*l.?\s*exercice",
@@ -89,7 +89,10 @@ LIBELLES_SECOURS = {
 SIGNE_LIBRE = {"net_income", "ebit", "ebitda", "cfo", "capex", "dividends_total"}
 
 # Un montant : des groupes de chiffres separes par des espaces ou des points.
-MONTANT = re.compile(r"\(?-?\d[\d  .']{2,}\d\)?")
+# Trois caracteres au moins : « 409 » est un montant dans un tableau en
+# millions (BOA Niger). Le nombre minimal de CHIFFRES, fixe selon l'unite,
+# fait ensuite le tri (voir `_MINIMUM_CHIFFRES`).
+MONTANT = re.compile(r"\(?-?\d[\d  .']{1,}\d\)?")
 
 # Un groupe de trois chiffres, l'unite de ces tableaux.
 TRIPLET = re.compile(r"\d{3}")
@@ -102,10 +105,18 @@ def _plier(texte: str) -> str:
     return re.sub(r"[ \t\xa0]+", " ", texte.lower())
 
 
+# Nombre minimal de chiffres d'un montant. Quatre en francs ou en milliers :
+# en dessous, c'est un numero de note ou un pourcentage. TROIS quand le
+# document est en millions — « Resultat net de l'exercice 409 » chez BOA
+# Niger vaut 409 millions, et le rejeter laissait le champ vide. Fixe par
+# `lire_detaille` selon l'echelle du document.
+_MINIMUM_CHIFFRES = [4]
+
+
 def _nombre(brut: str) -> float | None:
     negatif = brut.strip().startswith("(") or brut.strip().startswith("-")
     chiffres = re.sub(r"[^\d]", "", brut)
-    if len(chiffres) < 4:
+    if len(chiffres) < _MINIMUM_CHIFFRES[0]:
         return None
     valeur = float(chiffres)
     return -valeur if negatif else valeur
@@ -249,6 +260,7 @@ def _fusionner_tetes(brut: str) -> str:
 
 def montants_tetes_fusionnees(ligne: str) -> list:
     """Les montants de la ligne, groupes de tete recolles."""
+    ligne = RENVOI_NOTE.sub(" ", ligne)
     sortie = []
     for m in MONTANT.finditer(ligne):
         if _est_une_annee(m.group(0)):
@@ -263,6 +275,7 @@ def montants_tetes_fusionnees(ligne: str) -> list:
 
 def montants_alternatifs(ligne: str) -> list:
     """Les montants de la ligne, lus avec le decoupage de secours."""
+    ligne = RENVOI_NOTE.sub(" ", ligne)
     sortie = []
     for m in MONTANT.finditer(ligne):
         if _est_une_annee(m.group(0)):
@@ -275,8 +288,41 @@ def montants_alternatifs(ligne: str) -> list:
     return sortie
 
 
+def _sans_doublons_d_unite(valeurs: list) -> list:
+    """Retire un montant repete dans une unite plus petite juste avant lui.
+
+    BICI Benin : « Resultat net 36 236 705 101 36 237 29 058 27 270 » porte
+    le resultat 2025 en FRANCS, puis les trois colonnes certifiees en
+    MILLIONS. Le premier n'est pas une colonne de plus, c'est le deuxieme
+    ecrit autrement : leur rapport vaut un million, a l'arrondi pres. Deux
+    voisins dans un rapport de mille ou d'un million, a 0,2 % pres, sont
+    le meme montant ; on garde celui de l'unite du tableau.
+    """
+    sortie = list(valeurs)
+    i = 0
+    while i < len(sortie) - 1:
+        a, b = abs(sortie[i]), abs(sortie[i + 1])
+        if b and any(abs(a / (b * k) - 1) <= 0.002 for k in (1_000, 1_000_000)):
+            del sortie[i]
+            continue
+        i += 1
+    return sortie
+
+
 def montants_de_ligne(ligne: str) -> list:
     """Les montants d'une ligne, dans l'ordre. Le premier est l'exercice."""
+    return _sans_doublons_d_unite(_montants_bruts(ligne))
+
+
+# Un renvoi a l'annexe : « Chiffre d'affaires 4.2 1 776 443 1 620 701 »
+# chez Sonatel. Un ou deux chiffres, un point, un ou deux chiffres, isoles.
+# Les milliers separes par des points (« 172.235.053 ») ont des groupes de
+# TROIS chiffres et ne sont pas touches.
+RENVOI_NOTE = re.compile(r"(?<![\d.])\d{1,2}\.\d{1,2}(?![\d.])")
+
+
+def _montants_bruts(ligne: str) -> list:
+    ligne = RENVOI_NOTE.sub(" ", ligne)
     sortie = []
     for m in MONTANT.finditer(ligne):
         if _est_une_annee(m.group(0)) or _est_decimal(ligne, m):
@@ -320,6 +366,31 @@ def _echelle(texte: str) -> float:
         if m and m.start() < rang:
             premiere, rang = facteur, m.start()
     return premiere
+
+
+DECLARATION_UNITE = re.compile(
+    r"\ben\s+(milliard|million|millier)s?\s+(de\s+)?(francs?\s+)?f\.?\s*\.?\s*cfa")
+UNITES = {"milliard": 1_000_000_000.0, "million": 1_000_000.0, "millier": 1_000.0}
+
+
+def echelles_par_ligne(lignes: list, defaut: float) -> list:
+    """L'unite de chaque ligne : celle de la derniere declaration qui la precede.
+
+    L'UNITE PEUT CHANGER DANS UN MEME DOCUMENT. SODECI publie ses comptes
+    SYSCOHADA en milliers puis ses comptes IFRS en millions ; BOA Niger
+    n'annonce « en millions de F CFA » qu'au milieu du rapport des
+    commissaires, et son resultat de 409 millions etait lu comme 409 francs.
+    Chaque ligne prend donc l'unite de la derniere mention « en millions /
+    milliers de FCFA » rencontree avant elle — et, avant toute mention,
+    celle du document.
+    """
+    sortie, courante = [], defaut
+    for ligne in lignes:
+        m = DECLARATION_UNITE.search(ligne)
+        if m:
+            courante = UNITES[m.group(1)]
+        sortie.append(courante)
+    return sortie
 
 
 ANNEES = re.compile(r"(?:^|[^\d])((?:19|20)\d{2})(?:[^\d]|$)")
@@ -418,10 +489,20 @@ def _colonne_nette(valeurs: list):
     L'arithmetique le prouve sans lire l'en-tete : brut moins amortissements
     egale net, au franc pres. Sans cette egalite, on ne conclut rien.
     """
-    if len(valeurs) < 3:
+    # QUATRE COLONNES, PAS TROIS. « Exercice, precedent, variation » verifie
+    # la meme egalite : 604 978 - 600 707 = 4 270. Passe sur 128 exercices,
+    # la regle a trois colonnes rendait la variation pour le chiffre
+    # d'affaires, les depots ou le resultat d'exploitation — quinze fois.
+    # L'actif SYSCOHADA porte quatre colonnes, et le net de l'exercice
+    # precedent est du meme ordre que celui de l'exercice.
+    if len(valeurs) < 4:
         return None
-    brut, amort, net = (abs(v) for v in valeurs[:3])
-    if brut and amort and abs(brut - amort - net) <= 0.001 * brut:
+    brut, amort, net, net_precedent = (abs(v) for v in valeurs[:4])
+    if not (brut and amort and net and net_precedent):
+        return None
+    if not 0.5 <= net / net_precedent <= 2:
+        return None
+    if abs(brut - amort - net) <= 0.001 * brut:
         return 2
     return None
 
@@ -429,7 +510,7 @@ def _colonne_nette(valeurs: list):
 SOUS_TOTAL = re.compile(r"sous\s*-?\s*$")
 
 
-def _lignes_du_champ(lignes: list, motifs: tuple) -> list:
+def _lignes_du_champ(lignes: list, motifs: tuple, echelles: list = None) -> list:
     """Les lignes candidates d'un champ, de la plus sure a la moins sure.
 
     Chaque candidate est (rang, ligne, reste, valeurs). Le document fixe
@@ -459,6 +540,8 @@ def _lignes_du_champ(lignes: list, motifs: tuple) -> list:
                        if re.search(m, ligne)), None)
         if trouve is None:
             continue
+        facteur = echelles[rang_ligne] if echelles else 1.0
+        _MINIMUM_CHIFFRES[0] = 3 if facteur >= 1_000_000 else 4
         # LE MONTANT SUR LA LIGNE SUIVANTE. L'OCR d'un tableau rend souvent
         # le libelle seul, puis ses montants a la ligne : « Capitaux propres »
         # puis « 2 975 325 212 » chez SICOR. On ne l'accepte que si la ligne
@@ -471,7 +554,7 @@ def _lignes_du_champ(lignes: list, motifs: tuple) -> list:
             valeurs = montants_de_ligne(suivante)
             if valeurs:
                 rang = 1 if len(valeurs) == 1 else 0
-                candidates.append((rang, ligne, suivante, valeurs))
+                candidates.append((rang, ligne, suivante, valeurs, facteur))
                 continue
         # LES MONTANTS QUI SUIVENT LE LIBELLE, pas ceux de toute la ligne.
         # « Comptes de regularisation 8 949 11 987 Capitaux propres et
@@ -491,7 +574,7 @@ def _lignes_du_champ(lignes: list, motifs: tuple) -> list:
             continue
         if SOUS_TOTAL.search(ligne[:trouve.start()]):
             rang += 3
-        candidates.append((rang, ligne, reste, valeurs))
+        candidates.append((rang, ligne, reste, valeurs, facteur))
     return sorted(candidates, key=lambda c: c[0])
 
 
@@ -514,14 +597,18 @@ def lire_detaille(texte: str, echelle: float = None, ancres: dict = None) -> dic
     par l'ancre si elle s'y retrouve, par l'arithmetique brut - amortissements
     = net a l'actif, par l'en-tete a defaut.
     """
-    facteur = echelle if echelle else _echelle(texte)
     colonne = colonne_de_l_exercice(texte)
     lignes = _sans_sections_ifrs([l for l in _plier(texte).split("\n") if l.strip()])
+    # Une echelle imposee par l'appelant vaut pour tout le document.
+    echelles = ([echelle] * len(lignes) if echelle
+                else echelles_par_ligne(lignes, _echelle(texte)))
     sortie = {}
     for champ, motifs in LIBELLES.items():
-        candidates = (_lignes_du_champ(lignes, motifs)
-                      or _lignes_du_champ(lignes, LIBELLES_SECOURS.get(champ, ())))
-        for _, ligne, reste, valeurs in candidates:
+        candidates = (_lignes_du_champ(lignes, motifs, echelles)
+                      or _lignes_du_champ(lignes, LIBELLES_SECOURS.get(champ, ()),
+                                          echelles))
+        for _, ligne, reste, valeurs, facteur in candidates:
+            _MINIMUM_CHIFFRES[0] = 3 if facteur >= 1_000_000 else 4
             ancre = (ancres or {}).get(champ)
             choix = _colonne_par_ancre(valeurs, ancre, facteur)
             if choix is not None:
@@ -550,7 +637,7 @@ def lire_detaille(texte: str, echelle: float = None, ancres: dict = None) -> dic
             if choix is not None:
                 mode = "ancre"
             else:
-                choix = _colonne_nette(valeurs)
+                choix = _colonne_nette(valeurs) if champ == "total_assets" else None
                 mode = "brut-net" if choix is not None else "en-tete"
             index = choix if choix is not None else colonne
             valeur = valeurs[min(index, len(valeurs) - 1)] * facteur

@@ -1190,6 +1190,68 @@ def _ocr_cellules(img, psm: int = 6) -> list:
     return out
 
 
+def _ocr_rangees(img) -> list:
+    """Les lignes d'un tableau scanne, reconstruites par la HAUTEUR des mots.
+
+    L'OCR regroupe les mots en « lignes » a sa facon, et sur un etat
+    financier il lit souvent par COLONNE : tous les libelles, puis tous les
+    montants. Chez Afridis, cela donnait « Travaux services vendus Produits
+    accessoires Chiffre d'affaires … » puis « 83 095 047 8 909 221 92 004 268
+    … » — six libelles pour quatre valeurs, impossibles a apparier.
+
+    La position de chaque mot, elle, ne ment pas : deux mots dont le centre
+    vertical est a moins d'une demi-hauteur de caractere appartiennent a la
+    meme rangee du tableau. On les remet dans l'ordre de gauche a droite, et
+    « Chiffre d'affaires 92 004 268 85 643 038 » redevient une ligne.
+
+    easyocr s'il est installe (en local), tesseract sinon (en production) —
+    les deux rendent des boites.
+    """
+    mots = []   # (centre vertical, gauche, hauteur, texte)
+    reader = _get_ocr_reader()
+    if reader is not None:
+        import numpy as np
+        for boite, texte, _ in reader.readtext(np.array(img), detail=1,
+                                               paragraph=False):
+            ys = [p[1] for p in boite]
+            xs = [p[0] for p in boite]
+            mots.append(((max(ys) + min(ys)) / 2, min(xs),
+                         max(ys) - min(ys), texte))
+    else:
+        try:
+            import pytesseract
+            from pytesseract import Output
+            d = pytesseract.image_to_data(img.convert("L"), lang="fra+eng",
+                                          config="--psm 11",
+                                          output_type=Output.DICT)
+        except Exception:
+            return []
+        for i, texte in enumerate(d.get("text", [])):
+            texte = (texte or "").strip()
+            try:
+                conf = float(d["conf"][i])
+            except (ValueError, TypeError):
+                conf = -1
+            if texte and conf >= 30:
+                h = d["height"][i]
+                mots.append((d["top"][i] + h / 2, d["left"][i], h, texte))
+    if not mots:
+        return []
+
+    hauteur = sorted(m[2] for m in mots)[len(mots) // 2] or 20
+    mots.sort()
+    rangees, courante = [], [mots[0]]
+    for m in mots[1:]:
+        if abs(m[0] - courante[-1][0]) <= 0.6 * hauteur:
+            courante.append(m)
+        else:
+            rangees.append(courante)
+            courante = [m]
+    rangees.append(courante)
+    return [" ".join(m[3] for m in sorted(r, key=lambda m: m[1]))
+            for r in rangees]
+
+
 def _extract_with_ocr_cellules(pdf_path: str) -> list:
     """Lignes-cellules de toutes les pages d'un PDF scanne."""
     try:
