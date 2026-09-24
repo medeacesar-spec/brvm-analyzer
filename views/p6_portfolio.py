@@ -508,6 +508,13 @@ def render():
             f"<table style='width:100%;border-collapse:collapse;'>{rows_html}</table></div>",
             unsafe_allow_html=True,
         )
+        st.caption(
+            "**Yield** : dividende brut du dernier exercice publié, rapporté au "
+            "cours du jour — avant la retenue (IRVM). Il est le même pour toutes "
+            "les lignes d'un titre, quel que soit le PRU. **Yield pondéré**, en "
+            "haut de page : les dividendes bruts de toutes les lignes, rapportés "
+            "à la valeur actuelle du portefeuille."
+        )
 
         # Actions par ligne : Ouvrir / Modifier / Supprimer
         with st.expander("Actions par position", expanded=False):

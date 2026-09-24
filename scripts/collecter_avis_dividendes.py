@@ -22,6 +22,14 @@ Trois pieges, tous verifies sur les donnees :
    « le premier montant de la ligne » attribuait a ETI un montant en francs lu
    dans une colonne voisine.
 
+4. **Pour Sonatel, la colonne porte bien le NET.** Le piege 1 ne vaut pas pour
+   tout le monde. L'avis de l'exercice 2025 annonce 1 740 FCFA ; un porteur de
+   47 titres a encaisse 81 780 FCFA, soit exactement 1 740 par titre, alors
+   que la meme banque a preleve 12 % sur Ecobank CI et NSIA Banque. Le
+   dividende Sonatel est donc paye net de la retenue senegalaise de 10 %, et
+   le brut vaut 1 740 / 0,90 = 1 933,33. `MONTANTS_NETS` reconstitue le brut
+   avant toute ecriture, pour que la base reste homogene : du brut partout.
+
 Usage :
     python3 scripts/collecter_avis_dividendes.py [--simuler] [--pages N]
 """
@@ -122,6 +130,20 @@ def _date(texte: str):
     return f"{m.group(3)}-{MOIS[m.group(2)]:02d}-{int(m.group(1)):02d}"
 
 
+# Emetteurs dont l'avis BRVM porte le montant NET, et le taux a appliquer pour
+# retrouver le brut (piege 4). N'y entre qu'un emetteur recoupe sur un
+# encaissement reel : le taux ne se devine pas au pays du siege.
+MONTANTS_NETS = {
+    "SNTS.sn": 0.90,     # IRVM Senegal 10 % — recoupe le 17/09/2026
+}
+
+
+def brut(ticker: str, montant: float) -> float:
+    """Le montant brut par action, quel que soit ce que l'avis publie."""
+    taux = MONTANTS_NETS.get(ticker)
+    return round(montant / taux, 2) if taux else montant
+
+
 def _montant(texte: str):
     """Rend (valeur, devise). La devise ne se suppose jamais."""
     if not texte:
@@ -210,10 +232,13 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--simuler", action="store_true")
     ap.add_argument("--pages", type=int, default=44)
+    ap.add_argument("--titre", help="ne traiter qu'un titre (ex. SNTS.sn)")
     args = ap.parse_args()
 
     avis = moissonner(args.pages)
     garde = retenir(avis)
+    if args.titre:
+        garde = {k: v for k, v in garde.items() if k[0] == args.titre}
     print(f"{len(avis)} avis moissonnes · {len(garde)} couples (titre, exercice)")
 
     cnx = get_connection()
@@ -224,7 +249,7 @@ def main() -> None:
     ecrits = ecarts = identiques = 0
     a_instruire = []
     for (ticker, exercice), a in sorted(garde.items()):
-        ancien, montant = base.get((ticker, exercice)), a["montant"]
+        ancien, montant = base.get((ticker, exercice)), brut(ticker, a["montant"])
         # Tolerance RELATIVE : la BRVM arrondit parfois au franc ce que le
         # rapport annuel donne au centime — 206,00 contre 206,19. Comparer en
         # valeur absolue classait ces arrondis comme des ecarts a instruire.
@@ -243,7 +268,11 @@ def main() -> None:
                 a_instruire.append((ticker, exercice, ancien, montant, rapport))
                 continue
             ecarts += 1
-        note = f"brut, avis BRVM du {a['paiement']} · {a['avis']}"
+        if ticker in MONTANTS_NETS:
+            note = (f"brut reconstitue : avis BRVM du {a['paiement']} "
+                    f"{a['montant']:g} net / {MONTANTS_NETS[ticker]:.2f} · {a['avis']}")
+        else:
+            note = f"brut, avis BRVM du {a['paiement']} · {a['avis']}"
         if not args.simuler:
             if (ticker, exercice) in base:
                 cnx.execute(

@@ -225,3 +225,52 @@ l'ancien code dépassait 400 s là où le nouveau finissait.
   courant** : il est conditionné à la fraîcheur des données
   (`_check_data_status`). Il n'entre en jeu qu'une fois par jour, et la page
   de garde le couvre déjà.
+
+---
+
+## Relevé du 24 septembre 2026 — le démarrage était remonté à 66 s
+
+Deux causes, aucune commune avec celles de septembre.
+
+| Mesure | 09/09 | 24/09 avant | 24/09 après |
+|---|---|---|---|
+| Démarrage à froid | 72,1 s | **66,3 s** | **14,4 s** |
+| Connexions ouvertes | 16 | 2 | 2 |
+| Part passée à ouvrir des connexions | 42 % | 4 % | 17 % |
+
+La réutilisation des connexions tient : deux connexions au lieu de seize, et
+elles ne pèsent plus que deux secondes. Le temps était ailleurs.
+
+### 1. Tout l'historique des cours, à chaque démarrage — 52,5 s
+
+`get_all_cached_prices()` lisait `price_cache` en entier. La table a changé
+d'échelle avec l'import RichBourse : **218 898 séances depuis 1998**, contre
+13 644 en août. Le tableau de bord, qui ne calcule que des performances du
+jour à l'année en cours, téléchargeait vingt-huit ans d'histoire — et deux
+fois, faute de cache conservé entre deux exécutions.
+
+La fonction accepte désormais une profondeur. Le tableau de bord demande
+400 jours (16 308 séances), la page Signaux 1 100 jours — la MM200 en
+réclame 200 et rien ne regarde plus loin. L'instantané quotidien, qui calcule
+des performances à cinq ans hors de l'application, lit toujours tout.
+
+### 2. Un scrape de brvm.org avant le premier affichage — jusqu'à 30 s
+
+`app.py` relisait les douze indices sur brvm.org **à chaque ouverture de
+session**, avant d'afficher quoi que ce soit, avec trente secondes d'attente
+avant d'abandonner. Un commentaire le décrivait comme « léger, une requête
+d'une seconde » : c'est vrai tant que le site répond. Le 24 septembre, il ne
+répondait plus, et l'écran affichait `Indices : ReadTimeout`.
+
+Le scrape vit maintenant dans `data/indices_marche.py`, et
+`scripts/refresh_intraday.py` l'exécute quatre fois par jour, hors de toute
+attente humaine. L'application ne tente sa chance que si le cache dépasse
+six heures, et pour huit secondes au plus. Un échec ne se voit plus : les
+indices précédents restent affichés.
+
+### Ce qui reste
+
+La lecture des cours pèse encore 5,4 s par appel, une fois toutes les cinq
+minutes. Le tableau de bord n'a pourtant besoin que de cinq dates par titre :
+les calculer en base rendrait ce transfert inutile. À mesurer avant de le
+faire.

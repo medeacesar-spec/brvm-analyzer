@@ -26,7 +26,7 @@ from analysis.fundamental import (
 from analysis.technical import compute_all_indicators, detect_trend, detect_support_resistance, generate_signals
 from analysis.scoring import compute_hybrid_score
 from utils.charts import candlestick_chart, gauge_chart, flag_badge, stars_display
-from utils.auth import is_admin
+from utils.auth import is_admin, is_logged_in, oauth_enabled
 from utils.ui_helpers import delta as _delta_html, tag as _tag_html, ticker as _ticker_html, section_heading
 
 import json as _json
@@ -3401,7 +3401,13 @@ def _render_profile(ticker: str, fundamentals: dict):
 
     # --- Notes d'analyse (tag catégorie via design kit au lieu d'emojis) ---
     section_heading("Notes d'analyse", spacing="loose")
-    notes = get_qualitative_notes(ticker)
+    # Les notes sont personnelles. Un visiteur non connecte ne peut ni en
+    # ecrire ni en supprimer : sur l'application publique, le formulaire
+    # etait ouvert a tous et aurait ecrit dans le compte 'local'.
+    peut_noter = is_logged_in() or not oauth_enabled()
+    if not peut_noter:
+        st.caption("Connectez-vous pour tenir vos notes d'analyse sur ce titre.")
+    notes = get_qualitative_notes(ticker) if peut_noter else pd.DataFrame()
     if not notes.empty:
         for _, note in notes.iterrows():
             cat = note.get("category", "general")
@@ -3419,27 +3425,28 @@ def _render_profile(ticker: str, fundamentals: dict):
             col_content.write(note["content"])
             if note.get("source"):
                 col_content.caption(f"Source · {note['source']} · {note.get('note_date', '')}")
-            if col_del.button("Supprimer", key=f"del_note_p2_{note['id']}"):
+            if peut_noter and col_del.button("Supprimer", key=f"del_note_p2_{note['id']}"):
                 delete_qualitative_note(note["id"])
                 st.rerun()
 
-    # Add note form
-    with st.expander("Ajouter une note d'analyse"):
-        with st.form(f"add_note_p2_{ticker}"):
-            category = st.selectbox("Catégorie", [
-                "strategie", "concurrence", "risques", "gouvernance",
-                "perspectives", "dividendes", "general",
-            ])
-            content = st.text_area(
-                "Contenu",
-                placeholder="Position concurrentielle, risques identifiés, perspectives...",
-                height=100,
-            )
-            col_s, col_d = st.columns(2)
-            source = col_s.text_input("Source", placeholder="Rapport annuel 2024...")
-            note_date = col_d.date_input("Date")
-            if st.form_submit_button("Enregistrer", type="primary"):
-                if content.strip():
-                    save_qualitative_note(ticker, category, content.strip(), source, str(note_date))
-                    st.success("Note enregistrée")
-                    st.rerun()
+    if peut_noter:
+        # Add note form
+        with st.expander("Ajouter une note d'analyse"):
+            with st.form(f"add_note_p2_{ticker}"):
+                category = st.selectbox("Catégorie", [
+                    "strategie", "concurrence", "risques", "gouvernance",
+                    "perspectives", "dividendes", "general",
+                ])
+                content = st.text_area(
+                    "Contenu",
+                    placeholder="Position concurrentielle, risques identifiés, perspectives...",
+                    height=100,
+                )
+                col_s, col_d = st.columns(2)
+                source = col_s.text_input("Source", placeholder="Rapport annuel 2024...")
+                note_date = col_d.date_input("Date")
+                if st.form_submit_button("Enregistrer", type="primary"):
+                    if content.strip():
+                        save_qualitative_note(ticker, category, content.strip(), source, str(note_date))
+                        st.success("Note enregistrée")
+                        st.rerun()

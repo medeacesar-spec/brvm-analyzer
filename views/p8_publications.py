@@ -18,7 +18,7 @@ from data.storage import (
 )
 from data.db import read_sql_df
 from utils.ui_helpers import section_heading
-from utils.auth import is_admin
+from utils.auth import is_admin, is_logged_in, oauth_enabled
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -131,6 +131,26 @@ def render():
 # Tab 0 : Revue de presse
 # ════════════════════════════════════════════════════════════════════
 
+def _lignes_du_visiteur() -> tuple:
+    """(tickers detenus, etat) — etat vaut « anonyme », « vide » ou « ok ».
+
+    « Vos lignes » et les étoiles du bulletin officiel sont PERSONNELS : ils
+    ne s'affichent que pour une personne connectée, sur son propre
+    portefeuille. Un visiteur non connecté n'en voit aucun — jusqu'au
+    15/09/2026, il voyait ceux du compte 'local'. La garde est double : ici,
+    et dans `current_user_id`, qui ne rend plus 'local' à un visiteur.
+    """
+    if oauth_enabled() and not is_logged_in():
+        return [], "anonyme"
+    try:
+        df_pf = get_portfolio()
+    except Exception:
+        return [], "vide"
+    if df_pf is None or df_pf.empty:
+        return [], "vide"
+    return df_pf["ticker"].dropna().unique().tolist(), "ok"
+
+
 def _render_revue(jours: int = 1):
     """Depeches croisees avec les chiffres extraits et le portefeuille.
 
@@ -148,12 +168,14 @@ def _render_revue(jours: int = 1):
     # en paiement et le taux de retenue applicable.
     _render_boc()
 
-    try:
-        df_pf = get_portfolio()
-        portefeuille = (df_pf["ticker"].dropna().unique().tolist()
-                        if df_pf is not None and not df_pf.empty else [])
-    except Exception:
-        portefeuille = []
+    # Visiteur non connecte et portefeuille vide : MEME affichage (arbitrage
+    # du 16/09/2026). Dans les deux cas il n'y a aucune ligne a mettre en
+    # tete ; le lien vers Portefeuille demande la connexion a qui ne l'a pas.
+    portefeuille, etat = _lignes_du_visiteur()
+    if etat != "ok":
+        st.caption("Les dépêches sont classées sur leur seule pertinence. "
+                   "Ajoutez vos positions dans **Portefeuille** pour voir en "
+                   "tête celles qui vous concernent.")
 
     try:
         rubriques = build_revue(jours=jours, portefeuille=portefeuille)
@@ -168,19 +190,18 @@ def _render_revue(jours: int = 1):
         )
         return
 
-    from analysis.revue import MAX_AFFICHEES, RUBRIQUES as _RUB
-    total = sum(len(rubriques.get(c) or []) for c, _ in _RUB)
-    ecartees = rubriques.get("_ecartees") or 0
-    examinees = rubriques.get("_examinees") or total
+    # Le decompte « 20 dépêche(s), au plus 20, parmi N disponibles » a ete
+    # retire le 16/09/2026 : il n'apprenait rien au lecteur. Restent ce qui
+    # aide a lire la page.
+    suite = ("" if jours == 1 else
+             "Celles déjà montrées sur une période plus courte sont retirées : "
+             "cette page n'apporte que du neuf. ")
     st.caption(
-        f"**{total} dépêche(s)** affichées sur {examinees} examinées — au "
-        f"plus **{MAX_AFFICHEES}**, choisies sur leur pertinence pour la cote "
-        f"et non sur leur heure de publication"
-        + (f", {ecartees} écartée(s) par le plafond" if ecartees else "")
-        + ". Sources : richbourse, sikafinance, BCEAO, Financial Afrik, "
-        "Jeune Afrique, RFI Afrique, Le Monde Afrique. Le nombre gris de "
-        "chaque carte est sa note ; survolez-le pour en voir le détail. Le "
-        "fil brut, lui, reste complet dans l'onglet voisin."
+        f"{suite}Sources : "
+        "richbourse, sikafinance, BCEAO, Financial Afrik, Jeune Afrique, "
+        "RFI Afrique, Le Monde Afrique. Le nombre gris de chaque "
+        "carte est sa note ; survolez-le pour en voir le détail. Le fil brut, "
+        "lui, reste complet dans l'onglet voisin."
     )
 
     for cle, titre in RUBRIQUES:
@@ -229,11 +250,7 @@ def _render_boc():
         return
 
     # Les lignes du portefeuille passent devant
-    try:
-        pf = get_portfolio()
-        detenus = set(pf["ticker"].dropna()) if pf is not None and not pf.empty else set()
-    except Exception:
-        detenus = set()
+    detenus = set(_lignes_du_visiteur()[0])
 
     divid = ops[ops["type"] == "dividende"].copy()
     autres = ops[ops["type"] != "dividende"]

@@ -225,7 +225,10 @@ def render():
                 "pour accélérer cette page (passage de ~1 min à <1 s)."
             )
         all_stocks = get_all_stocks_for_analysis()
-        all_prices = get_all_cached_prices()
+        # Trois ans : la MM200 demande deux cents seances, la detection de
+        # tendance et les supports un peu plus. Au-dela, aucun indicateur
+        # technique ne regarde.
+        all_prices = get_all_cached_prices(depuis_jours=1100)
         fund_by_ticker = {}
         if not all_stocks.empty:
             for _, r in all_stocks.iterrows():
