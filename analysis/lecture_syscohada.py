@@ -73,6 +73,18 @@ LIBELLES["interest_expense"] += (r"interets?\s*et\s*charges\s*assimilees",
                                  r"charges\s*financieres")
 LIBELLES["deposits"] += (r"dettes\s*envers\s*la\s*clientele",)
 
+# LIBELLES DE SECOURS, lus seulement quand aucun libelle principal ne rend
+# rien. SITAB, distributeur, n'ecrit pas de chiffre d'affaires : ses ventes
+# de marchandises en tiennent lieu. Chez un industriel, la meme ligne n'est
+# qu'une partie du chiffre d'affaires — d'ou le rang de secours. SMB ecrit
+# « CAPITAUX PROPRES 42 913 35 294 », sans « total » : le libelle nu n'est
+# retenu qu'en debut de ligne et suivi d'un montant, pour ne pas prendre un
+# titre de section.
+LIBELLES_SECOURS = {
+    "revenue": (r"ventes?\s*de\s*marchandises",),
+    "equity": (r"^capitaux\s*propres(?=\s*\(?-?\d)",),
+}
+
 # Champs dont un montant negatif a un sens dans un tableau de flux.
 SIGNE_LIBRE = {"net_income", "ebit", "ebitda", "cfo", "capex", "dividends_total"}
 
@@ -443,8 +455,18 @@ def _lignes_du_champ(lignes: list, motifs: tuple) -> list:
     return sorted(candidates, key=lambda c: c[0])
 
 
-def lire(texte: str, echelle: float = None, ancres: dict = None) -> dict:
-    """{champ: montant} — ce que le texte livre, sans jugement de valeur.
+def lire_detaille(texte: str, echelle: float = None, ancres: dict = None) -> dict:
+    """{champ: (montant, mode)} — le montant, et comment sa colonne a ete choisie.
+
+    TROIS MODES, ET ILS NE VALENT PAS LA MEME CHOSE
+
+    - « ancre » : l'exercice precedent connu est retombe dans la ligne ; la
+      colonne voisine est l'exercice. Aucune devinette.
+    - « brut-net » : brut - amortissements = net au franc pres.
+    - « en-tete » : la colonne est deduite de l'ordre des millesimes dans
+      l'en-tete. C'est une DEVINETTE — au 24/09, elle a rendu les deux seules
+      valeurs fausses connues (BICI Benin, dont une ligne melange francs et
+      millions), alors que les deux autres modes n'en ont rendu aucune.
 
     Pour chaque champ, la MEILLEURE ligne qui porte l'un de ses libelles et au
     moins un montant — ligne d'etat avant prose, total avant sous-total (voir
@@ -457,7 +479,9 @@ def lire(texte: str, echelle: float = None, ancres: dict = None) -> dict:
     lignes = [l for l in _plier(texte).split("\n") if l.strip()]
     sortie = {}
     for champ, motifs in LIBELLES.items():
-        for _, ligne, reste, valeurs in _lignes_du_champ(lignes, motifs):
+        candidates = (_lignes_du_champ(lignes, motifs)
+                      or _lignes_du_champ(lignes, LIBELLES_SECOURS.get(champ, ())))
+        for _, ligne, reste, valeurs in candidates:
             ancre = (ancres or {}).get(champ)
             choix = _colonne_par_ancre(valeurs, ancre, facteur)
             if choix is not None:
@@ -483,12 +507,20 @@ def lire(texte: str, echelle: float = None, ancres: dict = None) -> dict:
                     if autre is not None:
                         valeurs, choix = secours, autre
                         break
-            if choix is None:
+            if choix is not None:
+                mode = "ancre"
+            else:
                 choix = _colonne_nette(valeurs)
+                mode = "brut-net" if choix is not None else "en-tete"
             index = choix if choix is not None else colonne
             valeur = valeurs[min(index, len(valeurs) - 1)] * facteur
             if valeur < 0 and champ not in SIGNE_LIBRE:
                 valeur = abs(valeur)
-            sortie[champ] = valeur
+            sortie[champ] = (valeur, mode)
             break
     return sortie
+
+
+def lire(texte: str, echelle: float = None, ancres: dict = None) -> dict:
+    """{champ: montant} — ce que le texte livre, sans jugement de valeur."""
+    return {c: v for c, (v, _) in lire_detaille(texte, echelle, ancres).items()}

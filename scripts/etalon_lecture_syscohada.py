@@ -13,6 +13,13 @@ CE QUE LA MESURE DIT
   apres les correctifs 1 a 4      17 justes · 10 fausses ·  9 absentes
   apres les correctifs 5 a 9      27 justes ·  0 fausse  ·  9 absentes
   etalon elargi (41 valeurs)      32 justes ·  0 fausse  ·  9 absentes
+  libelles de secours (SITAB, SMB) 34 justes ·  0 fausse  ·  7 absentes
+
+  PAR MODE DE CHOIX DE LA COLONNE (voir `lire_detaille`) : 25 valeurs par
+  l'ancre, 1 par brut - amortissements = net, 8 par l'en-tete — toutes
+  justes. Hors etalon, les deux valeurs fausses de BICI Benin sont toutes
+  deux lues « en-tete » : c'est le mode qui devine. Le jour ou le lecteur
+  ecrira, il n'ecrira que les deux autres.
 
   Le 24/09 au soir, cinq valeurs lues dans les documents ont ete ajoutees
   (Vivo, Erium) — l'etalon passe a 41 valeurs. Deux d'entre elles
@@ -65,9 +72,8 @@ millions n'annonce pas son unite. Tant qu'un document inconnu peut rendre
 une valeur fausse, `completer_fondamentaux.py` ne s'appuie pas sur ce
 lecteur : chaque valeur passe par un recoupement.
 
-Les neuf absentes sont des scans (SODECI, Afridis, BOA Niger, SICOR) ou des
-libelles non reconnus (SITAB, SMB) : elles relevent de l'OCR, pas du
-decoupage.
+Les sept absentes sont des scans (SODECI, Afridis, BOA Niger, SICOR) : elles
+relevent de l'OCR, pas du decoupage.
 
 La voie sure reste celle des PR #175 et #176 : lire le document, verifier
 chaque montant contre la colonne comparative et le cumul a neuf mois, puis
@@ -81,7 +87,7 @@ Usage :
 import os, sys, re
 sys.path.insert(0, "/Users/mdegbe/brvm-analyzer")
 import pdfplumber
-from analysis.lecture_syscohada import lire
+from analysis.lecture_syscohada import lire_detaille
 from data.db import read_sql_df
 
 
@@ -141,6 +147,7 @@ def texte_du_pdf(chemin):
     return t, "ocr"
 
 justes = faux = absents = 0
+par_mode = {}
 for prefixe, attendu in ETALON.items():
     fs = [x for x in os.listdir(D) if x.startswith(prefixe) and not x.endswith(".txt")]
     if not fs:
@@ -151,15 +158,19 @@ for prefixe, attendu in ETALON.items():
         ".sn" if racine == "TTLS" else ".tg" if racine == "ORGT"
         else ".bj" if racine in ("LNBB", "BICB") else ".ci")
     exercice = 2024 if racine == "SICC" else 2025
-    lu = lire(t, ancres=ancres(ticker, exercice))
+    lu = lire_detaille(t, ancres=ancres(ticker, exercice))
     details = []
     for champ, cible in attendu.items():
-        v = lu.get(champ)
-        if v is None:
+        if champ not in lu:
             absents += 1; details.append(f"{champ}=—"); continue
+        v, colonne = lu[champ]
         ok = abs(abs(v) - abs(cible)) <= 0.01 * abs(cible)
         justes += ok; faux += (not ok)
-        details.append(f"{champ}={'OK' if ok else f'{v/1e9:.2f}≠{cible/1e9:.2f}'}")
+        par_mode.setdefault(colonne, [0, 0])[0 if ok else 1] += 1
+        marque = "" if colonne == "ancre" else f"({colonne})"
+        details.append(f"{champ}={'OK' if ok else f'{v/1e9:.2f}≠{cible/1e9:.2f}'}{marque}")
     print(f"  {prefixe[:12]:12} [{mode:10}] " + " · ".join(details))
 total = justes + faux + absents
 print(f"\n{justes} juste(s) · {faux} faux · {absents} absent(s) sur {total} valeurs attendues")
+for mode, (bons, mauvais) in sorted(par_mode.items()):
+    print(f"   colonne par {mode:9} {bons:3} juste(s) · {mauvais} fausse(s)")
