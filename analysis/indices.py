@@ -165,6 +165,41 @@ def par_famille(famille: str) -> list:
     return [c for c, m in INDICES.items() if m["famille"] == famille]
 
 
+# Le nom que `indices_cache` porte, tel que brvm.org l'ecrit, rapporte au code
+# du registre. Les libelles du site changent de tiret et d'accent d'une page a
+# l'autre : la comparaison se fait sur une forme repliee.
+LIBELLES_SITE = {
+    "brvm composite": "BRVMC",
+    "brvm 30": "BRVM30",
+    "brvm prestige": "IDX_PRESTIGE",
+    "brvm principal": "IDX_PRINCIPAL",
+    "brvm consommation de base": "IDX_CONSO_BASE",
+    "brvm consommation discretionnaire": "IDX_CONSO_DISCRETIONNAIRE",
+    "brvm energie": "IDX_ENERGIE",
+    "brvm industriels": "IDX_INDUSTRIELS",
+    "brvm services publics": "IDX_SERVICES_PUBLICS_N",
+    "brvm telecommunications": "IDX_TELECOM",
+}
+
+
+def _replier(nom: str) -> str:
+    import re
+    import unicodedata
+    nom = unicodedata.normalize("NFD", str(nom or ""))
+    nom = "".join(c for c in nom if unicodedata.category(c) != "Mn")
+    return re.sub(r"[^a-z0-9]+", " ", nom.lower()).strip()
+
+
+def code_depuis_libelle(nom: str) -> str:
+    """Le code du registre pour un libelle du site, ou None.
+
+    « BRVM - COMPOSITE », « BRVM – COMPOSITE » et « BRVM Composite » designent
+    le meme indice : seuls le tiret et la casse changent. Le repliement les
+    ramene a une meme clef.
+    """
+    return LIBELLES_SITE.get(_replier(nom))
+
+
 def fichiers() -> dict:
     """{nom de fichier CSV: code} — ce que l'importateur consomme."""
     return {m["fichier"]: c for c, m in INDICES.items()}

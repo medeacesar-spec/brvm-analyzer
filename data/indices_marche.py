@@ -28,6 +28,56 @@ DELAI_DEFAUT = 8
 FRAICHEUR_HEURES = 6
 
 
+def cloture_de_fin_d_annee(conn, code: str, annee: int):
+    """La derniere cloture de l'indice au 31 decembre de `annee`, ou None."""
+    ligne = conn.execute(
+        "SELECT close FROM price_cache WHERE ticker = ? AND date <= ? "
+        "AND close > 0 ORDER BY date DESC LIMIT 1",
+        (code, f"{annee}-12-31")).fetchone()
+    return dict(ligne)["close"] if ligne else None
+
+
+def corriger_ytd(conn) -> tuple:
+    """Recalcule la variation depuis le 1er janvier, depuis NOTRE historique.
+
+    POURQUOI NE PAS REPRENDRE CELLE DU SITE
+
+    brvm.org publie une colonne « Variation 31 decembre (%) » et cette colonne
+    est FIGEE depuis le debut de l'annee : elle annonçait 1,70 % pour le
+    Composite le 24/09/2026, ce qui est sa variation de la premiere semaine de
+    janvier. Le Composite valait 345,75 au 31 decembre 2025 et 530,50 ce
+    jour-la, soit +53 %. Un lecteur qui voit « YTD +1,70 % » en face d'un
+    marche qui a gagne la moitie de sa valeur ne se mefie pas du chiffre : il
+    se mefie de l'application.
+
+    Notre serie, elle, est continue et verifiable — 6 639 seances depuis 1998,
+    sans rupture a la jonction decembre-janvier.
+
+    Les indices dont nous n'avons pas l'historique — le Composite Total Return
+    et les Services financiers, absents des exports — voient leur YTD EFFACE
+    plutot que recopie du site. Pas de chiffre vaut mieux qu'un faux.
+    """
+    from analysis.indices import code_depuis_libelle
+
+    annee = datetime.now().year
+    lignes = conn.execute("SELECT name, value FROM indices_cache").fetchall()
+    calcules = effaces = 0
+    for ligne in lignes:
+        d = dict(ligne)
+        code = code_depuis_libelle(d["name"])
+        reference = cloture_de_fin_d_annee(conn, code, annee - 1) if code else None
+        if reference and d.get("value"):
+            ytd = (d["value"] / reference - 1) * 100
+            calcules += 1
+        else:
+            ytd = None
+            effaces += 1
+        conn.execute("UPDATE indices_cache SET ytd_variation = ? WHERE name = ?",
+                     (ytd, d["name"]))
+    conn.commit()
+    return calcules, effaces
+
+
 def age_du_cache_heures():
     """Age du plus recent indice en cache, en heures. None si le cache est vide."""
     conn = get_connection()
@@ -157,6 +207,9 @@ def rafraichir_indices(delai: int = DELAI_DEFAUT) -> int:
             "  updated_at = CURRENT_TIMESTAMP",
             (name, close, var, ytd, cat),
         )
+    calcules, effaces = corriger_ytd(conn)
     conn.commit()
     conn.close()
+    print(f"  [indices] {len(indices)} ecrits · YTD recalcule pour {calcules}, "
+          f"efface pour {effaces}")
     return len(indices)
