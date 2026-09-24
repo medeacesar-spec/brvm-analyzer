@@ -7,30 +7,43 @@ Quatorze documents dont les valeurs ont ete lues A LA MAIN dans le document
 lui-meme, puis ecrites en base apres recoupement (PR #175, #176). Ce sont
 donc des reponses connues, et non un jeu de test fabrique.
 
-CE QUE LA MESURE DIT, AU 24/09/2026
+CE QUE LA MESURE DIT
 
-  10 justes · 17 fausses · 9 absentes, sur 36 valeurs attendues.
+  24/09/2026, premiere version   10 justes · 17 fausses ·  9 absentes
+  apres les correctifs ci-dessous 17 justes · 10 fausses ·  9 absentes
 
-CE QU'IL FAUT EN CONCLURE
+QUATRE CORRECTIFS, CHACUN MESURE
 
-Le lecteur N'EST PAS branche sur l'ecriture, et il ne doit pas l'etre tant
-que ce rapport ne s'inverse pas. La raison tient en un exemple : pour NSIA
-Banque, il rend 97 819 millions de produit net bancaire — le chiffre de
-2024, pas celui de 2025. Ce montant est PLAUSIBLE : il passerait tous les
-controles d'echelle et de voisinage de `completer_fondamentaux.py`. Une
-valeur fausse mais vraisemblable est pire qu'une valeur absente, parce que
-rien ne la signale.
+1. L'ANCRE tranche l'ordre des colonnes. Nous connaissons l'exercice
+   PRECEDENT pour 98 % des titres : la colonne qui retombe dessus est le
+   comparatif, l'autre est celle qu'on cherche. NSIA ecrit le comparatif
+   d'abord, Palm CI l'exercice — plus besoin de deviner.
+2. L'ECHELLE se lit dans l'en-tete parenthese. Le document de NSIA porte
+   « (en millions FCFA) » au-dessus du tableau et « 40,7 milliards » dans le
+   commentaire : chercher le plus grand multiple multipliait tout par mille.
+3. LES MONTANTS COLLES se scindent par leur structure en groupes de trois.
+   Quand l'ancre ne reconnait rien, une lecture de secours essaie une coupe
+   plus permissive — « 97 819 112 928 » est deux montants chez NSIA, mais
+   « 75 047 177 792 » en est un seul chez SITAB.
+4. LES MONTANTS QUI SUIVENT LE LIBELLE, et non ceux de toute la ligne :
+   « Comptes de regularisation 8 949 11 987 Capitaux propres 211 371
+   233 303 » donnait 8 949 de capitaux propres.
 
-Les trois causes d'erreur, par ordre d'importance :
+CE QUI RESTE, ET POURQUOI LE LECTEUR N'ECRIT TOUJOURS PAS
 
-1. L'ordre des colonnes. NSIA ecrit le comparatif d'abord, Palm CI
-   l'exercice d'abord. La detection par l'en-tete ne suffit pas : beaucoup
-   de ces tableaux n'ont pas d'en-tete lisible apres extraction.
-2. Les montants colles. « 604 978 411 174 600 707 830 161 » porte deux
-   colonnes ; le decoupage par groupes de trois chiffres en resout une
-   partie, pas toutes.
-3. L'OCR des scans. « RESULIAI DELEXERCICE », des chiffres coupes en deux
-   (« 4 2 454 158 321 ») : le libelle n'est plus reconnaissable.
+Dix valeurs fausses et neuf absentes. Les causes sont desormais connues :
+
+  - le libelle le plus general gagne, alors qu'il faudrait le plus total :
+    chez Oragroup, « Sous-Total Capitaux Propres part du groupe » sort avant
+    « TOTAL CAPITAUX PROPRES » ;
+  - les scans dont l'OCR casse les chiffres (« 4 2 454 158 321 » chez
+    Bernabe) ;
+  - les documents dont les montants ne sont pas dans le texte mais dans des
+    tableaux, que cette lecture ligne a ligne ne voit pas (LNB, SICOR, AGL,
+    BOA Niger).
+
+Une valeur fausse mais vraisemblable reste pire qu'une valeur absente : tant
+que dix le sont, `completer_fondamentaux.py` ne s'appuie pas sur ce lecteur.
 
 La voie sure reste celle des PR #175 et #176 : lire le document, verifier
 chaque montant contre la colonne comparative et le cumul a neuf mois, puis
@@ -41,9 +54,26 @@ Usage :
   python3 scripts/etalon_lecture_syscohada.py
 """
 
+import os, sys, re
 sys.path.insert(0, "/Users/mdegbe/brvm-analyzer")
 import pdfplumber
 from analysis.lecture_syscohada import lire
+from data.db import read_sql_df
+
+
+def ancres(ticker, exercice):
+    """Ce que la base sait de l'exercice PRECEDENT.
+
+    C'est l'ancre qui tranche l'ordre des colonnes : celle qui retombe sur ce
+    que nous savons deja est le comparatif, l'autre est l'exercice cherche.
+    """
+    d = read_sql_df("SELECT revenue, net_income, equity, total_assets FROM fundamentals "
+                    "WHERE ticker = ? AND fiscal_year = ?", params=(ticker, exercice - 1))
+    if d.empty:
+        return {}
+    ligne = d.iloc[0]
+    return {c: float(ligne[c]) for c in ("revenue", "net_income", "equity", "total_assets")
+            if ligne[c] == ligne[c] and ligne[c]}
 from data.pdf_extractor import _ocr_document
 
 D = os.environ.get("BRVM_DOSSIER_PDF", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "pdf_etalon"))
@@ -83,7 +113,12 @@ for prefixe, attendu in ETALON.items():
     if not fs:
         print(f"  {prefixe:12} document absent"); continue
     t, mode = texte_du_pdf(os.path.join(D, fs[0]))
-    lu = lire(t)
+    racine = prefixe.split("_")[0]
+    ticker = racine if "." in racine else racine + (
+        ".sn" if racine == "TTLS" else ".tg" if racine == "ORGT"
+        else ".bj" if racine in ("LNBB", "BICB") else ".ci")
+    exercice = 2024 if racine == "SICC" else 2025
+    lu = lire(t, ancres=ancres(ticker, exercice))
     details = []
     for champ, cible in attendu.items():
         v = lu.get(champ)
