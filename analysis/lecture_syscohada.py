@@ -73,6 +73,18 @@ LIBELLES["interest_expense"] += (r"interets?\s*et\s*charges\s*assimilees",
                                  r"charges\s*financieres")
 LIBELLES["deposits"] += (r"dettes\s*envers\s*la\s*clientele",)
 
+# LIBELLES DE SECOURS, lus seulement quand aucun libelle principal ne rend
+# rien. SITAB, distributeur, n'ecrit pas de chiffre d'affaires : ses ventes
+# de marchandises en tiennent lieu. Chez un industriel, la meme ligne n'est
+# qu'une partie du chiffre d'affaires — d'ou le rang de secours. SMB ecrit
+# « CAPITAUX PROPRES 42 913 35 294 », sans « total » : le libelle nu n'est
+# retenu qu'en debut de ligne et suivi d'un montant, pour ne pas prendre un
+# titre de section.
+LIBELLES_SECOURS = {
+    "revenue": (r"ventes?\s*de\s*marchandises",),
+    "equity": (r"^capitaux\s*propres(?=\s*\(?-?\d|\s*$)",),
+}
+
 # Champs dont un montant negatif a un sens dans un tableau de flux.
 SIGNE_LIBRE = {"net_income", "ebit", "ebitda", "cfo", "capex", "dividends_total"}
 
@@ -369,6 +381,32 @@ def _colonne_par_ancre(valeurs: list, ancre, facteur: float):
     return None
 
 
+TITRE_REFERENTIEL = re.compile(r"\b(syscohada|ifrs)\b")
+
+
+def _sans_sections_ifrs(lignes: list) -> list:
+    """Les lignes des etats SYSCOHADA, quand le document porte aussi l'IFRS.
+
+    SODECI publie dans le meme document ses comptes individuels SYSCOHADA
+    (en milliers) et ses comptes IFRS (en millions). Le resultat IFRS,
+    « 5 881 » millions, n'est pas le resultat SYSCOHADA de 4 662 738
+    milliers — et la base, comme les fiches societe, suit le SYSCOHADA.
+
+    Un titre court qui nomme un referentiel ouvre une section. Si le
+    document en a des deux sortes, les sections IFRS sont ecartees ; s'il
+    n'en a qu'une, rien ne change — BICI Benin, en IFRS seul, reste lu.
+    """
+    sections, courant = [], None
+    for ligne in lignes:
+        m = TITRE_REFERENTIEL.search(ligne)
+        if m and len(ligne) < 120:
+            courant = m.group(1)
+        sections.append(courant)
+    if not {"syscohada", "ifrs"} <= set(sections):
+        return lignes
+    return [l for l, sec in zip(lignes, sections) if sec != "ifrs"]
+
+
 def _colonne_nette(valeurs: list):
     """2 si la ligne porte brut, amortissements, net : la colonne nette.
 
@@ -416,11 +454,25 @@ def _lignes_du_champ(lignes: list, motifs: tuple) -> list:
     de « sous- » ne sert que s'il n'y en a pas d'autre.
     """
     candidates = []
-    for ligne in lignes:
+    for rang_ligne, ligne in enumerate(lignes):
         trouve = next((re.search(m, ligne) for m in motifs
                        if re.search(m, ligne)), None)
         if trouve is None:
             continue
+        # LE MONTANT SUR LA LIGNE SUIVANTE. L'OCR d'un tableau rend souvent
+        # le libelle seul, puis ses montants a la ligne : « Capitaux propres »
+        # puis « 2 975 325 212 » chez SICOR. On ne l'accepte que si la ligne
+        # ne porte QUE le libelle et la suivante QUE des montants — une ligne
+        # de plusieurs libelles suivie d'une ligne de valeurs ne dit pas
+        # laquelle va avec laquelle.
+        suivante = lignes[rang_ligne + 1] if rang_ligne + 1 < len(lignes) else ""
+        if (not re.search(r"[a-z]{2}", ligne[:trouve.start()] + ligne[trouve.end():])
+                and re.fullmatch(r"[\d\s().\-]+", suivante.strip() or "x")):
+            valeurs = montants_de_ligne(suivante)
+            if valeurs:
+                rang = 1 if len(valeurs) == 1 else 0
+                candidates.append((rang, ligne, suivante, valeurs))
+                continue
         # LES MONTANTS QUI SUIVENT LE LIBELLE, pas ceux de toute la ligne.
         # « Comptes de regularisation 8 949 11 987 Capitaux propres et
         # ressources assimilees 211 371 233 303 » : lire la ligne entiere
@@ -443,8 +495,18 @@ def _lignes_du_champ(lignes: list, motifs: tuple) -> list:
     return sorted(candidates, key=lambda c: c[0])
 
 
-def lire(texte: str, echelle: float = None, ancres: dict = None) -> dict:
-    """{champ: montant} — ce que le texte livre, sans jugement de valeur.
+def lire_detaille(texte: str, echelle: float = None, ancres: dict = None) -> dict:
+    """{champ: (montant, mode)} — le montant, et comment sa colonne a ete choisie.
+
+    TROIS MODES, ET ILS NE VALENT PAS LA MEME CHOSE
+
+    - « ancre » : l'exercice precedent connu est retombe dans la ligne ; la
+      colonne voisine est l'exercice. Aucune devinette.
+    - « brut-net » : brut - amortissements = net au franc pres.
+    - « en-tete » : la colonne est deduite de l'ordre des millesimes dans
+      l'en-tete. C'est une DEVINETTE — au 24/09, elle a rendu les deux seules
+      valeurs fausses connues (BICI Benin, dont une ligne melange francs et
+      millions), alors que les deux autres modes n'en ont rendu aucune.
 
     Pour chaque champ, la MEILLEURE ligne qui porte l'un de ses libelles et au
     moins un montant — ligne d'etat avant prose, total avant sous-total (voir
@@ -454,10 +516,12 @@ def lire(texte: str, echelle: float = None, ancres: dict = None) -> dict:
     """
     facteur = echelle if echelle else _echelle(texte)
     colonne = colonne_de_l_exercice(texte)
-    lignes = [l for l in _plier(texte).split("\n") if l.strip()]
+    lignes = _sans_sections_ifrs([l for l in _plier(texte).split("\n") if l.strip()])
     sortie = {}
     for champ, motifs in LIBELLES.items():
-        for _, ligne, reste, valeurs in _lignes_du_champ(lignes, motifs):
+        candidates = (_lignes_du_champ(lignes, motifs)
+                      or _lignes_du_champ(lignes, LIBELLES_SECOURS.get(champ, ())))
+        for _, ligne, reste, valeurs in candidates:
             ancre = (ancres or {}).get(champ)
             choix = _colonne_par_ancre(valeurs, ancre, facteur)
             if choix is not None:
@@ -483,12 +547,20 @@ def lire(texte: str, echelle: float = None, ancres: dict = None) -> dict:
                     if autre is not None:
                         valeurs, choix = secours, autre
                         break
-            if choix is None:
+            if choix is not None:
+                mode = "ancre"
+            else:
                 choix = _colonne_nette(valeurs)
+                mode = "brut-net" if choix is not None else "en-tete"
             index = choix if choix is not None else colonne
             valeur = valeurs[min(index, len(valeurs) - 1)] * facteur
             if valeur < 0 and champ not in SIGNE_LIBRE:
                 valeur = abs(valeur)
-            sortie[champ] = valeur
+            sortie[champ] = (valeur, mode)
             break
     return sortie
+
+
+def lire(texte: str, echelle: float = None, ancres: dict = None) -> dict:
+    """{champ: montant} — ce que le texte livre, sans jugement de valeur."""
+    return {c: v for c, (v, _) in lire_detaille(texte, echelle, ancres).items()}
