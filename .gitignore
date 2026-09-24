@@ -38,3 +38,6 @@ env/
 # Exports RichBourse : donnees brutes, importees en base par
 # scripts/importer_historique_richbourse.py
 csv/
+data/pdf_fondamentaux/
+data/pdf_bilans/
+data/pdf_etalon/
