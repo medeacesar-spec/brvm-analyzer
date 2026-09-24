@@ -41,7 +41,12 @@ def get_sector_benchmarks(sector: str = None) -> dict:
         ebit = d.get("ebit") or 0
         cfo = d.get("cfo") or 0
         capex = abs(d.get("capex") or 0)
-        div_total = d.get("dividends_total") or 0
+        # Le dividende VERSE (tableau des flux) d'abord, le dividende DECLARE
+        # a defaut. Le premier inclut les minoritaires des filiales — chez
+        # Sonatel, 187,3 Md verses pour 166,7 Md declares aux actionnaires —
+        # mais il n'est renseigne que pour 6 % des exercices, quand le declare
+        # se calcule des que l'avis de paiement de la BRVM est connu.
+        div_total = (d.get("dividends_total") or d.get("dividends_declared") or 0)
 
         eps = (ni / shares) if shares and shares > 0 and ni else None
         per = (price / eps) if eps and eps > 0 else None
