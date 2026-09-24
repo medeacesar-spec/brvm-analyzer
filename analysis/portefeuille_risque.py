@@ -498,6 +498,41 @@ def _volatilite_et_rendement(valeurs, cov, moyennes):
     return math.sqrt(variance) * math.sqrt(12), (1 + moyenne) ** 12 - 1
 
 
+def _betas(rendements: dict, mois: list, marche: dict) -> dict:
+    """Le beta de chaque ligne contre le Composite, sur les MEMES mois.
+
+    Mesures sur une fenetre commune, les betas s'additionnent : le beta
+    d'un portefeuille est la moyenne de ceux de ses lignes, ponderee par
+    leur poids. C'est ce qui permet de chiffrer le beta APRES une
+    repartition qui n'a jamais existe.
+    """
+    paires = [(i, marche[m]) for i, m in enumerate(mois) if m in marche]
+    if len(paires) < MINIMUM_MOIS:
+        return {}
+    indice = [b for _, b in paires]
+    var_m = st.pvariance(indice)
+    if not var_m:
+        return {}
+    moy_i = st.mean(indice)
+    sortie = {}
+    for t, serie in rendements.items():
+        valeurs = [serie[i] for i, _ in paires]
+        moy_t = st.mean(valeurs)
+        cov = sum((a - moy_t) * (b - moy_i)
+                  for a, b in zip(valeurs, indice)) / len(indice)
+        sortie[t] = cov / var_m
+    return sortie
+
+
+def _beta_portefeuille(valeurs: dict, betas: dict):
+    """Beta du portefeuille : la somme des betas ponderes par les poids."""
+    suivis = {t: v for t, v in valeurs.items() if t in betas and v > 0}
+    total = sum(suivis.values())
+    if not suivis or total <= 0:
+        return None
+    return sum(betas[t] * v / total for t, v in suivis.items())
+
+
 @_maybe_cache_data(ttl=300)
 def allocation_suggeree(positions: tuple, cash: float, scores: tuple,
                         seuil_illiquidite: Optional[float] = None,
@@ -559,6 +594,11 @@ def allocation_suggeree(positions: tuple, cash: float, scores: tuple,
     cov, moyennes = _table_covariance(rendements)
     mensuel_sans_risque = (1 + TAUX_SANS_RISQUE) ** (1 / 12) - 1
     vol_avant, rdt_avant = _volatilite_et_rendement(valeurs, cov, moyennes)
+    # Les n derniers rendements portent sur les n derniers mois : le
+    # rendement i correspond au point i + 1.
+    points = series[suivis[0]][1][-n:]
+    mois = [(p[0].year, p[0].month) for p in points]
+    betas = _betas(rendements, mois, _serie_marche(series))
 
     def _repartir(combinaison):
         """Le cash reparti au prorata du rang marginal, borne par la liquidite."""
@@ -589,6 +629,7 @@ def allocation_suggeree(positions: tuple, cash: float, scores: tuple,
             essais.append({
                 "tickers": [l["ticker"] for l in lignes],
                 "lignes": lignes,
+                "beta": _beta_portefeuille(apres, betas),
                 "volatilite": vol,
                 "rendement": rdt,
                 # Le rendement par unite de risque : c'est lui qu'on maximise.
@@ -615,6 +656,9 @@ def allocation_suggeree(positions: tuple, cash: float, scores: tuple,
         "cash": cash,
         "place": meilleur["place"],
         "reste": cash - meilleur["place"],
+        "beta_avant": _beta_portefeuille(valeurs, betas),
+        "beta_apres": meilleur["beta"],
+        "mois_mesures": n,
         "volatilite_avant": vol_avant,
         "volatilite_apres": meilleur["volatilite"],
         "rendement_avant": rdt_avant,

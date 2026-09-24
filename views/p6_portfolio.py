@@ -2234,10 +2234,16 @@ def _render_optimisation(portfolio, cash):
             # L'effet, avant et apres : une recommandation qui ne montre pas
             # son effet ne se verifie pas.
             if plan.get("volatilite_avant") and plan.get("volatilite_apres"):
-                cols = st.columns(3)
+                st.markdown(
+                    "<div class='label-xs' style='margin:14px 0 6px;'>"
+                    "Portefeuille actuel → portefeuille avec la répartition "
+                    "suggérée</div>", unsafe_allow_html=True)
+                cols = st.columns(4)
                 for col, (intitule, avant, apres, fmt) in zip(cols, (
                         ("Volatilité", plan["volatilite_avant"],
                          plan["volatilite_apres"], "pct"),
+                        ("Bêta", plan.get("beta_avant"),
+                         plan.get("beta_apres"), "dec"),
                         ("Rendement annuel", plan["rendement_avant"],
                          plan["rendement_apres"], "pct"),
                         ("Rendement par unité de risque",
@@ -2249,6 +2255,11 @@ def _render_optimisation(portfolio, cash):
                     mieux = (apres < avant) if intitule == "Volatilité" else (
                         apres > avant)
                     teinte = "var(--up)" if mieux else "var(--down)"
+                    # Un beta plus bas n'est ni mieux ni moins bien : c'est
+                    # moins d'exposition au marche, a la hausse comme a la
+                    # baisse. On ne le colore donc pas.
+                    if intitule == "Bêta":
+                        teinte = "var(--ink)"
                     with col:
                         st.markdown(
                             f"<div style='background:var(--bg-elev);border:1px "
@@ -2261,6 +2272,15 @@ def _render_optimisation(portfolio, cash):
                             f"<span style='color:{teinte};'>{ecrire(apres)}"
                             f"</span></div></div>", unsafe_allow_html=True)
 
+                st.caption(
+                    f"Mesurés sur les **{plan.get('mois_mesures')} mêmes mois** "
+                    f"pour les deux portefeuilles, les plus récents que tous "
+                    f"les titres concernés ont en commun — d'où un bêta et une "
+                    f"volatilité qui peuvent différer légèrement de ceux du "
+                    f"Risque d'ensemble. **Bêta** : 1 = le portefeuille suit "
+                    f"le Composite, moins de 1 = il l'amortit, plus de 1 = il "
+                    f"l'amplifie.")
+
             if plan.get("ex_aequo", 0) > 1:
                 st.caption(
                     f"**{plan['ex_aequo']} combinaisons se tiennent à moins "
@@ -2272,8 +2292,26 @@ def _render_optimisation(portfolio, cash):
                 h = (f"<tr><th style='{entete};text-align:left;'>Combinaison</th>"
                      f"<th style='{entete};text-align:right;'>Rdt/risque</th>"
                      f"<th style='{entete};text-align:right;'>Volatilité</th>"
+                     f"<th style='{entete};text-align:right;'>Bêta</th>"
                      f"<th style='{entete};text-align:right;'>Rendement</th>"
                      f"</tr>")
+
+                def _beta(v):
+                    return "—" if v is None else f"{v:.2f}"
+
+                # Le point de depart, pour que chaque combinaison se lise
+                # comme un ecart au portefeuille tel qu'il est.
+                if plan.get("sharpe_avant") is not None:
+                    h += (f"<tr><td style='{cell};color:var(--ink-2);'>"
+                          f"Portefeuille actuel, sans placer le cash</td>"
+                          f"<td style='{nb};color:var(--ink-2);'>"
+                          f"{plan['sharpe_avant']:.3f}</td>"
+                          f"<td style='{nb};color:var(--ink-2);'>"
+                          f"{plan['volatilite_avant']:.1%}</td>"
+                          f"<td style='{nb};color:var(--ink-2);'>"
+                          f"{_beta(plan.get('beta_avant'))}</td>"
+                          f"<td style='{nb};color:var(--ink-2);'>"
+                          f"{plan['rendement_avant']:.1%}</td></tr>")
                 for e in plan["essais"]:
                     retenue = (e["tickers"] == [l["ticker"] for l in plan["lignes"]])
                     fond = ("background:var(--bg-sunken);" if retenue else "")
@@ -2284,6 +2322,7 @@ def _render_optimisation(portfolio, cash):
                           + f"</td><td style='{nb};font-weight:600;'>"
                             f"{e['sharpe']:.3f}</td>"
                             f"<td style='{nb}'>{e['volatilite']:.1%}</td>"
+                            f"<td style='{nb}'>{_beta(e.get('beta'))}</td>"
                             f"<td style='{nb}'>{e['rendement']:.1%}</td></tr>")
                 st.markdown(
                     f"<div style='border:1px solid var(--border);"
