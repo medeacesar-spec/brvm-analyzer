@@ -24,12 +24,23 @@ de 7 255 divise par ce BNPA donne 13,34, le PER affiche. La capitalisation
 annoncee (362 750 M) est le produit des deux. Le script refuse d'ecrire si
 ces recoupements ne tombent plus.
 
-UNE SOURCE UNIQUE, ET ON LE DIT
+CE QUE L'AVIS OFFICIEL CONFIRME
 
-Aucun etat financier de Bridge Bank n'est publie sur brvm.org : sa page
-societe y est vide au lendemain de l'introduction. Ces chiffres n'ont donc
-PAS ete recoupes avec un document d'emetteur, contrairement aux exercices
-2025 des autres titres. A revoir des que la banque deposera ses comptes.
+L'avis n 263/2026 BRVM/DG du 08/09/2026 (premiere cotation) donne le
+periMETRE de l'operation : 10 000 000 d'actions diffusees dans le public du
+20 au 21 juillet 2026, au prix de 6 750 FCFA, avec ce meme cours pour
+reference le premier jour. Dix millions sur cinquante, c'est exactement le
+flottant de 20 % que porte la fiche : le nombre de titres et le flottant
+sont donc corrobores par une source officielle, et non plus par une seule.
+
+CE QUI RESTE SUR UNE SOURCE UNIQUE
+
+Les comptes eux-memes. Aucun etat financier de Bridge Bank n'est publie sur
+brvm.org : sa page societe y est vide au lendemain de l'introduction, et la
+Note d'Information ne s'obtient qu'aupres de la SGI Bridge Securities. Les
+cinq exercices ecrits ici n'ont donc pas ete recoupes avec un document
+d'emetteur, contrairement aux exercices 2025 des autres titres. A revoir des
+que la banque deposera ses comptes — le mappage vers sa page est en place.
 
 Usage :
   python3 scripts/integrer_bridge_bank.py --simuler
