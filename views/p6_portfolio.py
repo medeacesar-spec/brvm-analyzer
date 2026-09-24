@@ -2060,6 +2060,71 @@ def _render_recommandations_ajustees(portfolio):
 
 
 
+def _render_alphas(plan, entete, cell, nb):
+    """L'alpha du portefeuille contre le Composite et le BRVM-30, avant et
+    apres la repartition suggeree, chaque indice sur ses propres mois."""
+    avant = {a["indice"]: a for a in plan.get("alphas_avant") or []}
+    apres = {a["indice"]: a for a in plan.get("alphas_apres") or []}
+    if not avant:
+        return
+    mois_fr = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.",
+               "août", "sept.", "oct.", "nov.", "déc."]
+
+    def _mois(m):
+        return f"{mois_fr[m[1] - 1]} {m[0]}"
+
+    def _pct(v, signe=False):
+        return "—" if v is None else (f"{v:+.1%}" if signe else f"{v:.1%}")
+
+    def _teinte(v):
+        return "var(--up)" if v and v > 0 else "var(--down)"
+
+    section_heading_local = (
+        "<div class='label-xs' style='margin:18px 0 6px;'>Alpha : ce que le "
+        "portefeuille gagne au-delà de ce que son bêta explique</div>")
+    st.markdown(section_heading_local, unsafe_allow_html=True)
+    h = (f"<tr><th style='{entete};text-align:left;'>Indice · période</th>"
+         f"<th style='{entete};text-align:right;'>Rdt indice</th>"
+         f"<th style='{entete};text-align:right;'>Rdt portefeuille</th>"
+         f"<th style='{entete};text-align:right;'>Bêta</th>"
+         f"<th style='{entete};text-align:right;'>Alpha actuel</th>"
+         f"<th style='{entete};text-align:right;'>Alpha avec la suggestion</th>"
+         f"</tr>")
+    for nom, a in avant.items():
+        b = apres.get(nom) or {}
+        h += (f"<tr><td style='{cell}'><b>{nom}</b><br>"
+              f"<span class='muted' style='font-size:11px;'>"
+              f"{_mois(a['debut'])} → {_mois(a['fin'])} · {a['mois']} mois"
+              f"</span></td>"
+              f"<td style='{nb}'>{_pct(a['rendement_indice'])}</td>"
+              f"<td style='{nb}'>{_pct(a['rendement_portefeuille'])}"
+              + (f" → {_pct(b.get('rendement_portefeuille'))}" if b else "")
+              + f"</td><td style='{nb}'>{a['beta']:.2f}"
+              + (f" → {b['beta']:.2f}" if b.get("beta") is not None else "")
+              + f"</td><td style='{nb};font-weight:600;"
+                f"color:{_teinte(a['alpha'])};'>{_pct(a['alpha'], True)}</td>"
+                f"<td style='{nb};font-weight:600;"
+                f"color:{_teinte(b.get('alpha'))};'>"
+                f"{_pct(b.get('alpha'), True)}</td></tr>")
+    st.markdown(
+        f"<div style='border:1px solid var(--border);border-radius:12px;"
+        f"overflow:hidden;background:var(--bg-elev);'>"
+        f"<table style='width:100%;border-collapse:collapse;'>{h}</table>"
+        f"</div>", unsafe_allow_html=True)
+    st.caption(
+        "**Alpha** (de Jensen) : rendement du portefeuille au-delà du taux "
+        "sans risque (6 %) et de ce que son bêta face à l'indice justifie. "
+        "Positif, le choix des titres a rapporté plus que la simple exposition "
+        "au marché. Le BRVM 30 ne remonte qu'à janvier 2023 : le Composite est "
+        "donc aussi mesuré sur ces mêmes mois, pour comparer à durée égale. "
+        "**Deux réserves.** Les indices sont des indices de prix, sans "
+        "dividendes, alors que le portefeuille les compte : l'alpha est "
+        "surestimé d'environ leur rendement. Et le portefeuille est reconstitué "
+        "aux poids d'aujourd'hui sur le passé, avec des titres choisis parce "
+        "qu'ils ont bien marché : c'est une mesure rétrospective, pas une "
+        "promesse.")
+
+
 def _render_optimisation(portfolio, cash):
     """Ce qu'il faudrait acheter, ou alleger, pour mieux payer le risque porte.
 
@@ -2280,6 +2345,8 @@ def _render_optimisation(portfolio, cash):
                     f"Risque d'ensemble. **Bêta** : 1 = le portefeuille suit "
                     f"le Composite, moins de 1 = il l'amortit, plus de 1 = il "
                     f"l'amplifie.")
+
+            _render_alphas(plan, entete, cell, nb)
 
             if plan.get("ex_aequo", 0) > 1:
                 st.caption(
