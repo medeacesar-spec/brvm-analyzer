@@ -1,172 +1,117 @@
 # BRVM Analyzer — passation
 
 **Dépôt** `medeacesar-spec/brvm-analyzer` · `/Users/mdegbe/brvm-analyzer` · Streamlit + Supabase
-**État au 9 septembre 2026, après la nuit du 8 au 9.**
+**État au 24 septembre 2026.** Aucune PR ouverte : tout est fusionné dans `main`.
 
 ---
 
-## Où en est le chantier
+## Ce qu'il faut savoir avant de toucher quoi que ce soit
 
-Le **redesign v4** est posé sur les dix pages. Le canevas de référence est
-dans le dépôt : `design/BRVM Analyzer - Redesign v4.dc.html`.
+**L'application déployée peut être en retard sur `main`.** `brvm-analyzer.streamlit.app`
+ne recharge pas le code toute seule : après une fusion, il faut la redémarrer
+(*Manage app* → *Reboot*). Deux fois ce mois-ci, un correctif présent dans `main`
+n'était pas visible côté utilisateur. Le rendu local ne prouve donc rien de ce
+que voit le donneur d'ordre.
 
-Trois documents tiennent le chantier, et ils se lisent dans cet ordre :
+**La base est commune au local et à l'application publique.** Les comptes de
+test `local` et `dev@local` y ont de vrais portefeuilles. Un visiteur non
+connecté reçoit `anonyme`, jamais `local` (corrigé le 16/09).
 
-| Document | Ce qu'il contient |
-|---|---|
-| `docs/redesign_v4_ecarts.md` | **Le registre de travail** : 31 écarts au canevas, onglet par onglet, avec l'ordre de correction — et la **méthode pour refaire la comparaison** |
-| `docs/redesign_v4_inventaire.md` | Ce que le canevas contient (10 pages, 33 onglets, 95 cartes de KPI) et les écarts assumés |
-| `docs/cahier_des_requetes.md` | Les demandes de fond, hors design |
-
-**Neuf PR fusionnées** (#118 à #126). Le déploiement Streamlit Cloud suit
-`main` automatiquement et a été vérifié en séance réelle.
-
----
-
-## Règles de travail (à respecter d'emblée)
-
-- **Branche isolée depuis `origin/main`, PR par l'API GitHub.** Le jeton est
-  dans l'URL du remote. **La fusion par l'API est refusée** par le garde-fou
-  de session : c'est le donneur d'ordre qui fusionne.
-- **Vérifier l'état de la PR avant chaque push.** Elle est souvent fusionnée
-  entre-temps, et le push part alors sur une branche morte sans rien signaler.
-  C'est arrivé cinq fois. `curl .../pulls/N` puis branche neuve si close.
-- **Vérifier par le rendu réel, jamais par la lecture du code.** Tous les
-  défauts marquants de la journée n'étaient visibles qu'à l'écran : une carte
-  de KPI en double, un score à −154 sur une échelle 0-100, une valeur coupée
-  en « +… », une échelle de couleur délavée par une seule case, une première
-  étape étiquetée « ensuite ».
-- **Comparer ONGLET par onglet, pas page par page.** Portefeuille et Analyse
-  d'un Titre ont des onglets aux designs entièrement différents. La procédure
-  est dans `docs/redesign_v4_ecarts.md`.
-- **`docs/cahier_des_requetes.md` ne se modifie pas dans une PR de code.**
-- **Ne rien inventer** : une case vide vaut mieux qu'un chiffre fabriqué. Le
-  canevas demande parfois une donnée que l'application ne calcule pas
-  (confiance du modèle, impact de la 3ᵉ étape du plan) — on ne l'affiche pas.
+**Le workflow git** : une branche par sujet, partie de `origin/main`, PR via
+l'API GitHub, jamais de push direct. Ne jamais empiler deux branches ; si une
+PR passe en conflit, la remettre à jour avec `main` plutôt que de la refaire.
 
 ---
 
-## Ce que la journée a ajouté
+## L'état de la donnée
 
-**Composants partagés** dans `utils/ui_helpers.py` : `status_strip`,
-`kpi_v4`, `kpi_grille`, `breadth_bar`, `heatmap`, `donut`, `note`,
-`plan_etapes`. Ils portent le gabarit du canevas ; toute nouvelle carte
-passe par eux.
-
-**Bêta et RSI calculés** — `scripts/calculer_beta_rsi.py`. Les colonnes
-`market_data.beta` et `market_data.rsi` étaient vides depuis l'origine.
-45 bêtas, 47 RSI. Le bêta se mesure au MOIS contre le BRVM Composite
-(au jour, un titre qui ne cote pas fausse tout) ; le RSI au JOUR, formule de
-Wilder. **La corrélation au marché est faible sur cette place** — 18 titres
-sur 45 sous 0,30 — et un bêta dont la corrélation tombe sous ce seuil
-s'affiche en gris : la valeur est juste, sa portée est nulle.
-
-**Accès développeur** — `utils/auth.py`. Le mode dev était lu partout et
-n'avait jamais eu d'interface : impossible de voir les trois pages sous
-connexion. Il en a une, fermée par `BRVM_DEV_LOGIN=1`, qui ne crée aucun
-compte et ne vérifie aucun mot de passe.
-
-**Outil de comparaison** — `scripts/reconstruire_canevas.py` remonte le
-canevas en site statique local.
-
----
-
-## SEPT PULL REQUESTS ATTENDENT LA FUSION
-
-Rien n'a été fusionné depuis la #138. **À fusionner d'abord, avant tout
-nouveau travail** — plusieurs se touchent, et l'ordre compte :
-
-| PR | Contenu | Note |
+| donnée | couverture | source |
 |---|---|---|
-| #135 | Screening : sans information sur un seuil, un titre est écarté | décision de fond |
-| #139 | Contrôles segmentés A2, A5 | `p2_stock_analysis.py` |
-| #140 | Onglet Technique A12-A16 | `p2_stock_analysis.py` — après #139 |
-| #141 | Barre signée P1, P2, F1 | débloque F2 |
-| #142 | Pages sous connexion T1, T2, H1 | |
-| #143 | Dashboard D2-D5 et finitions A9-A11 | |
-| #144 | Cahier des requêtes · Total Return | doc seule |
+| cours journaliers | 218 898 séances depuis 1998 | import RichBourse + collecte quotidienne |
+| indices | 17 séries, dont 7 sectoriels historiques | registre `analysis/indices.py` |
+| chiffre d'affaires, résultat net | **236 / 240** couples 2021-2025 | fiches société + documents officiels |
+| dividende par action | 89 % | 414 avis de paiement BRVM |
+| dividende déclaré | 218 exercices | calculé : DPS × actions |
+| capitaux propres | 62 % | états financiers (PDF) |
+| total de bilan | 56 % | idem |
+| dette totale | 40 % | idem |
+| charges d'intérêts, flux, investissements | 13-14 % | idem |
 
-Chaque PR décrit ce qu'elle corrige et ce qu'elle a trouvé en route. Toutes
-ont été vérifiées au rendu.
-
-## Ce qui attend
-
-1. **F2 — le tableau sectoriel de Performance des Titres.** Seul écart du
-   registre encore à faire. Il veut une colonne en barre signée : `barre_signee`
-   arrive avec la #141, d'où l'attente.
-2. **Cinq arbitrages**, tous écrits dans le registre avec leur raisonnement :
-   **A1** (sélecteur d'exercice — il gouvernerait toute la page, pas le seul
-   onglet Cours), **A6** (périodicité — `price_monthly` n'a pas d'OHLC, les
-   chandeliers deviendraient une courbe), **F3** (quatre blocs hors canevas de
-   Performance des Titres), **H3** (bouton « Colonnes » désactivé), et la
-   question du **Composite Total Return** portée au cahier (#26).
-3. **Introduction d'une banque le 14 septembre** — nom à confirmer. L'ajouter
-   à `data/brvm_tickers.json` **et** à `TICKER_TO_BRVM_SLUG`, puis lancer
-   `collecter_historique_cours.py` en M et T. Attention : depuis la #135, un
-   titre sans historique est écarté du screening dès qu'un critère de marché
-   est réglé — la banque le sera pendant deux ans, comme BICI Bénin et la
-   Loterie du Bénin. La page le dit, ce n'est pas silencieux.
-4. **Neuf dividendes en contradiction** avec l'avis BRVM — SOLIBRA 2020/2021
-   au dixième, Filtisac 2024 à 145 contre 1 320.
-5. **SODECI affiche une marge nette de 24,62**, soit 2 462 %. Le ratio est
-   faux, ce n'est pas un défaut d'affichage. À porter au cahier.
-6. **`market_data.dps` est vide** sur les 48 lignes, comme l'étaient beta et
-   rsi. Même traitement possible.
+Le compte de résultat est presque complet ; **le bilan et les flux ne le sont
+pas**, et c'est le chantier prioritaire (voir `docs/chantiers.md`).
 
 ---
 
-## Ce que la nuit du 8 au 9 a appris
+## Ce qui a été fait du 10 au 24 septembre
 
-Trois leçons de méthode, chacune payée par une erreur.
+**Données.** Dix-sept exercices 2025 lus dans les documents officiels et
+vérifiés un à un ; 49 trimestres qui se faisaient passer pour des exercices,
+corrigés par recoupement avec les fiches société ; neuf alertes instruites, dont
+quatre bénéfices écrits à la place de pertes ; les dividendes Sonatel passés du
+net au brut ; Bridge Bank intégrée le jour de son introduction.
 
-**Un onglet ne se juge pas à sa silhouette.** Le diagnostic du 8 septembre
-avait parcouru les 33 onglets et déclaré « Technique », « Performance des
-Titres » et « Signaux » conformes parce que leurs blocs existaient tous. Relus
-bloc par bloc, ils portaient **neuf écarts de plus** — dont un tableau de
-niveaux clés amputé de ses moyennes mobiles, et une barre rouge de 24 % pour
-un titre qui avait gagné 13,5 %.
+**Corrections d'affichage.** Le YTD des indices, faux parce que brvm.org publie
+une colonne figée depuis janvier — le Composite affichait +1,70 % pour +53,4 %
+réels. La répartition suggérée du cash, qui ignorait la fenêtre de risque. Les
+messages d'un titre nouvellement coté, qui le traitaient comme un titre éteint.
 
-**Une capture d'écran ne tranche pas un signe.** Le tableau multi-périodes a
-paru vide, puis a paru porter des performances impossibles — « −118,8 % ». Les
-deux fois j'avais tort : il n'avait pas fini de se rendre, puis le « + » se
-lisait comme un « − » à l'échelle de l'image. **Ce qui se mesure se vérifie
-par le calcul**, en rejouant le formateur sur les valeurs de la base ou en
-lisant les styles calculés dans le DOM — pas à l'œil.
+**Performance.** Démarrage à froid de 66 s à 14 s : l'application lisait
+218 000 séances à chaque ouverture et interrogeait brvm.org avant le premier
+affichage.
 
-**Une rangée pleine peut cacher une carte tombée.** Le Composite Total Return
-était collecté chaque jour, stocké, et affiché nulle part : la rangée des
-indices tenait quatre colonnes pour cinq cartes. Rien ne pouvait le laisser
-voir à l'écran. **Comparer ce que la base contient à ce que la page affiche**
-est un contrôle que le rendu seul ne remplace pas.
+**Outillage.** Un lecteur d'états financiers SYSCOHADA (`analysis/lecture_syscohada.py`)
+et son étalon (`scripts/etalon_lecture_syscohada.py`), mesuré contre quatorze
+documents lus à la main : **17 valeurs justes sur 36**, contre 10 au départ.
 
 ---
 
-## Composants partagés — l'état au 9/09
+## Les décisions en attente
 
-Dans `utils/ui_helpers.py`, tous nés d'un besoin répété : `status_strip`,
-`kpi_v4`, **`kpi_grille`** (la grille repliable — elle a corrigé la cause n° 4
-partout), `breadth_bar`, `heatmap`, `donut`, `note`, `plan_etapes`,
-**`cartes_constats`** (les constats en cartes : diagnostic du portefeuille,
-signaux techniques), **`barre_signee`** (positions, classement de performance,
-toutes les cotations), **`titre_admin`** (les deux pages réservées).
-
-La règle qui les a tous produits : **quand un motif apparaît une troisième
-fois, il devient un composant** — trois copies d'une même échelle finissent
-toujours par diverger.
+1. **Les 52 écarts modérés** entre la base et les fiches société. Ils relèvent
+   le plus souvent d'une différence de définition — comptes sociaux contre
+   consolidés, produit net bancaire contre produits totaux. Aucune règle
+   automatique ne les tranche.
+2. **Les données de test en production** : le compte `local` (8 lignes, un
+   profil investisseur) et `dev@local` (16 lignes). Faut-il les supprimer ?
+3. **Deux séries d'indices manquantes** : Composite Total Return et Services
+   financiers. Sans historique, leur YTD est effacé plutôt que faux. Un export
+   RichBourse les réglerait.
+4. **Deux corrections faites sur une source unique** — Safca 2022 et Erium 2021,
+   sans document publié. À revérifier au prochain dépôt.
 
 ---
 
-## Environnement
+## Les pièges rencontrés, et ce qu'ils ont appris
 
-- Python **3.13** en production (`runtime.txt`), mais le Streamlit local
-  tourne sous 3.9 : `Authlib` y manque, d'où l'accès développeur.
-- `numpy<2`, `pandas<2.3` — des SIGSEGV ont été rapportés au-delà.
-- Une configuration de lancement `brvm-dev-admin` (port 8502, avec
-  `BRVM_DEV_LOGIN=1`) est dans le `.claude/launch.json` local.
-- La session de test s'ouvre sur **`dev@local`**, dont le portefeuille a été
-  rempli le 08/09 d'une copie des 16 lots réels, des 5 dividendes et du cash :
-  sans lui, les pages sous connexion s'affichaient vides. Pour ouvrir un autre
-  compte, `BRVM_DEV_EMAIL=...` — le champ du formulaire ne se remplit pas
-  depuis l'extérieur de Streamlit.
-- La synchronisation quotidienne se déclenche au premier chargement du jour
-  et prend plusieurs minutes : ne pas la confondre avec un blocage.
+**Une valeur fausse mais vraisemblable est pire qu'une valeur absente.** Le
+lecteur automatique rendait, pour NSIA, le produit net bancaire de 2024 à la
+place de celui de 2025 : plausible, et donc invisible. C'est la raison pour
+laquelle il n'écrit rien tant que l'étalon ne s'est pas inversé.
+
+**Recopier une source extérieure se paie.** Deux fois : les rendements
+collectés sur le web (faux pour la plupart des titres) et le YTD de brvm.org
+(figé depuis janvier). Chaque fois que l'historique est en base, mieux vaut
+calculer que recopier.
+
+**Un chiffre improbable n'est pas toujours une erreur.** Sur sept PER aberrants
+instruits, trois étaient exacts : Erium, AGL et BOA Niger gagnent réellement
+très peu. Les corriger sans lire le document aurait remplacé un faux chiffre
+par un autre.
+
+**Une ligne « exercice » peut porter un trimestre.** Un document annuel
+référencé ne prouve rien sur les montants de la ligne. Le recoupement se fait
+avec `quarterly_data`, en excluant les périodes `S2` et `T4` — chez BOA Burkina,
+la ligne S2 porte le montant de l'exercice entier.
+
+---
+
+## Où reprendre
+
+`docs/chantiers.md` fixe l'ordre : les états financiers sur cinq ans d'abord,
+puis la robustesse du fil d'actualité, l'alerte « sans compte annuel », et le
+projet de recherche sur les groupes de titres qui battent la BRVM.
+
+Pour le premier, la suite immédiate est identifiée : dans le lecteur, faire
+gagner « TOTAL CAPITAUX PROPRES » sur « Sous-Total part du groupe », puis lire
+les montants rangés dans des tableaux plutôt que dans le texte — quatre
+documents de l'étalon en dépendent.
