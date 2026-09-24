@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Dix-sept montants que le document ET la fiche societe contredisent.
+"""Dix-huit montants que le document ET la fiche societe contredisent.
 
 COMMENT ILS ONT ETE TROUVES
 
@@ -24,6 +24,11 @@ QUELQUES CAS PARLANTS
                  qui la fournit.
 
 CE QUI N'EST PAS CORRIGE ICI
+
+  SITAB 2024     le document ecrit 44 730 358 142 sur trois lignes ; la fiche
+                 et la base, 44,174 Md. Mais la base a souvent ete REMPLIE
+                 depuis la fiche : « fiche = base » n'est alors qu'une source.
+                 Document seul contre fiche seule : a lire, pas a ecrire.
 
   SODECI 2022    fiche 160,7 Md, base 37,1 Md, mais le document 2023 est un
                  scan : il faut la passe OCR pour une seconde source.
@@ -59,14 +64,19 @@ VALEURS = {
     ("SGBC.ci", 2022): ({"revenue": 215_101_000_000, "net_income": 74_612_000_000},
                         "fiche 215,1 et 74,6 Md",
                         "Rapport d'activite 2022 - Societe Generale CI"),
-    ("SGBC.ci", 2025): ({"revenue": 276_048_000_000}, "fiche 276,0 Md",
-                        "Rapport d'activites annuel et etats financiers 2025 - SGCI"),
+    # Resultat 2025 recopie de 2024 : « RESULTAT NET 101 228 101 352 »,
+    # variation 124 — l'ordre est 2024 puis 2025.
+    ("SGBC.ci", 2025): ({"revenue": 276_048_000_000, "net_income": 101_352_000_000},
+                        "fiche 276,0 et 101,352 Md",
+                        "Rapport d'activites annuel et etats financiers 2025 - SGCI, en millions"),
     ("STAC.ci", 2021): ({"net_income": 1_119_448_000}, "fiche 1,12 Md",
                         "Etats financiers - exercice 2021 - SETAO CI"),
-    ("STBC.ci", 2022): ({"revenue": 150_593_180_425}, "fiche 150,6 Md",
+    # La base portait 358,6 Md : faux d'un facteur 2,4. Document 150,6 Md,
+    # fiche 151,1 Md : l'ecart de 0,4 % est une definition — le document
+    # donne les ventes de marchandises, la convention retenue pour SITAB
+    # 2025, lue et verifiee a la main (#175).
+    ("STBC.ci", 2022): ({"revenue": 150_593_180_425}, "fiche 151,1 Md",
                         "Etats financiers certifies et approuves - exercice 2022 - SITAB"),
-    ("STBC.ci", 2024): ({"net_income": 44_730_358_142}, "fiche 44,7 Md",
-                        "Etats financiers - exercice 2024 - SITAB"),
     ("TTLC.ci", 2025): ({"revenue": 588_709_000_000, "net_income": 9_087_000_000},
                         "fiche 588,7 et 9,1 Md",
                         "Etats financiers approuves - exercice 2025 - TotalEnergies CI"),
@@ -78,6 +88,10 @@ VALEURS = {
     # signe.
     ("SAFC.ci", 2025): ({"net_income": 701_000_000}, "fiche 0,701 Md",
                         "Etats financiers - exercice 2025 - SAFCA CI"),
+    ("ONTBF.bf", 2024): ({"net_income": 21_471_148_928}, "fiche 21,471 Md",
+                         "Rapport annuel de gestion - exercice 2024 - Onatel, en francs"),
+    ("TTLS.sn", 2024): ({"net_income": 7_091_000_000}, "fiche 7,091 Md",
+                        "Rapport annuel - exercice 2024 - TotalEnergies Senegal, en millions"),
     ("SDCC.ci", 2023): ({"revenue": 175_458_474_000}, "fiche 175,5 Md",
                         "Etats financiers - exercice 2024 - SODECI, colonne 2023, en milliers"),
 }
