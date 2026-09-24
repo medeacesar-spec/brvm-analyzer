@@ -196,6 +196,12 @@ def main(avec_ocr: bool, titre: str = None, avec_fiches: bool = False) -> None:
                            # « fiche = base » n'est alors qu'une source.
                            else "  => document seul contre fiche = base : a lire" if proche(b)
                            else f"  => fiche {fiche/Md:.3f} Md : trois sources, trois valeurs")
+                # L'OCR PERD LES SIGNES : parentheses et tirets ne survivent
+                # pas toujours. Filtisac 2021 et Sucrivoire 2022 sont des
+                # PERTES a la fiche et en base, lues positives. La comparaison
+                # ci-dessus porte sur les valeurs absolues : on le dit.
+                if (v < 0) != (fiche < 0):
+                    verdict += " · SIGNE a verifier (fiche %s)" % ("negative" if fiche < 0 else "positive")
             print(f"  {t_:9} {a} {c:16} lu {v/Md:12.3f} Md"
                   + (f" · base {b/Md:12.3f} Md · x{v/b:6.2f}" if b else "")
                   + f"  [{m}]{verdict}")
