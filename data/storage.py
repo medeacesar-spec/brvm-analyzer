@@ -1278,19 +1278,14 @@ def get_all_cached_prices(depuis_jours: int = None) -> dict:
     """
     from datetime import date, timedelta
 
-    try:
-        from analysis.indices import CODES
-    except ImportError:      # le registre des indices n'est pas encore fusionne
-        CODES = frozenset()
+    from analysis.indices import CODES
 
-    conditions, params = [], []
-    if CODES:
-        conditions.append("ticker NOT IN ({})".format(", ".join(["?"] * len(CODES))))
-        params += sorted(CODES)
+    conditions = ["ticker NOT IN ({})".format(", ".join(["?"] * len(CODES)))]
+    params = sorted(CODES)
     if depuis_jours:
         conditions.append("date >= ?")
         params.append((date.today() - timedelta(days=depuis_jours)).isoformat())
-    ou = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+    ou = " WHERE " + " AND ".join(conditions)
 
     conn = get_connection()
     try:

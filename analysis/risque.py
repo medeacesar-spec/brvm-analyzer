@@ -31,6 +31,7 @@ import statistics as st
 from collections import defaultdict
 from typing import Optional
 
+from analysis.indices import CODES, INDICE_MARCHE, est_indice
 from data.db import get_connection
 from data.storage import _maybe_cache_data
 
@@ -205,9 +206,9 @@ def _serie_marche(series: dict) -> dict:
     Le BRVM-30 ne remonte qu'a 2023 et ne couvre que trente valeurs — il
     ferait un repere plus court et plus etroit.
     """
-    if "BRVMC" not in series:
+    if INDICE_MARCHE not in series:
         return {}
-    rendements, points = series["BRVMC"]
+    rendements, points = series[INDICE_MARCHE]
     return {(points[i + 1][0].year, points[i + 1][0].month): r
             for i, r in enumerate(rendements)}
 
@@ -677,7 +678,7 @@ def toutes_les_mesures(fenetre: int = FENETRE_DEFAUT) -> dict:
     series = series_mensuelles(fenetre)
     marche = _serie_marche(series)
     mesures = {t: _mesures(*v, marche=marche) for t, v in series.items()
-               if t not in ("BRVMC", "BRVM30")}
+               if not est_indice(t)}
     seuil = _seuil_illiquidite(m.get("montant_echange") for m in mesures.values())
     for m in mesures.values():
         echange = m.get("montant_echange")
@@ -710,7 +711,7 @@ def profil_de_risque(ticker: str, secteur: Optional[str] = None,
         cnx.close()
 
     secteur = secteur or secteurs.get(ticker)
-    indices = {"BRVMC", "BRVM30"}
+    indices = CODES
     marche = _serie_marche(series)
     tous = {t: _mesures(*v, marche=marche) for t, v in series.items()
             if t not in indices}
@@ -739,7 +740,8 @@ def profil_de_risque(ticker: str, secteur: Optional[str] = None,
             "marché": _situer(tous[ticker][champ], tous, champ, moindre),
         }
 
-    indice_reference = _mesures(*series["BRVMC"]) if "BRVMC" in series else {}
+    indice_reference = (_mesures(*series[INDICE_MARCHE])
+                       if INDICE_MARCHE in series else {})
 
     profil = {
         "titre": tous[ticker],
