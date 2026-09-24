@@ -37,7 +37,7 @@ LIBELLES = {
     "equity": (r"total\s*capitaux\s*propres",
                r"capitaux\s*propres\s*et\s*ressources",
                r"total\s*des\s*capitaux\s*propres"),
-    "total_assets": (r"total\s*(g[ée]n[ée]ral|actif|bilan)",
+    "total_assets": (r"total\s*(g[ée]n[ée]ral|actif(?!\s*(immobilis|circulant))|bilan)",
                      r"total\s*de\s*l.?\s*actif"),
     "total_debt": (r"emprunts?\s*et\s*dettes\s*financi",
                    r"total\s*dettes\s*financi", r"dettes\s*financi[èe]res"),
@@ -60,7 +60,8 @@ LIBELLES = {
 LIBELLES["equity"] += (r"total\s*capitaux\s*propres\s*et\s*ressources",
                        r"capitaux\s*propres\s*et\s*ressources\s*assimilees",
                        r"situation\s*nette")
-LIBELLES["total_assets"] += (r"total\s*(de\s*l.?\s*)?actif", r"total\s*passif",
+LIBELLES["total_assets"] += (r"total\s*(de\s*l.?\s*)?actif(?!\s*(immobilis|circulant))",
+                             r"total\s*passif(?!\s*(circulant|non\s*courant|courant))",
                              r"total\s*du\s*bilan")
 LIBELLES["total_debt"] += (r"total\s*dettes\s*financieres\s*et\s*ressources",
                            r"dettes\s*a\s*long\s*terme")
@@ -98,6 +99,10 @@ def _nombre(brut: str) -> float | None:
     return -valeur if negatif else valeur
 
 
+def _chiffres(groupe: str) -> int:
+    return sum(c.isdigit() for c in groupe)
+
+
 def _scinder_colonnes(brut: str) -> list:
     """Separe les colonnes collees par l'extraction.
 
@@ -124,9 +129,15 @@ def _scinder_colonnes(brut: str) -> list:
     if len(morceaux) < 2:
         return [brut]
 
+    # UN GROUPE DE QUATRE CHIFFRES OU PLUS n'est pas un groupe de milliers :
+    # c'est un nombre a part, colle au suivant — le plus souvent un
+    # millesime, « 2025 1 844 ».
     segments, courant = [], [morceaux[0]]
     for groupe in morceaux[1:]:
-        if len(groupe) < 3:
+        if _chiffres(groupe) > 3 or _chiffres(courant[-1]) > 3:
+            segments.append(courant)
+            courant = [groupe]
+        elif len(groupe) < 3:
             segments.append(courant)
             courant = [groupe]
         else:
@@ -171,10 +182,79 @@ def _scinder_en_deux(brut: str) -> list:
     return [" ".join(morceaux[:moitie]), " ".join(morceaux[moitie:])]
 
 
+ANNEE_SEULE = re.compile(r"\(?-?((?:19|20)\d{2})\)?")
+
+
+def _est_une_annee(brut: str) -> bool:
+    """Un millesime nu n'est pas un montant.
+
+    « effective depuis septembre 2020 et apporte 13 % a 25 % du chiffre
+    d'affaires global » : faute de montant apres le libelle, la ligne entiere
+    etait lue, et LNB affichait un chiffre d'affaires de 2 020 francs. Dans
+    ces etats, un montant de quatre chiffres s'ecrit « 2 020 » ; quatre
+    chiffres colles entre 1990 et 2100 sont une date.
+    """
+    m = ANNEE_SEULE.fullmatch(brut.strip())
+    return bool(m) and 1990 <= int(m.group(1)) <= 2100
+
+
+def _est_decimal(ligne: str, m) -> bool:
+    """Un montant suivi d'une virgule et d'un chiffre est du commentaire.
+
+    Les etats financiers ecrivent des entiers. « classement par total bilan
+    2025 1 844,6 Md FCFA » est une phrase du rapport de gestion : BICI Benin
+    affichait un total de bilan de 1 844 francs.
+    """
+    return bool(re.match(r",\d", ligne[m.end():m.end() + 2]))
+
+
+def _fusionner_tetes(brut: str) -> str:
+    """Recolle un groupe de tete que la mise en page a coupe chiffre a chiffre.
+
+    Bernabe ecrit « 4 2 454 158 321 » pour 42 454 158 321, Filtisac « 4 65
+    981 » pour 465 981 : l'espacement des caracteres coupe le premier groupe.
+    Deux groupes courts consecutifs dont la reunion tient en trois chiffres,
+    suivis d'un groupe de trois, sont recolles.
+
+    Lecture de SECOURS seulement : « 7 4 270 » peut etre deux montants. C'est
+    l'ancre qui dit laquelle des deux lectures est la bonne.
+    """
+    morceaux = brut.strip().strip("()").replace(".", " ").split()
+    sortie, i = [], 0
+    while i < len(morceaux):
+        tete = morceaux[i]
+        j = i + 1
+        while (len(tete) < 3 and j < len(morceaux) and len(morceaux[j]) < 3
+               and len(tete) + len(morceaux[j]) <= 3):
+            tete += morceaux[j]
+            j += 1
+        if j > i + 1 and not (j < len(morceaux) and len(morceaux[j]) == 3):
+            tete, j = morceaux[i], i + 1
+        sortie.append(tete)
+        i = j
+    return " ".join(sortie)
+
+
+def montants_tetes_fusionnees(ligne: str) -> list:
+    """Les montants de la ligne, groupes de tete recolles."""
+    sortie = []
+    for m in MONTANT.finditer(ligne):
+        if _est_une_annee(m.group(0)):
+            continue
+        negatif = m.group(0).strip().startswith(("(", "-"))
+        for morceau in _scinder_colonnes(_fusionner_tetes(m.group(0))):
+            v = _nombre(morceau)
+            if v is not None:
+                sortie.append(-abs(v) if negatif else v)
+    return sortie
+
+
 def montants_alternatifs(ligne: str) -> list:
     """Les montants de la ligne, lus avec le decoupage de secours."""
     sortie = []
     for m in MONTANT.finditer(ligne):
+        if _est_une_annee(m.group(0)):
+            continue
         negatif = m.group(0).strip().startswith(("(", "-"))
         for morceau in _scinder_en_deux(m.group(0)) or [m.group(0)]:
             v = _nombre(morceau)
@@ -187,8 +267,12 @@ def montants_de_ligne(ligne: str) -> list:
     """Les montants d'une ligne, dans l'ordre. Le premier est l'exercice."""
     sortie = []
     for m in MONTANT.finditer(ligne):
+        if _est_une_annee(m.group(0)) or _est_decimal(ligne, m):
+            continue
         negatif = m.group(0).strip().startswith(("(", "-"))
         for morceau in _scinder_colonnes(m.group(0)):
+            if _est_une_annee(morceau):
+                continue
             v = _nombre(morceau)
             if v is not None:
                 sortie.append(-abs(v) if negatif else v)
@@ -285,42 +369,122 @@ def _colonne_par_ancre(valeurs: list, ancre, facteur: float):
     return None
 
 
+def _colonne_nette(valeurs: list):
+    """2 si la ligne porte brut, amortissements, net : la colonne nette.
+
+    L'actif SYSCOHADA a quatre colonnes — brut, amortissements et
+    depreciations, net de l'exercice, net du precedent. « Total general
+    25 414 101 911 10 803 021 818 14 611 080 094 14 023 255 232 » chez Erium :
+    la premiere colonne est le brut, et le total du bilan est la troisieme.
+
+    L'arithmetique le prouve sans lire l'en-tete : brut moins amortissements
+    egale net, au franc pres. Sans cette egalite, on ne conclut rien.
+    """
+    if len(valeurs) < 3:
+        return None
+    brut, amort, net = (abs(v) for v in valeurs[:3])
+    if brut and amort and abs(brut - amort - net) <= 0.001 * brut:
+        return 2
+    return None
+
+
+SOUS_TOTAL = re.compile(r"sous\s*-?\s*$")
+
+
+def _lignes_du_champ(lignes: list, motifs: tuple) -> list:
+    """Les lignes candidates d'un champ, de la plus sure a la moins sure.
+
+    Chaque candidate est (rang, ligne, reste, valeurs). Le document fixe
+    l'ordre a rang egal ; trois choses le changent.
+
+    LE TABLEAU AVANT LA PROSE. Le rapport de gestion precede les etats :
+    « le resultat net a enregistre une diminution de 36 %, atteignant 4,6
+    milliards » vient quinze pages avant « Resultat Net 4 622 243 779
+    7 175 554 255 ». Une ligne d'etat financier porte l'exercice ET son
+    comparatif : deux montants apres le libelle la classent en tete, un seul
+    ensuite.
+
+    LA LIGNE ENTIERE EN DERNIER. Quand aucun montant ne suit le libelle, on
+    lit les montants qui le precedent — l'extraction met parfois deux
+    colonnes du bilan cote a cote. C'est la lecture la moins sure.
+
+    LE TOTAL AVANT LE SOUS-TOTAL. « Sous-Total Capitaux Propres part du
+    groupe 69 479 » contient « total capitaux propres » : le motif le
+    reconnait, et comme la ligne precede « TOTAL CAPITAUX PROPRES 113 165 »
+    dans le bilan d'Oragroup, c'est elle qui gagnait. La part du groupe
+    n'est pas le total — les minoritaires en sont exclus. Un libelle precede
+    de « sous- » ne sert que s'il n'y en a pas d'autre.
+    """
+    candidates = []
+    for ligne in lignes:
+        trouve = next((re.search(m, ligne) for m in motifs
+                       if re.search(m, ligne)), None)
+        if trouve is None:
+            continue
+        # LES MONTANTS QUI SUIVENT LE LIBELLE, pas ceux de toute la ligne.
+        # « Comptes de regularisation 8 949 11 987 Capitaux propres et
+        # ressources assimilees 211 371 233 303 » : lire la ligne entiere
+        # donnait 8 949 comme capitaux propres.
+        reste = ligne[trouve.end():]
+        valeurs = montants_de_ligne(reste)
+        if len(valeurs) >= 2:
+            rang = 0
+        elif valeurs:
+            rang = 1
+        else:
+            reste = ligne
+            valeurs = montants_de_ligne(ligne)
+            rang = 2
+        if not valeurs:
+            continue
+        if SOUS_TOTAL.search(ligne[:trouve.start()]):
+            rang += 3
+        candidates.append((rang, ligne, reste, valeurs))
+    return sorted(candidates, key=lambda c: c[0])
+
+
 def lire(texte: str, echelle: float = None, ancres: dict = None) -> dict:
     """{champ: montant} — ce que le texte livre, sans jugement de valeur.
 
-    Pour chaque champ, la PREMIERE ligne qui porte l'un de ses libelles et au
-    moins un montant. La colonne retenue est celle de l'exercice courant,
-    determinee par l'en-tete — elle n'est pas toujours la premiere.
+    Pour chaque champ, la MEILLEURE ligne qui porte l'un de ses libelles et au
+    moins un montant — ligne d'etat avant prose, total avant sous-total (voir
+    `_lignes_du_champ`). La colonne retenue est celle de l'exercice courant :
+    par l'ancre si elle s'y retrouve, par l'arithmetique brut - amortissements
+    = net a l'actif, par l'en-tete a defaut.
     """
     facteur = echelle if echelle else _echelle(texte)
     colonne = colonne_de_l_exercice(texte)
     lignes = [l for l in _plier(texte).split("\n") if l.strip()]
     sortie = {}
     for champ, motifs in LIBELLES.items():
-        for ligne in lignes:
-            trouve = next((re.search(m, ligne) for m in motifs
-                           if re.search(m, ligne)), None)
-            if trouve is None:
-                continue
-            # LES MONTANTS QUI SUIVENT LE LIBELLE, pas ceux de toute la ligne.
-            # L'extraction met parfois deux colonnes du bilan cote a cote :
-            # « Comptes de regularisation 8 949 11 987 Capitaux propres et
-            # ressources assimilees 211 371 233 303 ». Lire la ligne entiere
-            # donnait 8 949 comme capitaux propres.
-            reste = ligne[trouve.end():]
-            valeurs = montants_de_ligne(reste) or montants_de_ligne(ligne)
-            if not valeurs:
-                continue
+        for _, ligne, reste, valeurs in _lignes_du_champ(lignes, motifs):
             ancre = (ancres or {}).get(champ)
             choix = _colonne_par_ancre(valeurs, ancre, facteur)
+            if choix is not None:
+                # L'ANCRE PEUT SE RETROUVER DANS UNE LECTURE QUI A PERDU UN
+                # CHIFFRE. « Resultat net 2 2 318 122 7 313 440 » chez Bernabe :
+                # la lecture normale jette le « 2 » isole, trop court pour un
+                # montant, rend 2 318 122 et 7 313 440 — et l'ancre, qui vaut
+                # 7 313 440, s'y retrouve. Le resultat lu etait dix fois trop
+                # petit. Si la lecture aux tetes recollees differe ET retombe
+                # elle aussi sur l'ancre, c'est elle qui explique tous les
+                # chiffres de la ligne.
+                recollee = montants_tetes_fusionnees(reste)
+                autre = _colonne_par_ancre(recollee, ancre, facteur)
+                if recollee != valeurs and autre is not None:
+                    valeurs, choix = recollee, autre
             if choix is None and ancre:
                 # L'ancre ne reconnait rien : peut-etre deux montants colles
                 # dont le groupe de tete est court. On tente la lecture de
                 # secours, et on ne la garde que si l'ancre s'y retrouve.
-                secours = montants_alternatifs(reste) or montants_alternatifs(ligne)
-                autre = _colonne_par_ancre(secours, ancre, facteur)
-                if autre is not None:
-                    valeurs, choix = secours, autre
+                for lecture in (montants_alternatifs, montants_tetes_fusionnees):
+                    secours = lecture(reste)
+                    autre = _colonne_par_ancre(secours, ancre, facteur)
+                    if autre is not None:
+                        valeurs, choix = secours, autre
+                        break
+            if choix is None:
+                choix = _colonne_nette(valeurs)
             index = choix if choix is not None else colonne
             valeur = valeurs[min(index, len(valeurs) - 1)] * facteur
             if valeur < 0 and champ not in SIGNE_LIBRE:
