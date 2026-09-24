@@ -1260,15 +1260,44 @@ def get_cached_prices(ticker: str) -> pd.DataFrame:
 
 
 @_maybe_cache_data(ttl=300)
-def get_all_cached_prices() -> dict:
-    """Retourne {ticker: DataFrame} pour TOUS les tickers en une seule requête.
-    Utile pour les pages qui bouclent sur tous les titres (Signaux, Comparateur)
-    → évite ~48 round-trips Supabase en réduisant à 1."""
+def get_all_cached_prices(depuis_jours: int = None) -> dict:
+    """{ticker: DataFrame} des cours, en une seule requete.
+
+    `depuis_jours` borne la profondeur lue. Ce n'est pas un detail : depuis
+    l'import RichBourse, `price_cache` porte 218 000 seances depuis 1998, et
+    les transferer prend VINGT-SIX SECONDES par appel. Mesure le 24/09/2026,
+    un demarrage a froid durait 66 s dont 52 s pour deux appels a cette seule
+    fonction — le tableau de bord, qui ne calcule que des performances du
+    jour a l'annee en cours, telechargeait vingt-huit ans d'histoire.
+
+    None lit tout l'historique : c'est ce qu'il faut a l'instantane quotidien,
+    qui calcule des performances a cinq ans et tourne hors de l'application.
+
+    Les indices sont EXCLUS : les sept indices sectoriels historiques portent
+    6 300 seances chacun depuis 1999, qu'aucun appelant ne consulte ici.
+    """
+    from datetime import date, timedelta
+
+    try:
+        from analysis.indices import CODES
+    except ImportError:      # le registre des indices n'est pas encore fusionne
+        CODES = frozenset()
+
+    conditions, params = [], []
+    if CODES:
+        conditions.append("ticker NOT IN ({})".format(", ".join(["?"] * len(CODES))))
+        params += sorted(CODES)
+    if depuis_jours:
+        conditions.append("date >= ?")
+        params.append((date.today() - timedelta(days=depuis_jours)).isoformat())
+    ou = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+
     conn = get_connection()
     try:
         df = read_sql_df(
             "SELECT ticker, date, open, high, low, close, volume "
-            "FROM price_cache ORDER BY ticker, date",
+            f"FROM price_cache{ou} ORDER BY ticker, date",
+            params=tuple(params),
             parse_dates=["date"],
         )
     finally:
