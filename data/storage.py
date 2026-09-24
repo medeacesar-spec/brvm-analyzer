@@ -2402,6 +2402,24 @@ def get_dormant_tickers(threshold_months: int = 12) -> pd.DataFrame:
         lambda d: round((now - d).days / 30.44, 1) if pd.notna(d) else None
     )
 
+    # UNE INTRODUCTION RECENTE N'EST PAS UN TITRE QUI S'ETEINT.
+    #
+    # Les deux se ressemblent pourtant trait pour trait : aucune publication,
+    # aucun rapport annuel, aucun signal. Bridge Bank, entree a la cote le
+    # 24 septembre 2026, a ete signalee « potentiellement dormante » le jour
+    # meme de sa premiere seance. Ce qui les distingue n'est pas ce qu'ils ont
+    # publie, mais depuis quand ils sont cotes.
+    premieres = read_sql_df(
+        "SELECT ticker, MIN(date) AS premiere FROM price_cache "
+        "WHERE close > 0 GROUP BY ticker")
+    if not premieres.empty:
+        premieres["premiere"] = pd.to_datetime(premieres["premiere"], errors="coerce")
+        recents = set(premieres[premieres["premiere"] > cutoff_ts]["ticker"])
+        if recents:
+            df = df[~df["ticker"].isin(recents)]
+    if df.empty:
+        return df
+
     permanent = read_sql_df("""
         SELECT DISTINCT ticker FROM ignored_gaps
         WHERE gap_type = 'annuel' AND fiscal_year IS NULL

@@ -946,7 +946,13 @@ def _render_price_only(ticker, price_df):
     import plotly.graph_objects as go
 
     if price_df.empty or len(price_df) < 2:
-        st.warning("Aucune donnée de prix disponible pour ce titre.")
+        # Un titre qui vient d'entrer a la cote n'a pas « aucune donnee » :
+        # il a une seance, et le graphique se remplira tout seul.
+        from analysis.cotation import message_nouvelle_cotation
+        recent = message_nouvelle_cotation(
+            ticker, "Le graphique apparaîtra dès la deuxième séance.")
+        st.info(recent) if recent else st.warning(
+            "Aucune donnée de prix disponible pour ce titre.")
         return
 
     df = price_df.copy()
@@ -1072,6 +1078,15 @@ def _render_technical(ticker, price_df, result):
     from analysis.technical import _detect_frequency, SMA_LABELS
 
     if price_df.empty or len(price_df) < 5:
+        # Proposer de « charger les prix historiques » a un titre introduit
+        # la veille envoie l'administrateur chercher ce qui n'existe pas.
+        from analysis.cotation import message_nouvelle_cotation
+        recent = message_nouvelle_cotation(
+            ticker, "L'analyse technique demande au moins cinq séances, et "
+                    "les moyennes mobiles bien davantage.")
+        if recent:
+            st.info(recent)
+            return
         st.warning("Données de prix insuffisantes pour l'analyse technique.")
         if not is_admin():
             st.info("L'administrateur doit charger les prix historiques.")
@@ -2124,7 +2139,11 @@ def _render_risque(ticker, fundamentals):
         st.caption(f"Mesures de risque indisponibles : {err}")
         return
     if not profil:
-        st.info("Pas assez d'historique mensuel pour mesurer le risque de ce "
+        from analysis.cotation import message_nouvelle_cotation
+        recent = message_nouvelle_cotation(
+            ticker, "Les mesures de risque demandent deux ans de cotation.")
+        st.info(recent or
+                "Pas assez d'historique mensuel pour mesurer le risque de ce "
                 "titre — il en faut deux ans, et une introduction récente n'en "
                 "a pas encore.")
         return
