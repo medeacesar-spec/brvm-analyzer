@@ -3,7 +3,7 @@
 Registre des demandes en attente. Une ligne par demande, dans l'ordre décidé
 par le donneur d'ordre. Rien n'en sort sans être fait ou explicitement retiré.
 
-Mis à jour le 2026-09-09.
+Mis à jour le 2026-09-24.
 
 ## En cours
 
@@ -38,6 +38,10 @@ Mis à jour le 2026-09-09.
 | 9 | La sonde « figé » ne voit que les doublons exactement égaux, pas les quasi-doublons. | sonde à affiner |
 | 10 | 34 constats « saut » et 14 constats « période » relevés par la cohérence interne, jamais instruits. | à instruire |
 | 11 | `scripts/relire_signales.py` n'est pas versionné. | à livrer |
+| 28 | **SHEC.ci (Vivo Energy) 2025 — total de bilan recopié du comparatif.** La base porte 207 064 380 555 pour 2024 ET 2025. Le document donne « TOTAL ACTIF 193 561 278 972 207 064 380 555 TOTAL PASSIF 193 561 278 972 207 064 380 555 » ; la première colonne est 2025, comme le chiffre d'affaires vérifié à la main (#175). Relevé par le lecteur d'états financiers (#189). | à corriger |
+| 29 | **SIVC.ci (Erium) 2025 — total de bilan.** La base porte 18 525 800 000. Le document : actif net = brut − amortissements = total du passif = 14 611 080 094. Relevé par le lecteur (#189). | à corriger |
+| 30 | **NSBC.ci (NSIA Banque) 2025 — total de bilan.** La base porte 2 562 Md ; le document donne « Total de l'actif 2 510 429 3 073 062 » en millions, et aucune des deux colonnes ne retombe sur la base. NSIA écrit le comparatif d'abord : 3 073 Md serait 2025. | à lire |
+| 31 | **BICB.bj (BICI Bénin) 2025 — deux tableaux, deux unités.** « Total des capitaux propres 215 986 878 257 135 118 114 620 85 176 » mêle francs et millions ; « Total Passif et Capitaux propres 1 925 468 637 911 1 844 600 … ». La base (135 118 M, 1 844 600 M) suit le tableau en millions. À quel exercice ou périmètre correspond la colonne en francs ? | à lire |
 | 14 | Bernabé : la dette lue vaut 208 527 219 d'emprunts **plus 16 688 923 003**, qui est la « Trésorerie nette » du tableau de flux et non la trésorerie-passif du bilan (18 535 854 210 en 2025). Suspecte avant comme après la #89. | à corriger |
 
 ## Décisions à confirmer
