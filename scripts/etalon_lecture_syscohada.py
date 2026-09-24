@@ -10,7 +10,13 @@ donc des reponses connues, et non un jeu de test fabrique.
 CE QUE LA MESURE DIT
 
   24/09/2026, premiere version   10 justes · 17 fausses ·  9 absentes
-  apres les correctifs ci-dessous 17 justes · 10 fausses ·  9 absentes
+  apres les correctifs 1 a 4      17 justes · 10 fausses ·  9 absentes
+  apres les correctifs 5 a 9      27 justes ·  0 fausse  ·  9 absentes
+  etalon elargi (41 valeurs)      32 justes ·  0 fausse  ·  9 absentes
+
+  Le 24/09 au soir, cinq valeurs lues dans les documents ont ete ajoutees
+  (Vivo, Erium) — l'etalon passe a 41 valeurs. Deux d'entre elles
+  contredisent la base : la, c'est la base qui a tort.
 
 QUATRE CORRECTIFS, CHACUN MESURE
 
@@ -29,21 +35,39 @@ QUATRE CORRECTIFS, CHACUN MESURE
    « Comptes de regularisation 8 949 11 987 Capitaux propres 211 371
    233 303 » donnait 8 949 de capitaux propres.
 
+CINQ CORRECTIFS DE PLUS, LE 24/09 AU SOIR
+
+5. LE TOTAL AVANT LE SOUS-TOTAL. « Sous-Total Capitaux Propres part du
+   groupe » contient « total capitaux propres » et precedait le vrai total
+   chez Oragroup.
+6. TOUT LE DOCUMENT, pas ses huit premieres pages. Chez LNB, les etats sont
+   aux pages 19 a 21 : le diagnostic « montants dans des tableaux » etait
+   faux, ils etaient simplement plus loin.
+7. LE TABLEAU AVANT LA PROSE, ET PAS DE MILLESIMES. Une ligne d'etat porte
+   l'exercice et son comparatif ; le rapport de gestion, un seul chiffre —
+   ou une annee : LNB affichait un chiffre d'affaires de 2 020 francs, lu
+   dans « effective depuis septembre 2020 ». Les decimales (« 1 844,6 Md »)
+   sont du commentaire.
+8. LES TETES COUPEES. « 4 2 454 158 321 » chez Bernabe, « 4 65 981 » chez
+   Filtisac : l'espacement des caracteres coupe le premier groupe. Ce n'est
+   pas l'OCR — ces documents sont du texte. La lecture recollee n'est
+   retenue que si l'ancre s'y retrouve.
+9. BRUT, AMORTISSEMENTS, NET. L'actif SYSCOHADA a quatre colonnes ; quand
+   brut - amortissements = net au franc pres, le total est la troisieme.
+
 CE QUI RESTE, ET POURQUOI LE LECTEUR N'ECRIT TOUJOURS PAS
 
-Dix valeurs fausses et neuf absentes. Les causes sont desormais connues :
+Plus aucune valeur fausse sur l'etalon — mais l'etalon est aussi le jeu sur
+lequel le lecteur a ete regle. HORS de ce jeu, BICI Benin donne encore deux
+valeurs fausses : une meme ligne y melange francs et millions (« Total des
+capitaux propres 215 986 878 257 135 118 114 620 85 176 ») et le tableau en
+millions n'annonce pas son unite. Tant qu'un document inconnu peut rendre
+une valeur fausse, `completer_fondamentaux.py` ne s'appuie pas sur ce
+lecteur : chaque valeur passe par un recoupement.
 
-  - le libelle le plus general gagne, alors qu'il faudrait le plus total :
-    chez Oragroup, « Sous-Total Capitaux Propres part du groupe » sort avant
-    « TOTAL CAPITAUX PROPRES » ;
-  - les scans dont l'OCR casse les chiffres (« 4 2 454 158 321 » chez
-    Bernabe) ;
-  - les documents dont les montants ne sont pas dans le texte mais dans des
-    tableaux, que cette lecture ligne a ligne ne voit pas (LNB, SICOR, AGL,
-    BOA Niger).
-
-Une valeur fausse mais vraisemblable reste pire qu'une valeur absente : tant
-que dix le sont, `completer_fondamentaux.py` ne s'appuie pas sur ce lecteur.
+Les neuf absentes sont des scans (SODECI, Afridis, BOA Niger, SICOR) ou des
+libelles non reconnus (SITAB, SMB) : elles relevent de l'OCR, pas du
+decoupage.
 
 La voie sure reste celle des PR #175 et #176 : lire le document, verifier
 chaque montant contre la colonne comparative et le cumul a neuf mois, puis
@@ -82,7 +106,11 @@ ETALON = {   # valeurs verifiees a la main dans les documents, en FCFA
  "SDCC": {"net_income": 4_663e6, "total_assets": 472_700e6},
  "STBC": {"revenue": 268_020_013_096, "net_income": 36_463_616_375, "total_assets": 75_047_177_792},
  "TTLS.sn_20260430_-_etats_financiers_syscohada": {"net_income": 6_146_527e3},
- "SHEC": {"revenue": 604_978_411_174, "net_income": 6_028_125_958},
+ "SHEC": {"revenue": 604_978_411_174, "net_income": 6_028_125_958,
+          # Lu le 24/09 : « TOTAL ACTIF 193 561 278 972 207 064 380 555 TOTAL
+          # PASSIF 193 561 278 972 … ». La base porte 207 064 380 555 pour
+          # 2024 ET 2025 — le comparatif recopie.
+          "total_assets": 193_561_278_972},
  "ORGT": {"revenue": 186_609e6, "net_income": 21_643e6, "equity": 113_165e6},
  "FTSC": {"revenue": 32_108_628e3, "net_income": 465_981e3},
  "PALC": {"revenue": 197_629_996e3, "net_income": 15_508_655e3, "equity": 142_638_984e3},
@@ -92,10 +120,15 @@ ETALON = {   # valeurs verifiees a la main dans les documents, en FCFA
  "SICC": {"revenue": 546_774_960, "net_income": -128_639_513, "equity": 2_975_325_212},
  "SDSC": {"revenue": 92_004_268e3, "net_income": 784_970e3},
  "BOAN": {"net_income": 409e6, "equity": 37_154e6},
+ # Ajoute le 24/09, HORS du jeu sur lequel le lecteur a ete regle. Actif
+ # net = brut - amortissements = total du passif = 14 611 080 094. La base
+ # porte 18 525 800 000.
+ "SIVC": {"revenue": 10_074_573_973, "net_income": 179_293e3, "equity": 2_526_541_669,
+          "total_assets": 14_611_080_094},
 }
 def texte_du_pdf(chemin):
     with pdfplumber.open(chemin) as pdf:
-        t = "\n".join((p.extract_text() or "") for p in pdf.pages[:8])
+        t = "\n".join((p.extract_text() or "") for p in pdf.pages)
     if len(t) > 800:
         return t, "texte"
     base = os.path.basename(chemin).split("_")[0].split(".")[0]
