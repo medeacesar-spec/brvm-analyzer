@@ -895,7 +895,71 @@ def exercices_annuels(tickers=None) -> dict:
     return sortie
 
 
-def _choisir_exercice(candidats: list, annuels: set) -> Optional[dict]:
+# Les periodes de `quarterly_data` dont on est sur qu'elles ne couvrent PAS
+# l'annee entiere. « S2 » et « T4 » en sont exclus, et ce n'est pas un detail :
+# chez Bank of Africa Burkina, la ligne S2 porte le chiffre de l'exercice
+# complet (57,49 Md en 2024, comme l'annuel), si bien qu'un vrai exercice s'y
+# reconnaissait lui-meme et se faisait ecarter comme « trimestre ».
+PERIODES_PARTIELLES = ("T1", "T2", "T3", "S1")
+
+
+def periodes_trimestrielles(tickers=None) -> dict:
+    """{(ticker, exercice): [(revenue, net_income), ...]} depuis quarterly_data.
+
+    Sert a reconnaitre un trimestre range dans une ligne annuelle : si les
+    chiffres d'un « exercice » sont ceux d'un trimestre deja publie, ce n'est
+    pas un exercice. Seules les periodes de `PERIODES_PARTIELLES` comptent.
+    """
+    conn = get_connection()
+    try:
+        if tickers:
+            place = ",".join("?" * len(list(tickers)))
+            marques = ",".join("?" * len(PERIODES_PARTIELLES))
+            lignes = conn.execute(
+                f"""SELECT ticker, fiscal_year, revenue, net_income
+                    FROM quarterly_data WHERE ticker IN ({place})
+                      AND periode IN ({marques})""",
+                (*tickers, *PERIODES_PARTIELLES)).fetchall()
+        else:
+            marques = ",".join("?" * len(PERIODES_PARTIELLES))
+            lignes = conn.execute(
+                f"""SELECT ticker, fiscal_year, revenue, net_income
+                    FROM quarterly_data WHERE periode IN ({marques})""",
+                PERIODES_PARTIELLES).fetchall()
+    except Exception:
+        return {}
+    finally:
+        conn.close()
+    sortie = {}
+    for ligne in lignes:
+        d = dict(ligne)
+        if d.get("fiscal_year") is None:
+            continue
+        sortie.setdefault((d["ticker"], int(d["fiscal_year"])), []).append(
+            (d.get("revenue"), d.get("net_income")))
+    return sortie
+
+
+def _est_un_trimestre(candidat: dict, trimestres: list) -> bool:
+    """Vrai si cette « annee » porte les chiffres d'un trimestre deja publie.
+
+    Le test se fait au demi-pour-cent, sur le chiffre d'affaires ET sur le
+    resultat quand les deux sont connus. Deux periodes differentes ne tombent
+    pas juste sur les deux a la fois.
+    """
+    ca, rn = candidat.get("revenue"), candidat.get("net_income")
+    if not ca:
+        return False
+    for ca_t, rn_t in trimestres or ():
+        if not ca_t or abs(ca / ca_t - 1) > 0.005:
+            continue
+        if rn and rn_t and abs(rn / rn_t - 1) > 0.005:
+            continue
+        return True
+    return False
+
+
+def _choisir_exercice(candidats: list, annuels: set, trimestres: dict = None) -> Optional[dict]:
     """L'exercice de reference d'un titre — LA regle, et la seule.
 
     `candidats` : les exercices du titre ayant chiffre d'affaires ET resultat
@@ -920,14 +984,41 @@ def _choisir_exercice(candidats: list, annuels: set) -> Optional[dict]:
     """
     if not candidats:
         return None
-    for candidat in candidats:
-        if candidat.get("fiscal_year") in annuels:
-            return candidat
+
+    # Repere d'echelle : la mediane des chiffres d'affaires du titre.
     montants = sorted(abs(c["revenue"]) for c in candidats if c.get("revenue"))
     repere = montants[len(montants) // 2] if montants else None
+
+    def partiel(candidat) -> bool:
+        if _est_un_trimestre(candidat, (trimestres or {}).get(candidat.get("fiscal_year"))):
+            return True
+        return bool(repere and candidat.get("revenue")
+                    and abs(candidat["revenue"]) < 0.5 * repere)
+
+    # Le document annuel dit que l'exercice est CLOS. Il ne dit rien des
+    # chiffres ranges dans la ligne : au 24/09/2026, l'exercice 2025 de NSIA
+    # Banque portait 22,4 Md de produits et 7,1 Md de resultat — exactement
+    # son premier trimestre — alors que 2024 en affichait 72,6 et 38,1. Le
+    # cours rapporte a ce resultat donnait un PER de 72. Les deux criteres se
+    # cumulent donc : un exercice clos ET des montants d'ordre annuel.
+    #
+    # La mediane ne suffisait pas pour NSIA : ses produits vont de 36 a 73 Md
+    # d'une annee a l'autre, et 22,4 Md restait au-dessus du seuil. Le
+    # recoupement avec `quarterly_data` tranche — 22,402 et 7,138 y figurent
+    # comme T1 2025, au franc pres.
     for candidat in candidats:
-        if (repere and candidat.get("revenue")
-                and abs(candidat["revenue"]) < 0.5 * repere):
+        if candidat.get("fiscal_year") not in annuels:
+            continue
+        # La mediane ne disqualifie JAMAIS un exercice clos : chez CIE, une
+        # seule ligne d'echelle fausse (722 Md en 2020 contre 250 les autres
+        # annees) tirait la mediane assez haut pour ecarter cinq exercices
+        # valides. Seul le recoupement trimestriel, qui compare des montants
+        # au franc pres, a ce pouvoir.
+        if _est_un_trimestre(candidat, (trimestres or {}).get(candidat.get("fiscal_year"))):
+            continue
+        return candidat
+    for candidat in candidats:
+        if partiel(candidat):
             continue
         return candidat
     incertain = dict(candidats[0])
@@ -951,6 +1042,7 @@ def meilleurs_exercices() -> dict:
     finally:
         conn.close()
     annuels = exercices_annuels()
+    trimestres = periodes_trimestrielles()
 
     par_titre = {}
     for ligne in lignes:
@@ -959,7 +1051,9 @@ def meilleurs_exercices() -> dict:
     sortie = {}
     for ticker, exercices in par_titre.items():
         complets = [e for e in exercices if e.get("revenue") and e.get("net_income")]
-        choix = _choisir_exercice(complets, annuels.get(ticker, set()))
+        par_exercice = {a: lot for (t, a), lot in trimestres.items() if t == ticker}
+        choix = _choisir_exercice(complets, annuels.get(ticker, set()),
+                                  trimestres=par_exercice)
         if choix is None:
             partiels = [e for e in exercices
                         if e.get("revenue") or e.get("net_income")]
@@ -1010,8 +1104,12 @@ def get_fundamentals(ticker: str, fiscal_year: Optional[int] = None) -> Optional
             # pendant l'année N, il n'existe que des trimestriels et des
             # semestriels. Un exercice sans document annuel n'est donc pas un
             # exercice clos, quoi qu'en dise la table.
+            par_exercice = {a: lot for (t, a), lot
+                            in periodes_trimestrielles([ticker]).items()
+                            if t == ticker}
             row = _choisir_exercice(
-                candidats, exercices_annuels([ticker]).get(ticker, set()))
+                candidats, exercices_annuels([ticker]).get(ticker, set()),
+                trimestres=par_exercice)
         if not row:
             row = conn.execute(
                 """SELECT * FROM fundamentals WHERE ticker=?
