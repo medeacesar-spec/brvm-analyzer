@@ -2196,7 +2196,8 @@ def _render_optimisation(portfolio, cash):
             scores = tuple(sorted(_load_scoring_dict().items(),
                                   key=lambda kv: kv[0]))
             plan = allocation_suggeree(positions, float(cash), scores,
-                                       seuil_m * 1e6)
+                                       seuil_m * 1e6,
+                                       fenetre=_fenetre_risque())
         except Exception:                                       # noqa: BLE001
             plan = None
         if plan and plan.get("lignes"):
