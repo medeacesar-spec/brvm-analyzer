@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Quatorze montants que le document ET la fiche societe contredisent.
+"""Dix-sept montants que le document ET la fiche societe contredisent.
 
 COMMENT ILS ONT ETE TROUVES
 
@@ -70,6 +70,14 @@ VALEURS = {
     ("TTLC.ci", 2025): ({"revenue": 588_709_000_000, "net_income": 9_087_000_000},
                         "fiche 588,7 et 9,1 Md",
                         "Etats financiers approuves - exercice 2025 - TotalEnergies CI"),
+    # La ligne 2024 de SIB etait une COPIE de 2023 : 95,6 Md et 43,5 Md.
+    ("SIBC.ci", 2024): ({"revenue": 102_763_000_000, "net_income": 50_234_000_000},
+                        "fiche 102,8 et 50,2 Md",
+                        "Rapport d'activites annuel - exercice 2024 - SIB, en millions"),
+    # La base portait 0,165 Md : le resultat 2024 (-165 M), recopie sans son
+    # signe.
+    ("SAFC.ci", 2025): ({"net_income": 701_000_000}, "fiche 0,701 Md",
+                        "Etats financiers - exercice 2025 - SAFCA CI"),
     ("SDCC.ci", 2023): ({"revenue": 175_458_474_000}, "fiche 175,5 Md",
                         "Etats financiers - exercice 2024 - SODECI, colonne 2023, en milliers"),
 }
