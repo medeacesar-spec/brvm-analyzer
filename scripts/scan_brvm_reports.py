@@ -27,6 +27,7 @@ from data.db import get_connection  # noqa: E402
 # Mapping ticker BRVM (avec suffixe pays) → slug brvm.org/fr/rapports-societe-cotes/{slug}
 TICKER_TO_BRVM_SLUG = {
     # Banques
+    "BBGC.ci": "bbgci",                         # Bridge Bank, cotee le 24/09/2026
     "BICC.ci": "bici-ci",
     "BICB.bj": "biic",                          # BICI Bénin = BIIC
     "BOAB.bj": "bank-africa-bn",                # Bénin = bn (et non bj)
