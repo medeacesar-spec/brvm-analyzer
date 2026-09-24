@@ -14,6 +14,8 @@ CE QUE LA MESURE DIT
   apres les correctifs 5 a 9      27 justes ·  0 fausse  ·  9 absentes
   etalon elargi (41 valeurs)      32 justes ·  0 fausse  ·  9 absentes
   libelles de secours (SITAB, SMB) 34 justes ·  0 fausse  ·  7 absentes
+  montant a la ligne (SICOR), pages
+  illisibles en OCR, sans l'IFRS   36 justes ·  0 fausse  ·  5 absentes
 
   PAR MODE DE CHOIX DE LA COLONNE (voir `lire_detaille`) : 25 valeurs par
   l'ancre, 1 par brut - amortissements = net, 8 par l'en-tete — toutes
@@ -72,8 +74,11 @@ millions n'annonce pas son unite. Tant qu'un document inconnu peut rendre
 une valeur fausse, `completer_fondamentaux.py` ne s'appuie pas sur ce
 lecteur : chaque valeur passe par un recoupement.
 
-Les sept absentes sont des scans (SODECI, Afridis, BOA Niger, SICOR) : elles
-relevent de l'OCR, pas du decoupage.
+Les cinq absentes (SODECI, Afridis, BOA Niger) ont la meme forme : l'OCR
+rend une ligne de libelles, puis une ligne de valeurs, sans dire laquelle
+va avec laquelle — Afridis aligne six libelles sur quatre valeurs. Les
+apparier demande les coordonnees des cellules (`_ocr_cellules` dans
+`data/pdf_extractor.py`), pas un meilleur decoupage du texte.
 
 La voie sure reste celle des PR #175 et #176 : lire le document, verifier
 chaque montant contre la colonne comparative et le cumul a neuf mois, puis
@@ -132,9 +137,44 @@ ETALON = {   # valeurs verifiees a la main dans les documents, en FCFA
  "SIVC": {"revenue": 10_074_573_973, "net_income": 179_293e3, "equity": 2_526_541_669,
           "total_assets": 14_611_080_094},
 }
+def _illisible(texte):
+    """Une page « texte » dont la police n'a pas de table de caracteres.
+
+    SODECI : les etats financiers sont bien du texte, mais extraits ils
+    donnent « !"#"$%&'(#()'!*$%'(+' ». Moins d'une lettre sur deux parmi
+    les caracteres visibles : la page doit passer par l'OCR comme un scan.
+    """
+    visibles = [c for c in texte if not c.isspace()]
+    return len(visibles) > 200 and sum(c.isalnum() for c in visibles) < 0.5 * len(visibles)
+
+
+def _ocr_pages(chemin, rangs):
+    import fitz
+    from PIL import Image
+    from data.pdf_extractor import _ocr_image
+    sortie = {}
+    with fitz.open(chemin) as doc:
+        for i in rangs:
+            pix = doc[i].get_pixmap(dpi=300)
+            sortie[i] = _ocr_image(Image.frombytes("RGB", [pix.width, pix.height], pix.samples))
+    return sortie
+
+
 def texte_du_pdf(chemin):
     with pdfplumber.open(chemin) as pdf:
-        t = "\n".join((p.extract_text() or "") for p in pdf.pages)
+        pages = [(p.extract_text() or "") for p in pdf.pages]
+    t = "\n".join(pages)
+    illisibles = [i for i, p in enumerate(pages) if _illisible(p)]
+    if len(t) > 800 and illisibles:
+        base = os.path.basename(chemin).split("_")[0].split(".")[0]
+        cache = os.path.join(D, base + "_ocr_pages.txt")
+        if not os.path.exists(cache):
+            lues = _ocr_pages(chemin, illisibles)
+            open(cache, "w").write("\n\f\n".join(lues[i] for i in illisibles))
+        lues = open(cache).read().split("\n\f\n")
+        for i, lu in zip(illisibles, lues):
+            pages[i] = lu
+        return "\n".join(pages), "texte+ocr"
     if len(t) > 800:
         return t, "texte"
     base = os.path.basename(chemin).split("_")[0].split(".")[0]

@@ -82,7 +82,7 @@ LIBELLES["deposits"] += (r"dettes\s*envers\s*la\s*clientele",)
 # titre de section.
 LIBELLES_SECOURS = {
     "revenue": (r"ventes?\s*de\s*marchandises",),
-    "equity": (r"^capitaux\s*propres(?=\s*\(?-?\d)",),
+    "equity": (r"^capitaux\s*propres(?=\s*\(?-?\d|\s*$)",),
 }
 
 # Champs dont un montant negatif a un sens dans un tableau de flux.
@@ -381,6 +381,32 @@ def _colonne_par_ancre(valeurs: list, ancre, facteur: float):
     return None
 
 
+TITRE_REFERENTIEL = re.compile(r"\b(syscohada|ifrs)\b")
+
+
+def _sans_sections_ifrs(lignes: list) -> list:
+    """Les lignes des etats SYSCOHADA, quand le document porte aussi l'IFRS.
+
+    SODECI publie dans le meme document ses comptes individuels SYSCOHADA
+    (en milliers) et ses comptes IFRS (en millions). Le resultat IFRS,
+    « 5 881 » millions, n'est pas le resultat SYSCOHADA de 4 662 738
+    milliers — et la base, comme les fiches societe, suit le SYSCOHADA.
+
+    Un titre court qui nomme un referentiel ouvre une section. Si le
+    document en a des deux sortes, les sections IFRS sont ecartees ; s'il
+    n'en a qu'une, rien ne change — BICI Benin, en IFRS seul, reste lu.
+    """
+    sections, courant = [], None
+    for ligne in lignes:
+        m = TITRE_REFERENTIEL.search(ligne)
+        if m and len(ligne) < 120:
+            courant = m.group(1)
+        sections.append(courant)
+    if not {"syscohada", "ifrs"} <= set(sections):
+        return lignes
+    return [l for l, sec in zip(lignes, sections) if sec != "ifrs"]
+
+
 def _colonne_nette(valeurs: list):
     """2 si la ligne porte brut, amortissements, net : la colonne nette.
 
@@ -428,11 +454,25 @@ def _lignes_du_champ(lignes: list, motifs: tuple) -> list:
     de « sous- » ne sert que s'il n'y en a pas d'autre.
     """
     candidates = []
-    for ligne in lignes:
+    for rang_ligne, ligne in enumerate(lignes):
         trouve = next((re.search(m, ligne) for m in motifs
                        if re.search(m, ligne)), None)
         if trouve is None:
             continue
+        # LE MONTANT SUR LA LIGNE SUIVANTE. L'OCR d'un tableau rend souvent
+        # le libelle seul, puis ses montants a la ligne : « Capitaux propres »
+        # puis « 2 975 325 212 » chez SICOR. On ne l'accepte que si la ligne
+        # ne porte QUE le libelle et la suivante QUE des montants — une ligne
+        # de plusieurs libelles suivie d'une ligne de valeurs ne dit pas
+        # laquelle va avec laquelle.
+        suivante = lignes[rang_ligne + 1] if rang_ligne + 1 < len(lignes) else ""
+        if (not re.search(r"[a-z]{2}", ligne[:trouve.start()] + ligne[trouve.end():])
+                and re.fullmatch(r"[\d\s().\-]+", suivante.strip() or "x")):
+            valeurs = montants_de_ligne(suivante)
+            if valeurs:
+                rang = 1 if len(valeurs) == 1 else 0
+                candidates.append((rang, ligne, suivante, valeurs))
+                continue
         # LES MONTANTS QUI SUIVENT LE LIBELLE, pas ceux de toute la ligne.
         # « Comptes de regularisation 8 949 11 987 Capitaux propres et
         # ressources assimilees 211 371 233 303 » : lire la ligne entiere
@@ -476,7 +516,7 @@ def lire_detaille(texte: str, echelle: float = None, ancres: dict = None) -> dic
     """
     facteur = echelle if echelle else _echelle(texte)
     colonne = colonne_de_l_exercice(texte)
-    lignes = [l for l in _plier(texte).split("\n") if l.strip()]
+    lignes = _sans_sections_ifrs([l for l in _plier(texte).split("\n") if l.strip()])
     sortie = {}
     for champ, motifs in LIBELLES.items():
         candidates = (_lignes_du_champ(lignes, motifs)
