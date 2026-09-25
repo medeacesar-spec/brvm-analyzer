@@ -1875,8 +1875,15 @@ def _render_bloc_sectoriel(fundamentals, ratios_src, annee_choisie=None):
                 _avis = {"niveau": niveau, "standard": commentaire, "pairs": None}
             niveau = _avis.get("niveau") or niveau
             commentaire = _avis.get("standard") or commentaire
+            # Une valeur invraisemblable ne s'affiche pas : 61 547 241 × ne
+            # dit rien de la societe, seulement que la donnee est fausse.
+            if niveau == "À vérifier":
+                affiche = "—"
+            elif cle == "interest_coverage" and val > 200:
+                affiche = "> 200 ×"
             couleur = {"OK": "var(--up)", "Vigilance": "var(--ocre)",
-                       "Risque": "var(--down)"}.get(niveau, "var(--ink-3)")
+                       "Risque": "var(--down)",
+                       "À vérifier": "var(--down)"}.get(niveau, "var(--ink-3)")
             _vs_pairs = (f"<div style='font-size:11px;color:var(--ink-3);'>"
                          f"{_avis['pairs']}</div>" if _avis.get("pairs") else "")
             lignes += (

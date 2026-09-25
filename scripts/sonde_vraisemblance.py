@@ -66,6 +66,20 @@ COPIES = ("revenue", "equity", "total_assets", "total_debt", "ebitda", "ebit",
           "capex", "cfo", "deposits", "loans", "operating_expenses",
           "gross_operating_income", "interest_expense")
 LOT = ("2026-09-14 11:18", "2026-09-14 11:54")
+# Les montants qui ne peuvent pas etre derisoires (25/09/2026). Des frais
+# financiers de 29 FCFA pour 19 Md de chiffre d'affaires (Sicable 2024) sont
+# une erreur d'unite, pas une gestion exemplaire : rapportes au chiffre
+# d'affaires, ils tombent sous le cent-millieme.
+MONTANTS = ("interest_expense", "capex", "total_debt", "ebitda", "ebit", "cfo", "equity",
+            "total_assets", "operating_expenses", "gross_operating_income", "deposits",
+            "loans", "cost_of_risk")
+DERISOIRE = 1e-5
+# La dette, ses interets, les investissements et le cout du risque peuvent
+# etre reellement minimes : SITAB porte 1,4 million de FCFA d'emprunts en
+# 2025, pour 268 Md de chiffre d'affaires. Pour eux, seul un montant sous
+# cent mille FCFA trahit une erreur d'unite.
+PEUVENT_ETRE_MINIMES = ("interest_expense", "total_debt", "capex", "cost_of_risk")
+PLANCHER_ABSOLU = 1e5
 
 
 def _v(ligne, champ):
@@ -119,6 +133,24 @@ def main(titre: str = None, effacer: bool = False) -> None:
                 v = _v(l, c)
                 if v is not None and abs(v) > 1.2 * ca:
                     noter(t, an, (c,), "marge", f"{c} {v/Md:.2f} > 1,2 x CA {ca/Md:.2f} Md")
+        if ca and abs(ca) > 1e9:
+            for c in MONTANTS:
+                v = _v(l, c)
+                if v is not None and abs(v) < DERISOIRE * abs(ca) and (
+                        c not in PEUVENT_ETRE_MINIMES or abs(v) < PLANCHER_ABSOLU):
+                    noter(t, an, (c,), "derisoire", f"{c} = {v:,.0f} FCFA pour un CA de "
+                          f"{ca/Md:.2f} Md : erreur d'unite")
+        # Les ratios de la grille, bornes comme a l'affichage
+        # (`analysis.sectors.PLAUSIBLE`).
+        i = _v(l, "interest_expense")
+        if not banque and x is not None and i and not -100 <= x / abs(i) <= 100_000:
+            noter(t, an, ("ebit", "interest_expense"), "ratio",
+                  f"couverture des interets {x/abs(i):,.0f} x ({x/Md:.2f} Md / "
+                  f"{abs(i)/Md:.4f} Md)")
+        dt = _v(l, "total_debt")
+        if not banque and dt is not None and e and e > 0 and dt / e > 30:
+            noter(t, an, ("total_debt", "ebitda"), "ratio",
+                  f"dette / EBITDA {dt/e:.1f} x ({dt/Md:.2f} / {e/Md:.2f} Md)")
         prec = lignes.get((t, an - 1))
         if prec is not None:
             for c in COPIES:

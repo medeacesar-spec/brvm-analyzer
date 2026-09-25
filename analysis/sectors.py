@@ -639,7 +639,13 @@ def comparaison_pairs(secteur: str) -> dict:
             "ticker": ticker,
             "nom": (exercices[0].get("company_name") or ticker),
             "exercice": meilleure_annee,
-            "valeurs": {c: meilleur.get(c) for c in cles},
+            # Une valeur hors plage est une donnee fausse, pas un pair
+            # extreme : elle ne tire pas la mediane.
+            "valeurs": {c: (meilleur.get(c) if plausible(c, meilleur.get(c))
+                            and not (c == "interest_coverage" and meilleur.get(c) is not None
+                                     and meilleur.get(c) > COUVERTURE_NEGLIGEABLE)
+                            else None)
+                        for c in cles},
         })
 
     def _mediane(valeurs):
@@ -716,6 +722,62 @@ def parcs_du_secteur() -> dict:
 # Avis sur une donnee : les seuils du metier ET la position face aux pairs
 # ---------------------------------------------------------------------------
 
+# LE SENS DE LECTURE DE CHAQUE INDICATEUR, quel que soit le secteur
+# (25/09/2026). Il ne se deduisait que des seuils du secteur : un indicateur
+# sans seuil se lisait « plus c'est haut, mieux c'est ». La dette / EBITDA de
+# Sicable, 74 % au-dessus de la mediane, ressortait « mieux que ses pairs ».
+SENS = {
+    "coefficient_exploitation": "bas", "cout_risque_pnb": "bas", "credits_depots": "bas",
+    "intensite_capex": "bas", "dette_ebitda": "bas", "debt_equity": "bas",
+    "volatilite_resultat": "bas",
+}
+
+# LA PLAGE PLAUSIBLE DE CHAQUE INDICATEUR (25/09/2026). Au-dela, ce n'est pas
+# une performance, c'est une donnee source fausse : des frais financiers de
+# 29 FCFA donnaient a Sicable une couverture des interets de 61 547 241 fois,
+# jugee « Confortable » et « mieux que ses pairs ». Une valeur hors plage
+# n'est ni jugee, ni comparee, ni comptee dans la mediane des pairs.
+PLAUSIBLE = {
+    "marge_exploitation": (-1.0, 0.8),
+    "marge_ebitda": (-1.0, 0.9),
+    "marge_brute_exploitation": (-1.0, 0.9),
+    "net_margin": (-2.0, 1.0),
+    "fcf_margin": (-2.0, 1.0),
+    "roa": (-0.5, 0.5),
+    "roe": (-2.0, 2.0),
+    "rotation_actif": (0.01, 10.0),
+    "intensite_capex": (0.0, 1.0),
+    "interest_coverage": (-100.0, 100_000.0),
+    "dette_ebitda": (0.0, 30.0),
+    "debt_equity": (0.0, 20.0),
+    "coefficient_exploitation": (0.1, 1.5),
+    "cout_risque_pnb": (-0.5, 1.0),
+    "credits_depots": (0.1, 3.0),
+    "volatilite_resultat": (0.0, 10.0),
+}
+
+
+def plausible(cle: str, valeur) -> bool:
+    """Faux si la valeur sort de toute plage credible pour cet indicateur."""
+    if valeur is None:
+        return True
+    try:
+        v = float(valeur)
+    except (TypeError, ValueError):
+        return False
+    if v != v:
+        return False
+    bas, haut = PLAUSIBLE.get(cle, (float("-inf"), float("inf")))
+    return bas <= v <= haut
+
+
+A_VERIFIER = "À vérifier"
+# Au-dela de deux cents fois, la couverture ne mesure plus rien : les frais
+# financiers sont negligeables (SITAB, 5 707 fois en 2024). On le dit, sans
+# chiffre et sans comparaison aux pairs.
+COUVERTURE_NEGLIGEABLE = 200.0
+
+
 def avis_indicateur(cle: str, valeur, secteur: str, mediane=None) -> dict:
     """Juge une valeur sur DEUX axes, qui ne disent pas la meme chose.
 
@@ -731,13 +793,22 @@ def avis_indicateur(cle: str, valeur, secteur: str, mediane=None) -> dict:
     sortie = {"niveau": None, "standard": None, "pairs": None}
     if valeur is None:
         return sortie
+    if not plausible(cle, valeur):
+        sortie["niveau"] = A_VERIFIER
+        sortie["standard"] = ("Valeur hors de toute plage plausible — une donnée "
+                              "source est probablement fausse")
+        return sortie
+    if cle == "interest_coverage" and valeur > COUVERTURE_NEGLIGEABLE:
+        sortie["niveau"] = "OK"
+        sortie["standard"] = "Frais financiers négligeables (plus de 200 fois couverts)"
+        return sortie
 
     verdict = juger(cle, valeur, secteur)
     if verdict:
         sortie["niveau"], sortie["standard"] = verdict
 
     if mediane not in (None, 0):
-        sens = (seuils_secteur(secteur).get(cle) or (None,))[0]
+        sens = (seuils_secteur(secteur).get(cle) or (None,))[0] or SENS.get(cle, "haut")
         ecart = (valeur - mediane) / abs(mediane) * 100
         if abs(ecart) < 10:
             sortie["pairs"] = "dans la moyenne du secteur"
@@ -767,10 +838,11 @@ def alertes_sectorielles(ratios: dict, secteur: str, pairs: dict = None) -> list
         if valeur is None:
             continue
         avis = avis_indicateur(cle, valeur, secteur, medianes.get(cle))
-        if avis["niveau"] not in ("Risque", "Vigilance"):
+        if avis["niveau"] not in ("Risque", "Vigilance", A_VERIFIER):
             continue
-        affiche = (f"{valeur:.2f} ×" if forme == "fois"
-                   else f"{valeur*100:.1f} %")
+        affiche = ("—" if avis["niveau"] == A_VERIFIER
+                   else "> 200 ×" if cle == "interest_coverage" and valeur > COUVERTURE_NEGLIGEABLE
+                   else f"{valeur:.2f} ×" if forme == "fois" else f"{valeur*100:.1f} %")
         sortie.append({
             "libelle": libelle,
             "valeur": affiche,
@@ -779,5 +851,5 @@ def alertes_sectorielles(ratios: dict, secteur: str, pairs: dict = None) -> list
             "pairs": avis["pairs"],
         })
     # Les risques d'abord : c'est ce qu'on doit voir en premier.
-    sortie.sort(key=lambda a: 0 if a["niveau"] == "Risque" else 1)
+    sortie.sort(key=lambda a: {A_VERIFIER: 0, "Risque": 1}.get(a["niveau"], 2))
     return sortie
