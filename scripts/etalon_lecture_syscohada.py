@@ -16,6 +16,25 @@ CE QUE LA MESURE DIT
   libelles de secours (SITAB, SMB) 34 justes ·  0 fausse  ·  7 absentes
   montant a la ligne (SICOR), pages
   illisibles en OCR, sans l'IFRS   36 justes ·  0 fausse  ·  5 absentes
+  OCR par rangees, unite par ligne,
+  montants de 3 chiffres en millions 40 justes ·  0 fausse  ·  1 absente
+
+  L'ETALON NE SUFFIT PLUS. `scripts/recouper_par_lecteur.py` passe le
+  lecteur sur les 128 exercices lisibles de `data/pdf_fondamentaux/` : deux
+  pieges que l'etalon ne contenait pas y sont apparus — la regle brut-net
+  prenait la colonne « variation » (N - N-1 = variation), et la regle des
+  tetes coupees recollait un renvoi de note (« 4.2 1 776 443 » chez Sonatel).
+  Tous deux corriges. Trois autres ensuite, toujours a grande echelle :
+  l'ancre acceptait la premiere colonne a 1 % (Vivo 2025 : 604 978 et
+  600 708 different de 0,7 %) — elle retient desormais la plus proche, a
+  3 pour mille ; une mention « en millions » s'appliquait a un tableau en
+  francs (plafond de 10^14 FCFA) ; et parmi plusieurs lignes, celle ou
+  l'ancre se retrouve passe devant (Onatel).
+
+  Au 25/09 : 171 concordances a un pour mille. Deux ecarts seulement
+  opposent encore le document lu en mode sur a la fiche : SODECI 2024,
+  dont l'ancre est fausse EN BASE, et SITAB 2024, ou le document ecrit
+  44 730 358 142 sur trois lignes quand la fiche dit 44,174 Md.
 
   PAR MODE DE CHOIX DE LA COLONNE (voir `lire_detaille`) : 25 valeurs par
   l'ancre, 1 par brut - amortissements = net, 8 par l'en-tete — toutes
@@ -74,11 +93,10 @@ millions n'annonce pas son unite. Tant qu'un document inconnu peut rendre
 une valeur fausse, `completer_fondamentaux.py` ne s'appuie pas sur ce
 lecteur : chaque valeur passe par un recoupement.
 
-Les cinq absentes (SODECI, Afridis, BOA Niger) ont la meme forme : l'OCR
-rend une ligne de libelles, puis une ligne de valeurs, sans dire laquelle
-va avec laquelle — Afridis aligne six libelles sur quatre valeurs. Les
-apparier demande les coordonnees des cellules (`_ocr_cellules` dans
-`data/pdf_extractor.py`), pas un meilleur decoupage du texte.
+L'absente restante, les capitaux propres de BOA Niger, n'est lue que dans
+« Capitaux propres hors resultat et report a nouveau debiteur » — un poste
+des fonds propres prudentiels, pas le total du bilan. Le lecteur ne le
+confond pas, et c'est voulu.
 
 La voie sure reste celle des PR #175 et #176 : lire le document, verifier
 chaque montant contre la colonne comparative et le cumul a neuf mois, puis
@@ -149,14 +167,16 @@ def _illisible(texte):
 
 
 def _ocr_pages(chemin, rangs):
+    """OCR des pages, lignes reconstruites par la hauteur des mots."""
     import fitz
     from PIL import Image
-    from data.pdf_extractor import _ocr_image
+    from data.pdf_extractor import _ocr_rangees
     sortie = {}
     with fitz.open(chemin) as doc:
         for i in rangs:
             pix = doc[i].get_pixmap(dpi=300)
-            sortie[i] = _ocr_image(Image.frombytes("RGB", [pix.width, pix.height], pix.samples))
+            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+            sortie[i] = "\n".join(_ocr_rangees(img))
     return sortie
 
 
@@ -167,7 +187,7 @@ def texte_du_pdf(chemin):
     illisibles = [i for i, p in enumerate(pages) if _illisible(p)]
     if len(t) > 800 and illisibles:
         base = os.path.basename(chemin).split("_")[0].split(".")[0]
-        cache = os.path.join(D, base + "_ocr_pages.txt")
+        cache = os.path.join(D, base + "_ocr_pages_rangees.txt")
         if not os.path.exists(cache):
             lues = _ocr_pages(chemin, illisibles)
             open(cache, "w").write("\n\f\n".join(lues[i] for i in illisibles))
@@ -178,13 +198,13 @@ def texte_du_pdf(chemin):
     if len(t) > 800:
         return t, "texte"
     base = os.path.basename(chemin).split("_")[0].split(".")[0]
-    cache = os.path.join(D, base + "_ocr.txt")
-    if os.path.exists(cache):
-        return open(cache).read(), "ocr (cache)"
-    res = _ocr_document(chemin, maxi=8)
-    t = res[0] if isinstance(res, tuple) else res
-    open(cache, "w").write(t)
-    return t, "ocr"
+    cache = os.path.join(D, base + "_ocr_rangees.txt")
+    if not os.path.exists(cache):
+        # Quinze pages, comme `_ocr_document` en production : chez SICOR,
+        # les capitaux propres sont dans le rapport des commissaires, page 10.
+        lues = _ocr_pages(chemin, range(min(len(pages), 15)))
+        open(cache, "w").write("\n".join(lues[i] for i in sorted(lues)))
+    return open(cache).read(), "ocr rangees"
 
 justes = faux = absents = 0
 par_mode = {}
