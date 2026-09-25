@@ -533,6 +533,85 @@ def _beta_portefeuille(valeurs: dict, betas: dict):
     return sum(betas[t] * v / total for t, v in suivis.items())
 
 
+# Les indices contre lesquels l'alpha se mesure. Le Composite couvre toute
+# la cote depuis 1998 ; le BRVM-30 ne remonte qu'a janvier 2023. Chacun est
+# donc mesure sur SES mois, et le Composite l'est une seconde fois sur les
+# mois du BRVM-30 : sans cela, on comparerait neuf ans a trois ans et demi.
+INDICES_ALPHA = (("BRVMC", "BRVM Composite"), ("BRVM30", "BRVM 30"))
+
+
+def _serie_indice(series: dict, code: str) -> dict:
+    """Rendement mensuel d'un indice, indexe par (annee, mois)."""
+    if code not in series:
+        return {}
+    rendements, points = series[code]
+    return {(points[i + 1][0].year, points[i + 1][0].month): r
+            for i, r in enumerate(rendements)}
+
+
+def _alpha(valeurs: dict, rendements: dict, mois: list, indice: dict,
+           retenus: set = None):
+    """Alpha de Jensen annualise du portefeuille contre un indice.
+
+    ALPHA = CE QUE LE PORTEFEUILLE A GAGNE AU-DELA DE SON BETA. Un
+    portefeuille de beta 1 qui fait 27 % quand l'indice fait 11 % a un alpha
+    d'environ 16 points : le surplus ne vient pas d'une exposition plus
+    forte au marche, mais du choix des titres. Formule, en exces du taux
+    sans risque et par mois, puis annualisee :
+
+        alpha = moyenne(Rp - rf) - beta x moyenne(Rm - rf)
+
+    `retenus` restreint aux mois donnes — ceux du BRVM-30, pour mesurer le
+    Composite sur la meme duree.
+    """
+    suivis = {t: v for t, v in valeurs.items() if t in rendements and v > 0}
+    total = sum(suivis.values())
+    if not suivis or total <= 0:
+        return None
+    rf = (1 + TAUX_SANS_RISQUE) ** (1 / 12) - 1
+    paires = []
+    for i, m in enumerate(mois):
+        if m not in indice or (retenus is not None and m not in retenus):
+            continue
+        rp = sum(v / total * rendements[t][i] for t, v in suivis.items())
+        paires.append((rp, indice[m], m))
+    if len(paires) < MINIMUM_MOIS:
+        return None
+    p = [a for a, _, _ in paires]
+    b = [x for _, x, _ in paires]
+    var_b = st.pvariance(b)
+    if not var_b:
+        return None
+    moy_p, moy_b = st.mean(p), st.mean(b)
+    beta = sum((x - moy_p) * (y - moy_b) for x, y in zip(p, b)) / len(p) / var_b
+    alpha_mensuel = (moy_p - rf) - beta * (moy_b - rf)
+    return {
+        "debut": paires[0][2], "fin": paires[-1][2], "mois": len(paires),
+        "rendement_portefeuille": (1 + moy_p) ** 12 - 1,
+        "rendement_indice": (1 + moy_b) ** 12 - 1,
+        "beta": beta,
+        "alpha": (1 + alpha_mensuel) ** 12 - 1,
+    }
+
+
+def _alphas(valeurs: dict, rendements: dict, mois: list, series: dict) -> list:
+    """L'alpha contre chaque indice, chacun sur ses mois, plus le Composite
+    ramene aux mois du BRVM-30."""
+    sortie = []
+    indices = {code: _serie_indice(series, code) for code, _ in INDICES_ALPHA}
+    for code, libelle in INDICES_ALPHA:
+        a = _alpha(valeurs, rendements, mois, indices[code])
+        if a:
+            sortie.append({"indice": libelle, "code": code, **a})
+    court = set(indices.get("BRVM30") or {})
+    if court and indices.get("BRVMC"):
+        a = _alpha(valeurs, rendements, mois, indices["BRVMC"], retenus=court)
+        if a:
+            sortie.append({"indice": "BRVM Composite, mois du BRVM 30",
+                           "code": "BRVMC", **a})
+    return sortie
+
+
 @_maybe_cache_data(ttl=300)
 def allocation_suggeree(positions: tuple, cash: float, scores: tuple,
                         seuil_illiquidite: Optional[float] = None,
@@ -649,6 +728,12 @@ def allocation_suggeree(positions: tuple, cash: float, scores: tuple,
     if len(proches) > 1:
         meilleur = min(proches, key=lambda e: (len(e["tickers"]), -e["sharpe"]))
 
+    def _apres(essai):
+        apres = dict(valeurs)
+        for l in essai["lignes"]:
+            apres[l["ticker"]] = apres.get(l["ticker"], 0) + l["montant"]
+        return apres
+
     return {
         "lignes": meilleur["lignes"],
         "essais": essais[:6],
@@ -656,6 +741,8 @@ def allocation_suggeree(positions: tuple, cash: float, scores: tuple,
         "cash": cash,
         "place": meilleur["place"],
         "reste": cash - meilleur["place"],
+        "alphas_avant": _alphas(valeurs, rendements, mois, series),
+        "alphas_apres": _alphas(_apres(meilleur), rendements, mois, series),
         "beta_avant": _beta_portefeuille(valeurs, betas),
         "beta_apres": meilleur["beta"],
         "mois_mesures": n,
