@@ -557,6 +557,10 @@ def _evolutions_par_action(fundamentals, ratios):
                       ("OK", "Maintenu") if g >= -0.02 else
                       ("Vigilance", f"En baisse de {-g:.0%}"))
             sortie["dps"] = (niveau, f"{g:+.0%} sur un an")
+    # Les montants eux-memes, pour que l'alerte dise « 250 -> 150 FCFA » et
+    # pas seulement un pourcentage.
+    sortie["_montants"] = {"eps": (eps, eps_p), "dps": (dps, dps_p),
+                           "pairs": mediane}
     return sortie
 
 
@@ -565,31 +569,65 @@ def _alertes_resultat_dividende(fundamentals, ratios) -> list:
 
     Demande du 26/09/2026 : un dividende supprime ou un benefice qui stagne
     doit « attirer l'attention du lecteur », pas se cacher dans une ligne du
-    tableau des ratios. Rend [(niveau, titre, detail)], les risques d'abord.
+    tableau des ratios. Chaque alerte NOMME ce qui bouge — « En baisse de
+    40 % » seul ne disait pas que c'etait le dividende — et donne les deux
+    montants. Rend [(niveau, titre, detail)], les risques d'abord.
     """
+    import re
+
     ev = _evolutions_par_action(fundamentals, ratios)
+    m = ev.get("_montants", {})
+
+    def _fcfa(v):
+        return f"{v:,.0f}".replace(",", " ")
+
+    def _passage(cle):
+        v, vp = m.get(cle, (None, None))
+        if v is None or vp is None:
+            return ""
+        return f"{_fcfa(vp)} → {_fcfa(v)} FCFA par action"
+
+    pairs = m.get("pairs")
+    pairs_txt = f"pairs {pairs:+.0%}".replace("%", " %") if pairs is not None else ""
+
+    def _pct(t):
+        # « chute de 36% » -> « chute de 36 % »
+        return re.sub(r"(\d)%", r"\1 %", t)
+
     alertes = []
-    (niv_d, mot_d), det_d = ev.get("dps", ((None, None), None))
+    (niv_d, mot_d), _ = ev.get("dps", ((None, None), None))
     if niv_d in ("Risque", "Vigilance") and mot_d:
-        alertes.append((niv_d, mot_d, det_d or ""))
+        dps_p = m.get("dps", (None, None))[1]
+        if mot_d == "Dividende supprimé":
+            titre = "Dividende supprimé"
+            detail = f"{_fcfa(dps_p)} FCFA par action l'an passé, rien cette année"
+        elif mot_d == "Aucun dividende":
+            titre = "Aucun dividende sur l'exercice"
+            detail = ""
+        else:
+            titre = f"Dividende par action : {_pct(mot_d.lower())}"
+            detail = _passage("dps")
+        alertes.append((niv_d, titre, detail))
     eps = ratios.get("eps")
     (niv_e, mot_e), det_e = ev.get("eps", ((None, None), None))
     if eps is not None and eps < 0:
-        alertes.append(("Risque", "Perte sur l'exercice", ""))
+        alertes.append(("Risque", "Bénéfice : perte sur l'exercice",
+                        f"{_fcfa(eps)} FCFA par action"))
     elif det_e:
         g = None
         try:
             g = float(det_e.split("%")[0]) / 100
         except ValueError:
             pass
-        if niv_e == "Risque":
-            alertes.append(("Risque", f"Bénéfice par action : {mot_e.lower()}", det_e))
-        elif niv_e == "Vigilance":
-            alertes.append(("Vigilance", f"Bénéfice par action : {mot_e.lower()}", det_e))
+        detail = " · ".join(x for x in (_passage("eps"), pairs_txt) if x)
+        if niv_e in ("Risque", "Vigilance"):
+            alertes.append((niv_e, f"Bénéfice par action : {_pct(mot_e.lower())}", detail))
         elif g is not None and abs(g) < 0.05:
             # Un benefice qui ne progresse plus : pas une faute, un signal —
             # surtout quand les pairs, eux, progressent.
-            alertes.append(("Vigilance", "Bénéfice stagnant", det_e))
+            alertes.append(("Vigilance",
+                            f"Bénéfice par action stagnant ({g:+.0%} sur un an)".replace("%", " %"),
+                            detail))
     alertes.sort(key=lambda a: 0 if a[0] == "Risque" else 1)
     return alertes
 
@@ -871,18 +909,41 @@ def _render_fundamental(fundamentals, ratios):
     # (name, key, value_fmt, seuil, prefer_low)
     ratio_rows = [
         ("Marge nette",    "net_margin",      ratios.get("net_margin"),      "pct",     "≥ 10%",       False),
-        ("Dette/Equity",   "debt_equity",     ratios.get("debt_equity"),     "x",       "≤ 1.5×",      True),
-        ("Dividend Yield", "dividend_yield",  ratios.get("dividend_yield"),  "pct",     "≥ 6%",        False),
-        ("PER",            "per",             ratios.get("per"),             "decimal", "≤ 15",        True),
+        ("Dette / fonds propres", "debt_equity", ratios.get("debt_equity"),  "x",       "≤ 1.5×",      True),
+        ("Rendement du dividende", "dividend_yield", ratios.get("dividend_yield"), "pct", "≥ 6%",      False),
+        ("PER (P/E)",      "per",             ratios.get("per"),             "decimal", "≤ 15",        True),
         # Le cours rapporte a l'actif net par action : ce que le marche paie
         # un franc de fonds propres (25/09/2026, demande pour tous les titres).
-        ("P/B",            "pb",              ratios.get("pb"),              "x",       "≤ 2×",        True),
-        ("Payout ratio",   "payout_ratio",    ratios.get("payout_ratio"),    "pct",     "≤ 70%",       True),
-        ("EPS",            "eps",             ratios.get("eps"),             "number",  "vs N-1 et pairs", False),
-        ("DPS",            "dps",             ratios.get("dps"),             "number",  "vs N-1",      False),
-        ("ROE",            "roe",             ratios.get("roe"),             "pct",     "≥ 15%",       False),
-        ("FCF Margin",     "fcf_margin",      ratios.get("fcf_margin"),      "pct",     "≥ 5%",        False),
+        ("Cours / valeur comptable (P/B)", "pb", ratios.get("pb"),           "x",       "≤ 2×",        True),
+        ("Taux de distribution", "payout_ratio", ratios.get("payout_ratio"), "pct",     "≤ 70%",       True),
+        ("Bénéfice par action (BPA)", "eps", ratios.get("eps"),              "number",  "vs N-1 et pairs", False),
+        ("Dividende par action (DPA)", "dps", ratios.get("dps"),             "number",  "vs N-1",      False),
+        ("Rentabilité des fonds propres (ROE)", "roe", ratios.get("roe"),    "pct",     "≥ 15%",       False),
+        ("Marge de flux libre (FCF)", "fcf_margin", ratios.get("fcf_margin"), "pct",    "≥ 5%",        False),
     ]
+    # Un sigle seul ne dit rien a qui n'est pas du metier (26/09/2026, « aride
+    # pour les non-inities ») : chaque ligne porte sa definition en clair.
+    _banque = "banq" in (fundamentals.get("sector") or "").lower()
+    _aide = {
+        "net_margin": ("Bénéfice net rapporté au produit net bancaire" if _banque else
+                       "Bénéfice net rapporté au chiffre d'affaires : ce qui reste "
+                       "sur 100 FCFA de ventes"),
+        "debt_equity": "Dette financière rapportée aux capitaux propres : le poids "
+                       "de l'endettement",
+        "dividend_yield": "Dividende de l'année rapporté au cours : le revenu versé "
+                          "à l'actionnaire",
+        "per": "Cours divisé par le bénéfice par action : combien d'années de "
+               "bénéfice le marché paie",
+        "pb": "Cours rapporté aux fonds propres par action : ce que le marché paie "
+              "1 FCFA de fonds propres",
+        "payout_ratio": "Part du bénéfice reversée aux actionnaires en dividendes",
+        "eps": "Bénéfice net divisé par le nombre d'actions, en FCFA",
+        "dps": "Dividende versé pour une action, en FCFA",
+        "roe": "Bénéfice net rapporté aux capitaux propres : ce que rapporte "
+               "l'argent des actionnaires",
+        "fcf_margin": "Trésorerie d'exploitation moins investissements, rapportée "
+                      "au chiffre d'affaires",
+    }
 
     header_style = (
         "font-size:10.5px;text-transform:uppercase;letter-spacing:0.08em;"
@@ -929,10 +990,13 @@ def _render_fundamental(fundamentals, ratios):
             flag = ("Vigilance", "Bénéfice exceptionnellement bas")
             bar_html, ecart = _muet, _muet
         _motif = (f"<div style='font-size:11px;color:var(--ink-3);'>{flag[1]}</div>"
-                  if flag[1] and key in ("eps", "dps", "payout_ratio", "per") else "")
+                  if flag[1] and key in ("eps", "dps", "payout_ratio", "per", "pb") else "")
         rows_html += (
             f"<tr>"
-            f"<td style='{cell_style};font-weight:500;'>{name}</td>"
+            f"<td style='{cell_style};font-weight:500;'>{name}"
+            + (f"<div style='font-size:11px;font-weight:400;color:var(--ink-3);"
+               f"max-width:260px;'>{_aide[key]}</div>" if key in _aide else "")
+            + "</td>"
             f"<td style='{cell_style};text-align:right;font-variant-numeric:tabular-nums;'>{val_str}</td>"
             f"<td style='{cell_style};color:var(--ink-3);'>{seuil}</td>"
             f"<td style='{cell_style};min-width:120px;'>{bar_html}</td>"
@@ -3520,11 +3584,11 @@ def _render_profile(ticker: str, fundamentals: dict):
             rows_html = (
                 f"<tr>"
                 f"<th style='{header};text-align:left;'>Année</th>"
-                f"<th style='{header}'>CA</th>"
+                f"<th style='{header}'>Chiffre d'affaires</th>"
                 f"<th style='{header}'>Résultat net</th>"
-                f"<th style='{header}'>DPS</th>"
-                f"<th style='{header}'>BNPA</th>"
-                f"<th style='{header}'>PER</th>"
+                f"<th style='{header}'>Dividende / action</th>"
+                f"<th style='{header}'>Bénéfice / action</th>"
+                f"<th style='{header}'>PER (P/E)</th>"
                 f"</tr>"
             )
             # Tri ascendant par année (plus récente en bas, comme dans la capture user)
@@ -3554,10 +3618,12 @@ def _render_profile(ticker: str, fundamentals: dict):
                 unsafe_allow_html=True,
             )
             st.caption(
-                f"BNPA recalculé (résultat net ÷ {nb_titres:,.0f} titres) et PER "
-                f"sur le cours du jour ({cours:,.0f} FCFA)."
+                f"Bénéfice par action (BPA) recalculé : résultat net ÷ {nb_titres:,.0f} "
+                f"titres. PER : cours du jour ({cours:,.0f} FCFA) ÷ bénéfice par "
+                f"action, soit le nombre d'années de bénéfice que paie l'acheteur."
                 if nb_titres and cours else
-                "BNPA et PER recalculés à partir du résultat net et du cours du jour."
+                "Bénéfice par action et PER (cours ÷ bénéfice par action) recalculés "
+                "à partir du résultat net et du cours du jour."
             )
             for n in notes_dps:
                 st.caption("\\* " + n)
