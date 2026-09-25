@@ -17,7 +17,6 @@ from data.db import read_sql_df
 from analysis.scoring import compute_hybrid_score, compute_consolidated_verdict
 from utils.charts import stars_display
 from utils.nav import ticker_quick_picker
-from utils.auth import is_admin
 
 import json as _json
 
@@ -155,16 +154,12 @@ def render():
     snapshot_used = (bool(snap_by_ticker)
                      and any(tk in snap_by_ticker for tk in target_set)
                      and not perime)
-    if perime:
-        # Le dire, meme quand on recalcule : le lecteur doit savoir pourquoi la
-        # page met une minute, et qu'il regarde bien l'etat du moment.
-        st.info(
-            f"Les données ont changé depuis le dernier instantané "
-            f"(**{_calcule:%d/%m %H:%M}**, dernière écriture **{_ecrit:%d/%m %H:%M}**). "
-            f"Les scores sont recalculés en direct pour rester alignés sur "
-            f"Analyse titre — comptez une minute."
-        )
-    elif _calcule is not None:
+    # PAS DE BANDEAU (25/09/2026). L'instantane perime est ignore en silence :
+    # il se reconstruit chaque jour ouvre ou par le bouton de la barre
+    # laterale, et le calcul en direct a son propre indicateur d'attente. Les
+    # deux avis qu'affichait la page (« donnees changees », « snapshots
+    # vides ») ne servaient a rien au lecteur.
+    if _calcule is not None and not perime:
         st.caption(f"Scores de l'instantané du {_calcule:%d/%m/%Y à %H:%M}.")
 
     if snapshot_used:
@@ -219,11 +214,6 @@ def render():
 
     else:
         # ─── Fallback : calcul live (lent, utilisé si snapshot vide) ────────
-        if is_admin():
-            st.warning(
-                "Snapshots vides. Cliquez sur **Regénérer snapshots** dans la barre latérale "
-                "pour accélérer cette page (passage de ~1 min à <1 s)."
-            )
         all_stocks = get_all_stocks_for_analysis()
         # Trois ans : la MM200 demande deux cents seances, la detection de
         # tendance et les supports un peu plus. Au-dela, aucun indicateur

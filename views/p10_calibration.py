@@ -225,12 +225,6 @@ def render():
             axis=1,
         )
 
-    if not snapshot_used and is_admin():
-        st.warning(
-            "Snapshot de performance vide. Cliquez sur **Regénérer snapshots** "
-            "dans la sidebar pour accélérer cette page."
-        )
-
     # Quick picker (4e colonne filtres)
     present_tickers = sorted(df["ticker"].unique().tolist())
     with col_f4:
