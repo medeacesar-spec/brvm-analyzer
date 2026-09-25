@@ -403,7 +403,12 @@ def render():
     _perte = _rn is not None and _rn < 0
 
     with c3:
-        if per and per > 0:
+        # Un P/E au-dela de cent ne mesure plus une valorisation : il dit que
+        # le benefice de l'exercice s'est effondre (BOA Niger 2025 : 0,4 Md
+        # contre 5 Md, P/E de 261). On le dit, sans chiffre a comparer.
+        if per and per > PER_NON_SIGNIFICATIF:
+            _per_valeur, _per_motif = "n.s.", "bénéfice exceptionnellement bas"
+        elif per and per > 0:
             _per_valeur = f"{per:.1f}"
             _per_motif = _sector_sub("per", per, prefer_low=True, fmt="decimal")
         elif _perte or (per is not None and per < 0):
@@ -478,6 +483,11 @@ def render():
                     st.error(f"Erreur d'import: {e}")
                 finally:
                     os.unlink(tmp_path)
+
+
+# Au-dela, le P/E ne se compare plus : le benefice de l'exercice est trop
+# bas pour porter une valorisation.
+PER_NON_SIGNIFICATIF = 100.0
 
 
 def _render_fundamental(fundamentals, ratios):
@@ -596,7 +606,8 @@ def _render_fundamental(fundamentals, ratios):
          _joindre(f"D/E {_fois(_de)}" if _de is not None else None,
                   f"couverture {_fois(_couv)}" if _couv is not None else None)),
         ("Valorisation", bd.get("valorisation", 0), 15,
-         _joindre(f"PER {_nombre(_per)}" if _nombre(_per) else None,
+         _joindre(("PER n.s." if _per and _per > PER_NON_SIGNIFICATIF
+                   else f"PER {_nombre(_per)}") if _nombre(_per) else None,
                   f"P/B {_nombre(_pb)}" if _nombre(_pb) else None)),
         ("Dividendes", bd.get("dividendes", 0), 10,
          # Le bareme note le RENDEMENT ; le payout ne fait que le penaliser
@@ -726,6 +737,9 @@ def _render_fundamental(fundamentals, ratios):
         ("Dette/Equity",   "debt_equity",     ratios.get("debt_equity"),     "x",       "≤ 1.5×",      True),
         ("Dividend Yield", "dividend_yield",  ratios.get("dividend_yield"),  "pct",     "≥ 6%",        False),
         ("PER",            "per",             ratios.get("per"),             "decimal", "≤ 15",        True),
+        # Le cours rapporte a l'actif net par action : ce que le marche paie
+        # un franc de fonds propres (25/09/2026, demande pour tous les titres).
+        ("P/B",            "pb",              ratios.get("pb"),              "x",       "≤ 2×",        True),
         ("Payout ratio",   "payout_ratio",    ratios.get("payout_ratio"),    "pct",     "≤ 70%",       True),
         ("EPS",            None,              ratios.get("eps"),             "number",  "—",           False),
         ("DPS",            None,              ratios.get("dps"),             "number",  "—",           False),
@@ -757,6 +771,10 @@ def _render_fundamental(fundamentals, ratios):
         bar = _position_bar(key, value, prefer_low) if key else ""
         bar_html = bar if bar else "<span class='muted'>—</span>"
         ecart = _ecart_cell(key, value, prefer_low) if key else "<span class='muted'>—</span>"
+        if key == "per" and value and value > PER_NON_SIGNIFICATIF:
+            val_str = "n.s."
+            flag = ("Vigilance", "Bénéfice exceptionnellement bas : P/E non significatif")
+            bar_html = ecart = "<span class='muted'>—</span>"
         rows_html += (
             f"<tr>"
             f"<td style='{cell_style};font-weight:500;'>{name}</td>"
@@ -926,7 +944,9 @@ def _render_fundamental(fundamentals, ratios):
         phrases.append("**sans dette**")
     elif ratios.get("debt_equity") and ratios["debt_equity"] <= 0.5:
         phrases.append("**peu endettée**")
-    if per and per > 20:
+    if per and per > PER_NON_SIGNIFICATIF:
+        phrases.append("bénéfice de l'exercice **exceptionnellement bas** (PER non significatif)")
+    elif per and per > 20:
         phrases.append(f"valorisation tendue (**PER {per:.1f}**)")
     if payout and payout > 1.0:
         phrases.append(f"**payout > 100%** fragilisent la soutenabilité du dividende à rythme actuel")
