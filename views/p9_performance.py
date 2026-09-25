@@ -16,7 +16,6 @@ from data.storage import get_cached_prices
 from data.db import read_sql_df
 from utils.charts import COLORS
 from utils.nav import ticker_quick_picker
-from utils.auth import is_admin
 
 
 # ── Period definitions ──
@@ -168,9 +167,6 @@ def render():
     with col_sub:
         st.caption(f"Classement sur {period.lower()} · {len(valid)} titres "
                    f"avec historique suffisant.")
-
-    if not from_snapshot and is_admin():
-        st.caption("Snapshot vide — « Regénérer snapshots » dans la barre latérale.")
 
     # ─── 4 KPI cards ──────────────────────────────────────────────────
     best = valid_sorted.iloc[0]
