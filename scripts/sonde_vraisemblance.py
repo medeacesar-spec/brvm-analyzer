@@ -30,9 +30,22 @@ Chaque constat dit si la valeur a ete ecrite par le lot du 14/09/2026
 (11 h 18 - 11 h 53, 2 145 valeurs reecrites, dont les demi-exercices de
 Sonatel) : c'est la premiere piste a suivre.
 
+EFFACER LES RESULTATS D'EXPLOITATION DE PERIODE (--effacer-periodes)
+
+Decision du 25/09/2026 : un resultat d'exploitation annuel egal a celui
+d'UNE publication trimestrielle ou semestrielle du meme exercice, ecrit par
+le lot du 14/09, est faux a coup sur. Quand aucun document annuel ne permet
+de le remplacer (les lecteurs `recouper_resultat.py` et
+`recouper_bancaire.py` passent avant), il est vide : une case vide vaut
+mieux qu'un trimestre pris pour une annee. Le chiffre d'affaires et le
+resultat net, recoupes a la fiche societe, ne sont jamais vides ; une
+egalite avec deux publications a la fois (BICI Benin 2025) est ambigue et
+laissee. L'ancienne valeur reste dans `fundamentals_journal`.
+
 Usage :
   python3 scripts/sonde_vraisemblance.py
   python3 scripts/sonde_vraisemblance.py --titre ORAC.ci
+  python3 scripts/sonde_vraisemblance.py --effacer-periodes
 """
 from __future__ import annotations
 
@@ -60,7 +73,7 @@ def _v(ligne, champ):
     return float(x) if x is not None and x == x and x != 0 else None
 
 
-def main(titre: str = None) -> None:
+def main(titre: str = None, effacer: bool = False) -> None:
     base = read_sql_df("SELECT * FROM fundamentals WHERE fiscal_year BETWEEN ? AND ?",
                        params=(DEBUT - 1, FIN))
     if titre:
@@ -79,6 +92,7 @@ def main(titre: str = None) -> None:
     du_lot = {(r.ticker, int(r.fiscal_year), r.champ) for r in lot.itertuples()}
 
     constats = []
+    a_effacer = []
 
     def noter(t, an, champs, genre, detail):
         marque = " [lot 14/09]" if any((t, an, c) in du_lot for c in champs) else ""
@@ -129,6 +143,11 @@ def main(titre: str = None) -> None:
                       f"credits / depots = {cr/d:.2f} ({cr/Md:.1f} / {d/Md:.1f} Md)")
         for c in ("revenue", "net_income", "ebit"):
             v = _v(l, c)
+            egales = [per for per, p in periodes.get((t, an, c), [])
+                      if v is not None and per not in ("T4", "S2", "A")
+                      and abs(v - p) <= 0.005 * abs(p)]
+            if c == "ebit" and len(set(egales)) == 1 and (t, an, c) in du_lot:
+                a_effacer.append((t, an, c, v, egales[0]))
             for per, p in periodes.get((t, an, c), []):
                 # T4 et S2 sont des cumuls a douze mois : l'exercice lui-meme.
                 if v is not None and per not in ("T4", "S2", "A") and abs(v - p) <= 0.005 * abs(p):
@@ -146,9 +165,25 @@ def main(titre: str = None) -> None:
     print(f"\n{len(constats)} constat(s) sur {len({c[0] for c in constats})} titre(s) : "
           + " · ".join(f"{g} {n}" for g, n in sorted(par_genre.items())))
     print(f"dont {sum('[lot 14/09]' in c[3] for c in constats)} sur des valeurs ecrites par le lot du 14/09")
+    if not effacer:
+        return
+    from data.db import get_connection
+    conn = get_connection()
+    try:
+        for t, an, c, v, per in a_effacer:
+            print(f"  vide {t} {an} {c} {v/Md:.2f} Md (= publication {per})")
+            conn.execute(f"UPDATE fundamentals SET {c} = NULL, updated_at = CURRENT_TIMESTAMP "
+                         f"WHERE ticker = ? AND fiscal_year = ?", (t, an))
+        conn.commit()
+    finally:
+        conn.close()
+    print(f"{len(a_effacer)} resultat(s) d'exploitation de periode vide(s).")
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--titre")
-    main(ap.parse_args().titre)
+    ap.add_argument("--effacer-periodes", action="store_true",
+                    help="vide les resultats d'exploitation de periode du lot du 14/09")
+    a = ap.parse_args()
+    main(a.titre, a.effacer_periodes)
