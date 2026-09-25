@@ -74,6 +74,12 @@ MONTANTS = ("interest_expense", "capex", "total_debt", "ebitda", "ebit", "cfo", 
             "total_assets", "operating_expenses", "gross_operating_income", "deposits",
             "loans", "cost_of_risk")
 DERISOIRE = 1e-5
+# La dette, ses interets, les investissements et le cout du risque peuvent
+# etre reellement minimes : SITAB porte 1,4 million de FCFA d'emprunts en
+# 2025, pour 268 Md de chiffre d'affaires. Pour eux, seul un montant sous
+# cent mille FCFA trahit une erreur d'unite.
+PEUVENT_ETRE_MINIMES = ("interest_expense", "total_debt", "capex", "cost_of_risk")
+PLANCHER_ABSOLU = 1e5
 
 
 def _v(ligne, champ):
@@ -130,7 +136,8 @@ def main(titre: str = None, effacer: bool = False) -> None:
         if ca and abs(ca) > 1e9:
             for c in MONTANTS:
                 v = _v(l, c)
-                if v is not None and abs(v) < DERISOIRE * abs(ca):
+                if v is not None and abs(v) < DERISOIRE * abs(ca) and (
+                        c not in PEUVENT_ETRE_MINIMES or abs(v) < PLANCHER_ABSOLU):
                     noter(t, an, (c,), "derisoire", f"{c} = {v:,.0f} FCFA pour un CA de "
                           f"{ca/Md:.2f} Md : erreur d'unite")
         # Les ratios de la grille, bornes comme a l'affichage
