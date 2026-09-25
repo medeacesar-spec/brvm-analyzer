@@ -99,6 +99,14 @@ _ANNUEL = re.compile(
     r"rapport[_-](?:annuel[_-])?de[_-]gestion|rapport[_-]annuel"
     r"|rapport[_-]dactivit[eé]s?[_-]annuel|annual[_-]report|(?:^|[_-])r[ga](?=[_.-])",
     re.I)
+# LE RAPPORT DU CONSEIL D'ADMINISTRATION A L'ASSEMBLEE (25/09/2026). Les
+# BOA y publient leurs chiffres cles annuels — total bilan, depots, credits,
+# PNB, RBE, cout du risque, fonds propres — et c'est parfois le SEUL document
+# annuel depose : BOA Niger n'a publie ni etats financiers 2024 ni etats 2025
+# sur brvm.org. Aucun motif ne le reconnaissait : il etait ecarte en silence.
+_RAPPORT_CA = re.compile(
+    r"rapport[_-]du[_-](?:ca|conseil[_-]d[_-]?administration)[_-]"
+    r"(?:a[_-])?l?[_-]?(?:ago|assembl[eé]e)", re.I)
 _SEMESTRE = re.compile(
     r"1er[_-]semestre|premier[_-]semestre"
     r"|2(?:nd|[eé]me|d)[_-]semestre|second[_-]semestre|deuxi[eè]me[_-]semestre", re.I)
@@ -143,7 +151,7 @@ def _classify_pdf(url: str):
     corps = _PREFIXE_PUBLICATION.sub("", fichier)
 
     porte_un_etat = (_ETATS.search(corps) or _ANNUEL.search(corps)
-                     or _ACTIVITES.search(corps))
+                     or _ACTIVITES.search(corps) or _RAPPORT_CA.search(corps))
     if _SANS_CHIFFRES.search(corps) and not porte_un_etat:
         return None, None
 
@@ -169,6 +177,8 @@ def _classify_pdf(url: str):
         # trimestre.
         genre = "etats_financiers"
         return genre, int(_ANNEE_APRES_ETAT.search(corps).group(1))
+    elif exercice and _RAPPORT_CA.search(corps):
+        genre = "rapport_annuel"
     elif _SEMESTRE.search(corps):
         genre = "rapport_semestriel"
     elif _TRIMESTRE.search(corps):
