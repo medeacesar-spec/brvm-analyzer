@@ -46,10 +46,14 @@ DOSSIER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 CACHE = os.path.join(DOSSIER, ".ocr_rangees")
 CHAMPS = ("revenue", "net_income", "equity", "total_assets", "total_debt",
           "ebit", "ebitda", "interest_expense", "cfo", "capex",
-          "dividends_total", "deposits", "cost_of_risk")
+          "deposits", "cost_of_risk", "operating_expenses",
+          "gross_operating_income", "loans")
 # L'ancre ne porte que sur les champs dont l'exercice precedent est bien
 # couvert et dont la definition ne varie pas d'un document a l'autre.
-ANCRES = ("revenue", "net_income", "equity", "total_assets")
+ANCRES = ("revenue", "net_income", "equity", "total_assets",
+          # Les postes bancaires : couverts a 50 % environ, assez pour ancrer.
+          "deposits", "loans", "cost_of_risk", "operating_expenses",
+          "gross_operating_income")
 SURS = ("ancre", "brut-net")
 FICHIER = re.compile(r"^([A-Z0-9]+\.[a-z]{2})_(20\d\d)_")
 
@@ -157,6 +161,10 @@ def main(avec_ocr: bool, titre: str = None, avec_fiches: bool = False) -> None:
                     ancres[c] = float(v)
         ligne = connu.get((ticker, annee))
         for champ, (valeur, comment) in lire_detaille(t, ancres=ancres).items():
+            # Le lecteur rend aussi des champs que le recoupement ne suit pas
+            # (le dividende verse, juge non pertinent le 25/09).
+            if champ not in CHAMPS:
+                continue
             en_base = getattr(ligne, champ) if ligne is not None else None
             en_base = float(en_base) if en_base == en_base and en_base else None
             fiche = (ticker, annee, champ, valeur, en_base, f"{mode}/{comment}", f)
