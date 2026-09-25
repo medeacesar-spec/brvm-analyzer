@@ -499,6 +499,9 @@ def _render_fundamental(fundamentals, ratios):
     _ticker = fundamentals.get("ticker")
     _fy_fiche = fundamentals.get("fiscal_year")
     _exercices = []
+    # L'exercice CHOISI par le lecteur, s'il a quitte celui de la fiche. La
+    # grille sectorielle le suit alors a la lettre (voir plus bas).
+    _annee_choisie = None
     if _ticker:
         try:
             _df_ex = read_sql_df(
@@ -516,6 +519,7 @@ def _render_fundamental(fundamentals, ratios):
             format_func=lambda a: str(a),
             key=f"fonda_exercice_{_ticker}") or _defaut
         if _choisi != int(_fy_fiche):
+            _annee_choisie = int(_choisi)
             _autre = get_fundamentals(_ticker, fiscal_year=_choisi)
             if _autre:
                 # Le prix vient du marché, pas de l'exercice : il ne change
@@ -788,7 +792,7 @@ def _render_fundamental(fundamentals, ratios):
     # Recommandation, sous les cartes de prix cible, ou personne ne le
     # trouvait.
     try:
-        _render_bloc_sectoriel(fundamentals, ratios)
+        _render_bloc_sectoriel(fundamentals, ratios, annee_choisie=_annee_choisie)
     except Exception as _e:
         st.caption(f"Grille sectorielle indisponible : {_e}")
 
@@ -1803,7 +1807,7 @@ def _render_tendance_periodes(ticker):
         )
 
 
-def _render_bloc_sectoriel(fundamentals, ratios_src):
+def _render_bloc_sectoriel(fundamentals, ratios_src, annee_choisie=None):
     """Grille propre au secteur, complements metier et comparaison intersecteurs.
 
     Rendu dans l'onglet Fondamentale : c'est la qu'on cherche des ratios, pas
@@ -1832,9 +1836,19 @@ def _render_bloc_sectoriel(fundamentals, ratios_src):
             _ma_ligne = _l
             break
 
-    ratios_src, _exercice_grille = _exercice_le_plus_complet(
-        fundamentals, ratios_src,
-        exercice_pairs=(_ma_ligne or {}).get("exercice"))
+    # LA GRILLE SUIT L'EXERCICE CHOISI. Quand le lecteur choisit un exercice,
+    # il veut CET exercice : la grille ne lui en substitue pas un autre, plus
+    # complet. Le 25/09/2026, la grille de Sonatel affichait les memes
+    # valeurs en 2024 et en 2025 — 2024, incomplet, etait remplace en silence
+    # par 2025. Un indicateur absent vaut mieux qu'un indicateur d'une autre
+    # annee. La substitution reste pour l'exercice par defaut de la fiche,
+    # qui peut n'etre alimente que par des publications de periode (ETI 2026).
+    if annee_choisie is not None:
+        _exercice_grille = None
+    else:
+        ratios_src, _exercice_grille = _exercice_le_plus_complet(
+            fundamentals, ratios_src,
+            exercice_pairs=(_ma_ligne or {}).get("exercice"))
 
     def _render_grille(titre, definition, source):
         dispo = [(lib, cle, fmt, aide) for lib, cle, fmt, aide in definition
