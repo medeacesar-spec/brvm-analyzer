@@ -407,7 +407,7 @@ def render():
         # le benefice de l'exercice s'est effondre (BOA Niger 2025 : 0,4 Md
         # contre 5 Md, P/E de 261). On le dit, sans chiffre a comparer.
         if per and per > PER_NON_SIGNIFICATIF:
-            _per_valeur, _per_motif = "n.s.", "bénéfice exceptionnellement bas"
+            _per_valeur, _per_motif = f"{per:.1f}", "bénéfice exceptionnellement bas"
         elif per and per > 0:
             _per_valeur = f"{per:.1f}"
             _per_motif = _sector_sub("per", per, prefer_low=True, fmt="decimal")
@@ -485,8 +485,137 @@ def render():
                     os.unlink(tmp_path)
 
 
-# Au-dela, le P/E ne se compare plus : le benefice de l'exercice est trop
-# bas pour porter une valorisation.
+def _evolutions_par_action(fundamentals, ratios):
+    """BNPA et dividende par action face a l'exercice precedent et aux pairs.
+
+    Un BNPA ou un dividende par action ne se juge pas dans l'absolu : 500
+    FCFA est beaucoup pour une action a 5 000, peu pour une action a 50 000.
+    Leur ligne affichait donc « Bon » par defaut — BOA Niger en vert quand
+    son BNPA passait de 240 a 20 et son dividende a zero (26/09/2026). On les
+    juge sur leur EVOLUTION, et le BNPA aussi sur celle de ses pairs.
+    """
+    from analysis.fundamental import compute_ratios
+    from data.storage import get_fundamentals
+
+    sortie = {}
+    ticker, annee = fundamentals.get("ticker"), fundamentals.get("fiscal_year")
+    if not ticker or not annee:
+        return sortie
+    try:
+        prec = get_fundamentals(ticker, fiscal_year=int(annee) - 1)
+        rp = compute_ratios(prec) if prec else {}
+    except Exception:
+        rp = {}
+    eps, eps_p = ratios.get("eps"), rp.get("eps")
+    dps, dps_p = ratios.get("dps"), rp.get("dps")
+
+    # Mediane de l'evolution du resultat des pairs, sur leur dernier exercice.
+    mediane = None
+    try:
+        from analysis.sectors import _exercices_du_secteur
+        evol = []
+        for tk, lignes in _exercices_du_secteur(fundamentals.get("sector")).items():
+            rn = {int(l["fiscal_year"]): l.get("net_income") for l in lignes
+                  if l.get("fiscal_year") and l.get("net_income")}
+            a = max((y for y in rn if y <= int(annee)), default=None)
+            if a and rn.get(a - 1) and rn[a - 1] > 0 and rn[a]:
+                evol.append(rn[a] / rn[a - 1] - 1)
+        if len(evol) >= 3:
+            evol.sort()
+            mediane = evol[len(evol) // 2]
+    except Exception:
+        pass
+
+    if eps is not None:
+        if eps < 0:
+            sortie["eps"] = (("Risque", "Perte sur l'exercice"), None)
+        elif eps_p is not None and eps_p < 0:
+            sortie["eps"] = (("OK", "Retour au bénéfice après une perte"), None)
+        elif eps_p and eps_p > 0:
+            g = eps / eps_p - 1
+            if abs(g) < 0.02:
+                niveau = ("OK", "Stable sur un an")
+            elif g >= 0:
+                niveau = ("OK", f"En hausse de {g:.0%} sur un an")
+            elif g >= -0.20:
+                niveau = ("Vigilance", f"En baisse de {-g:.0%} sur un an")
+            else:
+                niveau = ("Risque", f"Chute de {-g:.0%} sur un an")
+            if mediane is not None and niveau[0] == "OK" and g < mediane - 0.20:
+                niveau = ("Vigilance", niveau[1] + ", bien en retrait des pairs")
+            ecart = f"{g:+.0%} sur un an" + (f" · pairs {mediane:+.0%}" if mediane is not None else "")
+            sortie["eps"] = (niveau, ecart)
+    if dps is not None:
+        if not dps:
+            niveau = (("Risque", "Dividende supprimé") if dps_p else
+                      ("Vigilance", "Aucun dividende"))
+            sortie["dps"] = (niveau, f"{dps_p:,.0f} l'an passé".replace(",", " ") if dps_p else None)
+            sortie["payout_ratio"] = (niveau, None)
+        elif dps_p:
+            g = dps / dps_p - 1
+            niveau = (("OK", f"En hausse de {g:.0%}") if g > 0.02 else
+                      ("OK", "Maintenu") if g >= -0.02 else
+                      ("Vigilance", f"En baisse de {-g:.0%}"))
+            sortie["dps"] = (niveau, f"{g:+.0%} sur un an")
+    return sortie
+
+
+def _alertes_resultat_dividende(fundamentals, ratios) -> list:
+    """Les alertes qui doivent sauter aux yeux : dividende et benefice.
+
+    Demande du 26/09/2026 : un dividende supprime ou un benefice qui stagne
+    doit « attirer l'attention du lecteur », pas se cacher dans une ligne du
+    tableau des ratios. Rend [(niveau, titre, detail)], les risques d'abord.
+    """
+    ev = _evolutions_par_action(fundamentals, ratios)
+    alertes = []
+    (niv_d, mot_d), det_d = ev.get("dps", ((None, None), None))
+    if niv_d in ("Risque", "Vigilance") and mot_d:
+        alertes.append((niv_d, mot_d, det_d or ""))
+    eps = ratios.get("eps")
+    (niv_e, mot_e), det_e = ev.get("eps", ((None, None), None))
+    if eps is not None and eps < 0:
+        alertes.append(("Risque", "Perte sur l'exercice", ""))
+    elif det_e:
+        g = None
+        try:
+            g = float(det_e.split("%")[0]) / 100
+        except ValueError:
+            pass
+        if niv_e == "Risque":
+            alertes.append(("Risque", f"Bénéfice par action : {mot_e.lower()}", det_e))
+        elif niv_e == "Vigilance":
+            alertes.append(("Vigilance", f"Bénéfice par action : {mot_e.lower()}", det_e))
+        elif g is not None and abs(g) < 0.05:
+            # Un benefice qui ne progresse plus : pas une faute, un signal —
+            # surtout quand les pairs, eux, progressent.
+            alertes.append(("Vigilance", "Bénéfice stagnant", det_e))
+    alertes.sort(key=lambda a: 0 if a[0] == "Risque" else 1)
+    return alertes
+
+
+def _bandeau_alertes(alertes) -> str:
+    if not alertes:
+        return ""
+    blocs = ""
+    for niveau, titre, detail in alertes:
+        couleur = "var(--down)" if niveau == "Risque" else "var(--ocre)"
+        blocs += (
+            f"<div style='border-left:3px solid {couleur};padding:6px 0 6px 12px;"
+            f"margin:6px 0;'><span style='font-size:13.5px;font-weight:600;"
+            f"color:{couleur};'>{titre}</span>"
+            + (f"<span style='font-size:12px;color:var(--ink-3);margin-left:10px;'>"
+               f"{detail}</span>" if detail else "")
+            + "</div>")
+    return (f"<div style='background:var(--bg-elev);border:1px solid var(--border);"
+            f"border-radius:12px;padding:10px 16px;margin:4px 0 14px 0;'>"
+            f"<div style='font-size:10.5px;font-weight:600;letter-spacing:0.09em;"
+            f"text-transform:uppercase;color:var(--ink-3);'>À surveiller</div>"
+            f"{blocs}</div>")
+
+
+# Au-dela, le P/E reste affiche mais ne se compare plus aux pairs : le
+# benefice de l'exercice est trop bas pour porter une valorisation.
 PER_NON_SIGNIFICATIF = 100.0
 
 
@@ -606,8 +735,7 @@ def _render_fundamental(fundamentals, ratios):
          _joindre(f"D/E {_fois(_de)}" if _de is not None else None,
                   f"couverture {_fois(_couv)}" if _couv is not None else None)),
         ("Valorisation", bd.get("valorisation", 0), 15,
-         _joindre(("PER n.s." if _per and _per > PER_NON_SIGNIFICATIF
-                   else f"PER {_nombre(_per)}") if _nombre(_per) else None,
+         _joindre(f"PER {_nombre(_per)}" if _nombre(_per) else None,
                   f"P/B {_nombre(_pb)}" if _nombre(_pb) else None)),
         ("Dividendes", bd.get("dividendes", 0), 10,
          # Le bareme note le RENDEMENT ; le payout ne fait que le penaliser
@@ -622,6 +750,15 @@ def _render_fundamental(fundamentals, ratios):
         if pct >= 0.66: return "var(--up)"
         if pct >= 0.40: return "var(--ocre)"
         return "var(--down)"
+
+    # Dividende et benefice d'abord, en tete d'onglet : ce sont les deux
+    # signaux qu'un lecteur doit voir sans chercher.
+    try:
+        _band = _bandeau_alertes(_alertes_resultat_dividende(fundamentals, ratios))
+    except Exception:
+        _band = ""
+    if _band:
+        st.markdown(_band, unsafe_allow_html=True)
 
     # UNE GRILLE, PAS CINQ COLONNES FIXES. `st.columns` imposait cinq colonnes
     # quelle que soit la largeur : « ENDETTEMENT » se brisait en
@@ -741,8 +878,8 @@ def _render_fundamental(fundamentals, ratios):
         # un franc de fonds propres (25/09/2026, demande pour tous les titres).
         ("P/B",            "pb",              ratios.get("pb"),              "x",       "≤ 2×",        True),
         ("Payout ratio",   "payout_ratio",    ratios.get("payout_ratio"),    "pct",     "≤ 70%",       True),
-        ("EPS",            None,              ratios.get("eps"),             "number",  "—",           False),
-        ("DPS",            None,              ratios.get("dps"),             "number",  "—",           False),
+        ("EPS",            "eps",             ratios.get("eps"),             "number",  "vs N-1 et pairs", False),
+        ("DPS",            "dps",             ratios.get("dps"),             "number",  "vs N-1",      False),
         ("ROE",            "roe",             ratios.get("roe"),             "pct",     "≥ 15%",       False),
         ("FCF Margin",     "fcf_margin",      ratios.get("fcf_margin"),      "pct",     "≥ 5%",        False),
     ]
@@ -765,23 +902,41 @@ def _render_fundamental(fundamentals, ratios):
         f"<th style='{header_style}'>Écart</th>"
         f"</tr>"
     )
+    _evol = _evolutions_par_action(fundamentals, ratios)
+    _muet = "<span class='muted'>—</span>"
     for name, key, value, fmt, seuil, prefer_low in ratio_rows:
         flag = flags.get(key, ("OK", "")) if key else ("OK", "")
         val_str = format_ratio(value, fmt)
-        bar = _position_bar(key, value, prefer_low) if key else ""
-        bar_html = bar if bar else "<span class='muted'>—</span>"
-        ecart = _ecart_cell(key, value, prefer_low) if key else "<span class='muted'>—</span>"
+        if key in ("eps", "dps"):
+            # Montants par action : pas de barre face aux pairs (le niveau
+            # depend du prix de l'action), un jugement sur l'evolution.
+            bar_html, ecart = _muet, _muet
+            flag = ("—", "")
+        else:
+            bar = _position_bar(key, value, prefer_low) if key else ""
+            bar_html = bar if bar else _muet
+            ecart = _ecart_cell(key, value, prefer_low) if key else _muet
+        if key in _evol:
+            flag, _e = _evol[key]
+            if _e:
+                ecart = f"<span style='color:var(--ink-3);font-variant-numeric:tabular-nums;'>{_e}</span>"
+            if key == "payout_ratio":
+                bar_html = ecart = _muet
+        # Le P/E se calcule et s'affiche toujours ; au-dela de cent, il dit que
+        # le benefice de l'exercice s'est effondre, et la comparaison aux pairs
+        # n'a plus de sens.
         if key == "per" and value and value > PER_NON_SIGNIFICATIF:
-            val_str = "n.s."
-            flag = ("Vigilance", "Bénéfice exceptionnellement bas : P/E non significatif")
-            bar_html = ecart = "<span class='muted'>—</span>"
+            flag = ("Vigilance", "Bénéfice exceptionnellement bas")
+            bar_html, ecart = _muet, _muet
+        _motif = (f"<div style='font-size:11px;color:var(--ink-3);'>{flag[1]}</div>"
+                  if flag[1] and key in ("eps", "dps", "payout_ratio", "per") else "")
         rows_html += (
             f"<tr>"
             f"<td style='{cell_style};font-weight:500;'>{name}</td>"
             f"<td style='{cell_style};text-align:right;font-variant-numeric:tabular-nums;'>{val_str}</td>"
             f"<td style='{cell_style};color:var(--ink-3);'>{seuil}</td>"
             f"<td style='{cell_style};min-width:120px;'>{bar_html}</td>"
-            f"<td style='{cell_style};'>{_status_cell(flag[0])}</td>"
+            f"<td style='{cell_style};'>{_status_cell(flag[0])}{_motif}</td>"
             f"<td style='{cell_style};'>{ecart}</td>"
             f"</tr>"
         )
@@ -945,7 +1100,7 @@ def _render_fundamental(fundamentals, ratios):
     elif ratios.get("debt_equity") and ratios["debt_equity"] <= 0.5:
         phrases.append("**peu endettée**")
     if per and per > PER_NON_SIGNIFICATIF:
-        phrases.append("bénéfice de l'exercice **exceptionnellement bas** (PER non significatif)")
+        phrases.append(f"bénéfice de l'exercice **exceptionnellement bas** (PER {per:.1f})")
     elif per and per > 20:
         phrases.append(f"valorisation tendue (**PER {per:.1f}**)")
     if payout and payout > 1.0:
@@ -2879,9 +3034,16 @@ def _render_recommendation(result, fundamentals):
             _pts_card("Points forts", reco.get("strengths", []), "up"),
             unsafe_allow_html=True,
         )
+    try:
+        _alertes_div = [f"{t} ({d})" if d else t for _, t, d in
+                        _alertes_resultat_dividende(fundamentals, result.get("ratios") or {})]
+    except Exception:
+        _alertes_div = []
     with col_w:
         st.markdown(
-            _pts_card("Points de vigilance", reco.get("warnings", []), "warn"),
+            _pts_card("Points de vigilance",
+                      _alertes_div + [w for w in reco.get("warnings", []) if w not in _alertes_div],
+                      "warn"),
             unsafe_allow_html=True,
         )
 
