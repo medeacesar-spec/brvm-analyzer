@@ -1626,8 +1626,21 @@ def _exercice_le_plus_complet(fundamentals, ratios_courants,
         annuels = exercices_annuels([ticker]).get(ticker) or set()
     except Exception:
         annuels = set()
-    if annee_courante in annuels:
-        return ratios_courants, None
+    if annee_courante in annuels or not annuels:
+        # LA LIGNE DE L'EXERCICE, ET ELLE SEULE (25/09/2026). Les ratios de la
+        # fiche sont calcules sur `get_all_stocks_for_analysis`, qui ne
+        # selectionne pas les postes sectoriels — charges, RBE, cout du
+        # risque, credits et depots des banques, EBITDA — et comble les
+        # postes de bilan manquants avec un exercice ANTERIEUR. La grille
+        # bancaire de BOA Niger et de Bridge Bank se reduisait au rendement
+        # des actifs ; Sicable affichait une couverture calculee sur 2024.
+        # La grille relit donc la ligne complete de son exercice.
+        try:
+            ligne = get_fundamentals(ticker, fiscal_year=annee_courante)
+            propres = compute_ratios(ligne) if ligne else None
+        except Exception:
+            propres = None
+        return (propres or ratios_courants), None
     cible = max((a for a in annuels if a < annee_courante), default=None) or exercice_pairs
     if not cible or cible == annee_courante:
         return ratios_courants, None
