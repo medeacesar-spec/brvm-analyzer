@@ -22,6 +22,12 @@ avait lu a l'envers pour BOA Mali et BOA Burkina 2025.
                               risque -8,355 (etats 2025, seconde colonne)
   BOA Mali 2025 credits, depots  276,168 et 420,336 (2024) -> 253,648 et
                               502,890 (etats 2025, seconde colonne)
+  Chainage de deux documents (scripts/chainer_comparatifs.py) contre la base :
+  CFAO 2022 EBIT              1,068 -> 9,881 ; 2023 : 41,109 -> 11,109 (faute
+                              de frappe, un 4 pour un 1)
+  CIE frais financiers        2022 : 4,247 -> 3,036 ; 2024 : 18,087 -> 3,291
+  Filtisac 2021 EBIT          -0,179 -> 1,049
+  NEI-CEDA 2023 EBIT          1,850 -> 0,850
   CIE 2020 et Erium 2020 CA   722,6 et 4 780,5 Md, sans rapport avec les
                               exercices voisins (231,8 et 7,6) : vides.
 
@@ -52,6 +58,12 @@ VALEURS = {
     ("BOABF.bf", 2025): {"ebit": 22.182 * Md, "gross_operating_income": 30.537 * Md,
                          "cost_of_risk": -8.355 * Md},
     ("BOAM.ml", 2025): {"loans": 253.648 * Md, "deposits": 502.890 * Md},
+    ("CFAC.ci", 2022): {"ebit": 9.881 * Md},
+    ("CFAC.ci", 2023): {"ebit": 11.109 * Md},
+    ("CIEC.ci", 2022): {"interest_expense": 3.036 * Md},
+    ("CIEC.ci", 2024): {"interest_expense": 3.291 * Md},
+    ("FTSC.ci", 2021): {"ebit": 1.049 * Md},
+    ("NEIC.ci", 2023): {"ebit": 0.850 * Md},
     ("CIEC.ci", 2020): {"revenue": VIDE},
     ("SIVC.ci", 2020): {"revenue": VIDE},
 }
