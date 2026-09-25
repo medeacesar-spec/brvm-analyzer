@@ -1,0 +1,54 @@
+{
+  "_lisez_moi": "Sources de documents HORS brvm.org, par titre. A consulter quand brvm.org n'a pas le document annuel, ou n'en a qu'un scan illisible. Chaque document utilise est aussi enregistre dans report_links avec sa vraie source (colonne source). Voir docs/sources_alternatives.md.",
+  "BOAN.ne": {
+    "societe": "Bank of Africa Niger",
+    "communication_financiere": "https://www.boaniger.com/institutionnels/communication-financiere/",
+    "on_y_trouve": [
+      "Resultats au 31 decembre (comptes resumes au format BRVM)",
+      "Rapport annuel complet",
+      "Rapports d'activite trimestriels"
+    ],
+    "pourquoi": "Aucun etat financier 2024 ni 2025 depose sur brvm.org (seulement le rapport du CA a l'AGO et le rapport des CAC). Les etats 2021-2023 de brvm.org sont des scans que l'OCR lit mal.",
+    "page_brvm": "https://www.brvm.org/fr/rapports-societe-cotes/bank-africa-ng",
+    "verifie_le": "2026-09-25"
+  },
+  "BBGC.ci": {
+    "societe": "Bridge Bank Group Cote d'Ivoire",
+    "communication_financiere": "https://www.bridgebankgroup.com",
+    "documents": [
+      "https://www.bridgebankgroup.com/documents/ipo/IPO-BBGCI-Note-dinformation-20260709.pdf"
+    ],
+    "on_y_trouve": [
+      "Note d'information de l'introduction en bourse : comptes 2021-2025 (page 60, compte de resultat et agregats ; page 66, total bilan et fonds propres), tableaux en IMAGE"
+    ],
+    "pourquoi": "Cotee le 24/09/2026 : aucun etat financier annuel sur brvm.org a l'introduction.",
+    "verifie_le": "2026-09-25"
+  },
+  "SCRC.ci": {
+    "societe": "Sucrivoire",
+    "documents_brvm_a_preferer": {
+      "2022": "https://www.brvm.org/sites/default/files/20230428_-_etats_financiers_exercice_2022_-_sucrivoire_ci.pdf"
+    },
+    "pourquoi": "Trois jeux 2022 sur brvm.org : le SYSCOHADA du 12/06/2023 est un scan illisible ; celui du 28/04/2023 se lit (rendu a 300 dpi) ; l'IFRS du 12/06/2023 est net mais capitalise des interets (cout de l'endettement a zero). Referentiel retenu pour la base : SYSCOHADA.",
+    "verifie_le": "2026-09-25"
+  },
+  "BOA (groupe)": {
+    "communication_financiere": "https://bank-of-africa.net/en/home/financial-reports/",
+    "pourquoi": "Rapports annuels du groupe et des filiales. A explorer pour BOA Benin 2022 et BOA CI 2021, sans document annuel sur brvm.org. Chaque filiale a son site boa<pays>.com, meme arborescence /institutionnels/communication-financiere/.",
+    "verifie_le": null
+  },
+  "BOAS.sn": {
+    "societe": "Bank of Africa Senegal",
+    "communication_financiere": "https://www.boasenegal.com/institutionnels/communication-financiere/",
+    "on_y_trouve": [
+      "Etats financiers 2021, 2022, 2023 (texte natif)",
+      "Resultats au 31 decembre (comptes resumes, 2021-2024)",
+      "Rapports d'activite trimestriels, dont le 4e trimestre (encours et resultat de l'annee)",
+      "Rapports annuels 2024 et 2025"
+    ],
+    "pourquoi": "Les etats 2024 et 2025 de brvm.org sont des scans : l'OCR perd le bilan (depots, total) et deforme des montants (resultat net 2024 lu « 10 084 » pour 19 984).",
+    "attention": "Les noms de fichier portent des accents decomposes (« dactivite%CC%81 ») : copier l'URL telle que la page la donne.",
+    "page_brvm": "https://www.brvm.org/fr/rapports-societe-cotes/bank-africa-sn",
+    "verifie_le": "2026-09-25"
+  }
+}
