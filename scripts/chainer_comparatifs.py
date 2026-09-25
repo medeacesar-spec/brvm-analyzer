@@ -121,6 +121,9 @@ def main(ecrire: bool, titre: str = None, corriger: bool = False) -> None:
                                          for a in (an, an + 1))
             if not banque and corp is not None and (incorp is not None or sans_incorporelles):
                 valeurs["capex"] = corp + (incorp or 0)
+            elif not banque and corp is None and incorp is None:
+                # Le document ne detaille pas : une ligne pour les deux.
+                valeurs["capex"] = lus.get((an, "capex_global"))
             # L'EBE couvre le resultat d'exploitation plus les dotations nettes :
             # plus petit que lui, l'un des deux est un sous-total voisin (NEI-CEDA
             # 2021 : 0,787 contre 0,788). On ne garde ni l'un ni l'autre.
