@@ -71,7 +71,9 @@ NUMERO = re.compile(r"^\s*\d{1,2}\s+(?=[^\d\s])")
 # Un pourcentage ou un decimal (« +11,0% », « 83,5 ») : jamais un montant
 # de ces tableaux, qui sont en unites entieres.
 DECIMAL = re.compile(r"[~+\-]?\d+[,.]\d+\s*%?|[~+\-]?\d+\s*%")
-GROUPE = re.compile(r"^([(\-−]?)(\d+)\)?$")
+# Un signe : tiret, parenthese, ou « ~ », que l'OCR rend pour un tiret
+# (« XF RESULTAT FINANCIER ~2 437 531 586 » chez CIE).
+GROUPE = re.compile(r"^([(\-−~]?)(\d+)\)?$")
 FACTEURS = (1.0, 1e3, 1e6, 1e9)
 FENETRE = 25
 MAX_COLONNES = 5
