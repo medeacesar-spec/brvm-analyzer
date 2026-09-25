@@ -48,6 +48,14 @@ POSTES = {
         r"acquisitions?\s+d.?immobilisations\s+corporelles"),
     "capex_incorporelles": re.compile(
         r"acquisitions?\s+d.?immobilisations\s+incorporelles"),
+    # Une seule ligne pour les deux (25/09/2026) : « Decaissements lies aux
+    # acquisitions d'immobilisations » (SITAB), « Acquisitions
+    # d'immobilisations corporelles et incorporelles » (Sonatel, Orange CI).
+    # 67 des 117 investissements manquants avaient un tableau de flux, que
+    # les deux motifs separes ne reconnaissaient pas.
+    "capex_global": re.compile(
+        r"acquisitions?\s+d.?immobilisations(\s+corporelles\s+et\s+incorporelles"
+        r"|\s+incorporelles\s+et\s+corporelles)?(?!\s*(corporelles|incorporelles|financieres))"),
     # Les soldes de bilan (25/09/2026). Un total de fin N figure dans le
     # bilan N et dans le comparatif du bilan N+1, quelle que soit la mise en
     # page : c'est ce qui permet de lire les etats resumes (SITAB, Nestle),
