@@ -10,6 +10,11 @@ UNE LECTURE N'EST RETENUE QUE SI
     RBE +/- cout du risque = resultat d'exploitation, pour celles des deux
     identites dont les postes sont lus.
 
+LES ENCOURS (credits et depots de la clientele) se lisent autrement : par
+le chainage des comparatifs (voir `lecture_bancaire.encours`). Un ecart
+grossier (facteur deux) est corrige avec `--corriger` ; un ecart modere,
+qui peut tenir au perimetre, est seulement liste.
+
 UNE VALEUR N'EST CONFIRMEE QUE PAR DEUX DOCUMENTS
 
 L'exercice N se lit dans le document N (colonne de l'exercice) et dans le
@@ -41,7 +46,7 @@ from collections import defaultdict
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from analysis.lecture_bancaire import lire_exercice, _egal  # noqa: E402
+from analysis.lecture_bancaire import chainer, encours, lire_exercice, _egal  # noqa: E402
 from data.db import read_sql_df  # noqa: E402
 from scripts import recouper_par_lecteur as R  # noqa: E402
 
@@ -105,6 +110,56 @@ def lectures(titre: str = None) -> tuple:
     return lu, connu, rejets
 
 
+# Un encours de clientele vaut entre 2 et 60 fois le PNB de l'exercice
+# (SGBCI : 10 fois). L'ecart entre deux unites etant de mille, une seule
+# unite tombe dans cette bande : c'est ainsi qu'on la fixe, quand le
+# document l'annonce mal (SIB : un tableau en millions lu en milliers).
+BANDE_PNB = (2, 60)
+# Au-dela d'un facteur deux, la base n'a pas une autre definition de
+# l'encours : elle a tort (SGBCI 2022-2024, dix fois l'exercice precedent).
+# En deca, l'ecart peut tenir au perimetre (social ou consolide, brut ou
+# net) : on le liste, a lire.
+GROSSIER = 2.0
+
+
+def encours_chaines(titre: str = None) -> list:
+    """[(ticker, exercice, champ, valeur, en_base)] : les encours de fin
+    d'exercice communs aux documents N et N+1, remis a l'unite par le PNB."""
+    base = read_sql_df("SELECT ticker, fiscal_year, revenue, loans, deposits "
+                       "FROM fundamentals WHERE sector = 'Banque'")
+    connu = {(r.ticker, int(r.fiscal_year)): r for r in base.itertuples()}
+    banques = set(base.ticker)
+    lus = {}
+    for f in sorted(os.listdir(R.DOSSIER)):
+        m = R.FICHIER.match(f)
+        if not m or m.group(1) not in banques or (titre and m.group(1) != titre):
+            continue
+        try:
+            texte, _ = R.texte(os.path.join(R.DOSSIER, f), True)
+        except Exception:                                        # noqa: BLE001
+            continue
+        if not texte:
+            continue
+        for champ, valeurs in encours(texte).items():
+            lus.setdefault((m.group(1), int(m.group(2)), champ), set()).update(valeurs)
+    sortie = []
+    for (t, a, champ), valeurs in sorted(lus.items()):
+        ligne = connu.get((t, a))
+        pnb = float(ligne.revenue) if ligne is not None and ligne.revenue == ligne.revenue else None
+        if not pnb:
+            continue
+        retenus = []
+        for v in chainer(valeurs, lus.get((t, a + 1, champ), set())):
+            for f in (1e-6, 1e-3, 1.0, 1e3, 1e6):
+                if BANDE_PNB[0] <= v * f / pnb <= BANDE_PNB[1]:
+                    retenus.append(v * f)
+        if len(retenus) != 1:                    # rien, ou deux candidats
+            continue
+        b = getattr(ligne, champ)
+        sortie.append((t, a, champ, retenus[0], float(b) if b == b and b is not None else None))
+    return sortie
+
+
 def main(ecrire: bool, titre: str = None, corriger: bool = False) -> None:
     lu, connu, rejets = lectures(titre)
     Md = 1e9
@@ -150,6 +205,25 @@ def main(ecrire: bool, titre: str = None, corriger: bool = False) -> None:
           f" · trous {len(trous)} · ecarts {len(ecarts)}) · un seul document : {len(seules)}"
           f" · desaccords : {len(desaccords)}")
 
+    print("\nENCOURS — chaines entre deux documents consecutifs")
+    en_trou, en_ecart, a_lire = [], [], []
+    for t, a, c, v, b in encours_chaines(titre):
+        if not DEBUT <= a <= FIN:
+            continue
+        if b is None:
+            issue = "TROU"
+            en_trou.append((t, a, c, v))
+        elif _egal(v, b):
+            issue = "concorde"
+        elif not 1 / GROSSIER <= v / b <= GROSSIER:
+            issue = "ECART GROSSIER"
+            en_ecart.append((t, a, c, v, b))
+        else:
+            issue = "ecart a lire (perimetre ?)"
+            a_lire.append((t, a, c, v, b))
+        print(f"  {t:9} {a} {c:9} {v/Md:10.3f} Md  "
+              + (f"base {b/Md:10.3f} Md  " if b is not None else "") + issue)
+
     if not ecrire:
         print("\nMode simulation : rien n'a ete ecrit.")
         return
@@ -159,7 +233,14 @@ def main(ecrire: bool, titre: str = None, corriger: bool = False) -> None:
         for t, a, p, c, v, b, docs in trous:
             conn.execute(f"UPDATE fundamentals SET {c} = ?, updated_at = CURRENT_TIMESTAMP "
                          f"WHERE ticker = ? AND fiscal_year = ? AND {c} IS NULL", (v, t, a))
+        for t, a, c, v in en_trou:
+            conn.execute(f"UPDATE fundamentals SET {c} = ?, updated_at = CURRENT_TIMESTAMP "
+                         f"WHERE ticker = ? AND fiscal_year = ? AND {c} IS NULL", (v, t, a))
         if corriger:
+            for t, a, c, v, b in en_ecart:
+                print(f"  corrige {t} {a} {c} : {b/Md:.3f} -> {v/Md:.3f} Md")
+                conn.execute(f"UPDATE fundamentals SET {c} = ?, updated_at = CURRENT_TIMESTAMP "
+                             f"WHERE ticker = ? AND fiscal_year = ?", (v, t, a))
             for t, a, p, c, v, b, docs in ecarts:
                 print(f"  corrige {t} {a} {c} : {b/Md:.3f} -> {v/Md:.3f} Md")
                 conn.execute(f"UPDATE fundamentals SET {c} = ?, updated_at = CURRENT_TIMESTAMP "
@@ -167,8 +248,9 @@ def main(ecrire: bool, titre: str = None, corriger: bool = False) -> None:
         conn.commit()
     finally:
         conn.close()
-    print(f"\n{len(trous)} trou(s) comble(s)"
-          + (f", {len(ecarts)} ecart(s) corrige(s)." if corriger else "."))
+    print(f"\n{len(trous) + len(en_trou)} trou(s) comble(s)"
+          + (f", {len(ecarts) + len(en_ecart)} ecart(s) corrige(s)." if corriger else ".")
+          + f" {len(a_lire)} ecart(s) d'encours a lire, non touches.")
 
 
 if __name__ == "__main__":
