@@ -6,6 +6,7 @@ brvm.org reste la source de reference : c'est la que les emetteurs deposent leur
 
 - **Pas de document annuel** pour un exercice clos : BOA Niger 2024 et 2025 (seulement le rapport du CA et celui des CAC).
 - **Scan illisible** : les chiffres sortent faux ou incomplets, et les identites comptables (PNB − charges = RBE, EBE − dotations = resultat d'exploitation) ne tombent pas.
+- **Grille sectorielle incomplete** : le document de brvm.org donne le PNB et le resultat, pas les charges ni le RBE, ou les donne en image. Le site de l'emetteur publie souvent les memes etats en texte natif (Oragroup 2025 sur orabank.net).
 - **Introduction recente** : Bridge Bank Group CI, cotee le 24/09/2026, sans etats financiers sur brvm.org.
 
 ## Ou chercher, dans l'ordre
