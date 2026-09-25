@@ -252,3 +252,69 @@ def lire_exercice(texte: str, pnb: float, rn: float = None) -> list:
         lu["_rn"] = rn is not None and "rn" in lu and _egal(lu["rn"], rn)
         sortie.append(lu)
     return sortie
+
+
+# --- Les encours : credits et depots de la clientele ------------------------
+#
+# LE CHAINAGE DES COMPARATIFS
+#
+# Un solde de fin d'exercice figure dans DEUX documents consecutifs : celui de
+# l'exercice N (sa colonne) et celui de N+1 (le comparatif). Le seul montant
+# commun aux deux lignes est donc l'encours de fin N — sans ancre, sans
+# supposer l'ordre des colonnes. C'est ainsi qu'ont ete trouves les encours
+# SGBCI 2022-2024, que la base portait a dix fois l'exercice PRECEDENT.
+#
+# Seuls les libelles du plan comptable bancaire sont lus : les rapports
+# d'activite publient aussi des encours MOYENS (« Credits a la clientele
+# 1 809 159 2 107 556 »), qui se chainent de la meme facon et
+# brouilleraient la lecture.
+ENCOURS = {
+    "loans": re.compile(r"creances\s+sur\s+la\s+clientele"),
+    "deposits": re.compile(r"dettes\s+a\s+l.egard\s+de\s+la\s+clientele"),
+}
+
+
+def encours(texte: str) -> dict:
+    """{champ: {montants candidats, en FCFA}} lus sur les lignes du plan
+    comptable bancaire, tous decoupages confondus."""
+    from analysis.lecture_syscohada import _echelle, echelles_par_ligne
+    lignes = texte.split("\n")
+    echelles = echelles_par_ligne(lignes, _echelle(texte))
+    sortie = {c: set() for c in ENCOURS}
+    for ligne, echelle in zip(lignes, echelles):
+        plie = _plier(ligne)
+        for champ, motif in ENCOURS.items():
+            m = motif.search(plie)
+            if not m:
+                continue
+            gs = groupes(ligne[m.end():])
+            for k in range(1, MAX_COLONNES + 1):
+                for d in decoupages(gs, k):
+                    sortie[champ].update(abs(v) * echelle for v in d if abs(v) >= 1000)
+    return sortie
+
+
+def _chiffres_utiles(v: float) -> str:
+    return str(int(round(v))).rstrip("0")
+
+
+def chainer(avant: set, apres: set) -> list:
+    """Les montants communs a deux documents consecutifs.
+
+    Le decoupage exhaustif produit des MORCEAUX : « 1 872 917 » donne aussi
+    « 1 872 » et « 872 917 », que l'on retrouve evidemment dans l'autre
+    document. Un montant commun dont les chiffres sont le debut ou la fin
+    d'un autre montant commun est un morceau : on l'ecarte.
+    """
+    communs = []
+    for a in sorted(avant):
+        if any(_egal(a, b) for b in apres) and not any(_egal(a, c) for c in communs):
+            communs.append(a)
+    entiers = []
+    for a in communs:
+        ca = _chiffres_utiles(a)
+        if not any(len(_chiffres_utiles(b)) > len(ca)
+                   and (_chiffres_utiles(b).startswith(ca) or _chiffres_utiles(b).endswith(ca))
+                   for b in communs):
+            entiers.append(a)
+    return entiers
