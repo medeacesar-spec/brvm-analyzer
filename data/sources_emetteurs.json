@@ -44,7 +44,8 @@
       "Etats financiers 2021, 2022, 2023 (texte natif)",
       "Resultats au 31 decembre (comptes resumes, 2021-2024)",
       "Rapports d'activite trimestriels, dont le 4e trimestre (encours et resultat de l'annee)",
-      "Rapports annuels 2024 et 2025"
+      "Rapports annuels 2024 et 2025",
+      "Rapport annuel 2025 : bilan compare 2024-2025 page 56 (total actif, depots, credits, capitaux propres)"
     ],
     "pourquoi": "Les etats 2024 et 2025 de brvm.org sont des scans : l'OCR perd le bilan (depots, total) et deforme des montants (resultat net 2024 lu « 10 084 » pour 19 984).",
     "attention": "Les noms de fichier portent des accents decomposes (« dactivite%CC%81 ») : copier l'URL telle que la page la donne.",
