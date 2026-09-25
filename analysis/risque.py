@@ -97,7 +97,9 @@ FENETRES = [
     ("5 ans", 60),
     ("8 ans", 96),
     ("10 ans", 120),
-    ("Tout l'historique", None),
+    # « Max » : tout l'historique disponible du titre, variable d'un titre a
+    # l'autre (28 ans pour Sonatel, 18 mois pour BICI Benin).
+    ("Max", None),
 ]
 FENETRE_DEFAUT = None
 MINIMUM_PAIRS = 3                 # une médiane sur deux sociétés décrit une société

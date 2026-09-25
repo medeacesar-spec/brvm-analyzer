@@ -2145,10 +2145,28 @@ def _render_risque(ticker, fundamentals):
                                  MESURES_RISQUE, MESURES_LIQUIDITE,
                                  EXPLICATIONS, RESUMES, TAUX_SANS_RISQUE)
 
+    # La fenetre de mesure, comme dans le portefeuille : 3, 5, 8, 10 ans ou
+    # tout l'historique — seules celles que l'historique du titre couvre.
+    # Posee AVANT le calcul : apres, elle n'agirait qu'au rerun suivant.
     try:
-        from utils.ui_helpers import fenetre_risque as _fenetre_risque
-        profil = profil_de_risque(ticker, fundamentals.get("sector"),
-                                  _fenetre_risque())
+        from data.db import read_sql_df
+        _mois = int(read_sql_df(
+            "SELECT COUNT(*) AS n FROM price_monthly WHERE ticker = ? AND close > 0",
+            params=(ticker,)).iloc[0]["n"])
+    except Exception:                                           # noqa: BLE001
+        _mois = None
+    from utils.ui_helpers import selecteur_fenetre_risque
+    _fenetre = selecteur_fenetre_risque(f"titre_fenetre_risque_{ticker}", aide=False,
+                                        mois_disponibles=_mois)
+    if _mois:
+        _ans, _reste = divmod(_mois, 12)
+        _duree = (f"{_ans} an{'s' if _ans > 1 else ''}" if _ans else "") + (
+            f"{' et ' if _ans and _reste else ''}{_reste} mois" if _reste else "")
+        st.caption(f"Historique disponible : **{_duree}** "
+                   f"de cours mensuels. La fenêtre est commune à toute l'application "
+                   f"(portefeuille, screening, classement).")
+    try:
+        profil = profil_de_risque(ticker, fundamentals.get("sector"), _fenetre)
     except Exception as err:                                    # noqa: BLE001
         st.caption(f"Mesures de risque indisponibles : {err}")
         return

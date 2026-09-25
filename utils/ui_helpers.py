@@ -726,24 +726,35 @@ def fenetre_risque() -> int:
     return st.session_state.get(CLE_FENETRE_RISQUE, FENETRE_DEFAUT)
 
 
-def selecteur_fenetre_risque(cle: str, aide: bool = True) -> int:
+def selecteur_fenetre_risque(cle: str, aide: bool = True,
+                             mois_disponibles: int = None) -> int:
     """Pose le sélecteur et renvoie la fenêtre retenue.
 
     `cle` distingue les widgets d'une page à l'autre ; la VALEUR, elle, est
     partagée par `CLE_FENETRE_RISQUE`. Streamlit exige des clés de widget
     uniques, ce qui interdit de poser le même sélecteur deux fois — d'où ce
     détour.
+
+    `mois_disponibles` : l'historique du titre, en mois. Une fenêtre qui le
+    dépasse n'est pas proposée — dix ans demandés sur six de cotation
+    donneraient les mêmes chiffres que « tout l'historique » sous une
+    étiquette fausse. Quand la fenêtre partagée dépasse l'historique du
+    titre, celui-ci est lu sur tout son historique SANS modifier le réglage
+    commun : le portefeuille garde ses dix ans.
     """
     from analysis.risque import FENETRES
-    libelles = [lib for lib, _ in FENETRES]
-    par_libelle = dict(FENETRES)
+    offertes = [(lib, v) for lib, v in FENETRES
+                if v is None or mois_disponibles is None or v <= mois_disponibles]
+    libelles = [lib for lib, _ in offertes]
+    par_libelle = dict(offertes)
     actuelle = fenetre_risque()
-    courant = next((lib for lib, v in FENETRES if v == actuelle), libelles[-1])
+    courant = next((lib for lib, v in offertes if v == actuelle), libelles[-1])
 
     choix = st.segmented_control(
         "Fenêtre de mesure", libelles, default=courant, key=cle,
     ) or courant
-    st.session_state[CLE_FENETRE_RISQUE] = par_libelle[choix]
+    if par_libelle[choix] != par_libelle[courant] or actuelle in par_libelle.values():
+        st.session_state[CLE_FENETRE_RISQUE] = par_libelle[choix]
 
     if aide:
         st.caption(
