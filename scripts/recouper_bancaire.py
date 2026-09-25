@@ -160,7 +160,8 @@ def encours_chaines(titre: str = None) -> list:
     return sortie
 
 
-def main(ecrire: bool, titre: str = None, corriger: bool = False) -> None:
+def main(ecrire: bool, titre: str = None, corriger: bool = False,
+         un_document: bool = False) -> None:
     lu, connu, rejets = lectures(titre)
     Md = 1e9
     confirmees, seules, desaccords = [], [], []
@@ -199,6 +200,21 @@ def main(ecrire: bool, titre: str = None, corriger: bool = False) -> None:
         print()
 
     confirmees = [x for x in confirmees if DEBUT <= x[1] <= FIN]
+    if un_document:
+        # Decision du 25/09 (sonde de vraisemblance) : les lectures a un seul
+        # document, soldes enchaines, s'ecrivent aussi — la base portait des
+        # resultats d'exploitation TRIMESTRIELS dans ses lignes annuelles
+        # (NSIA 2025 : 7,94 Md, celui du T1 ; le document annuel dit 42,77).
+        # Meme garde-fou que pour le compte de resultat : un montant lu a
+        # l'identique pour deux exercices du meme titre trahit des colonnes
+        # melees et n'est pas ecrit.
+        par_poste = defaultdict(list)
+        for t, a, p, c, v, b, docs in seules:
+            par_poste[(t, c)].append((a, v))
+        doubles = {(t, a, c) for (t, c), lus in par_poste.items()
+                   for a, v in lus for a2, v2 in lus if a2 != a and _egal(v, v2)}
+        confirmees = confirmees + [x for x in seules if DEBUT <= x[1] <= FIN
+                                   and (x[0], x[1], x[3]) not in doubles]
     trous = [x for x in confirmees if x[5] is None]
     ecarts = [x for x in confirmees if x[5] is not None and not _egal(x[4], x[5])]
     print(f"confirmees : {len(confirmees)} (concordent {len(confirmees)-len(trous)-len(ecarts)}"
@@ -259,5 +275,7 @@ if __name__ == "__main__":
     ap.add_argument("--ecrire", action="store_true")
     ap.add_argument("--corriger", action="store_true",
                     help="avec --ecrire : remplace aussi les ecarts confirmes par deux documents")
+    ap.add_argument("--un-document", action="store_true",
+                    help="ecrit aussi les lectures a un seul document (decision du 25/09)")
     a = ap.parse_args()
-    main(a.ecrire, a.titre, a.corriger)
+    main(a.ecrire, a.titre, a.corriger, a.un_document)
