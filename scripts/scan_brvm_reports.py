@@ -200,23 +200,52 @@ def _make_title(report_type: str, year: int, ticker: str) -> str:
     return f"{type_label} {year} - {name}"
 
 
+PAGES_MAX = 15      # Sonatel, le titre le plus prolixe, en compte six
+# En lisant toutes les pages, la collecte remonte jusqu'a 1998. L'application
+# travaille sur les cinq derniers exercices : au-dela de 2018, les liens
+# encombreraient `report_links` sans servir.
+ANNEE_MIN = 2018
+
+
 def scrape_company_pdfs(slug: str, session: requests.Session) -> list[dict]:
     """Retourne la liste des PDFs trouvés sur la page société brvm.org.
 
     Chaque dict contient : url, report_type, fiscal_year.
     """
+    # TOUTES LES PAGES, pas la premiere. La page societe est paginee — Sonatel
+    # porte 103 documents sur six pages — et les exercices anciens sont sur
+    # les dernieres. En ne lisant que la premiere, la collecte avait laisse de
+    # cote dix-huit exercices annuels 2021-2025 pourtant publies (Sonatel,
+    # Ecobank CI, Total CI, SITAB 2021 ; Orange CI 2022 ; SICOR 2025…).
     url = f"https://www.brvm.org/fr/rapports-societe-cotes/{slug}"
-    try:
-        resp = session.get(url, timeout=30)
-        resp.raise_for_status()
-    except requests.RequestException as e:
-        print(f"  ! [{slug}] HTTP error: {e}")
-        return []
+    liens: list = []
+    for page in range(PAGES_MAX):
+        resp = None
+        for essai in range(3):      # brvm.org est parfois lent : trois essais
+            try:
+                resp = session.get(url + (f"?page={page}" if page else ""), timeout=60)
+                resp.raise_for_status()
+                break
+            except requests.RequestException as e:
+                resp = None
+                if essai == 2:
+                    print(f"  ! [{slug}] page {page} : {e}")
+                time.sleep(5)
+        if resp is None:
+            break
+        page_liens = BeautifulSoup(resp.text, "lxml").find_all("a", href=True)
+        pdf_page = [a for a in page_liens if a["href"].lower().endswith(".pdf")]
+        # Au-dela de la derniere page, le site rend une page vide ou repete
+        # la precedente : on s'arrete des qu'aucun document n'est nouveau.
+        nouveaux = [a for a in pdf_page if a["href"] not in {x["href"] for x in liens}]
+        if not nouveaux:
+            break
+        liens.extend(nouveaux)
+        time.sleep(1)
 
-    soup = BeautifulSoup(resp.text, "lxml")
     pdfs: list[dict] = []
     seen_urls: set[str] = set()
-    for a in soup.find_all("a", href=True):
+    for a in liens:
         href = a["href"]
         if not href.lower().endswith(".pdf"):
             continue
@@ -227,7 +256,7 @@ def scrape_company_pdfs(slug: str, session: requests.Session) -> list[dict]:
             continue
         seen_urls.add(href)
         report_type, year = _classify_pdf(href)
-        if not report_type or year is None:
+        if not report_type or year is None or year < ANNEE_MIN:
             continue
         pdfs.append({
             "url": href, "report_type": report_type, "fiscal_year": year,
