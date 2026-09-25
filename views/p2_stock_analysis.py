@@ -1599,75 +1599,46 @@ def _exercice_le_plus_complet(fundamentals, ratios_courants,
                               exercice_pairs=None):
     """Choisit l'exercice sur lequel lire la grille sectorielle.
 
-    La fiche affiche le dernier exercice ayant un chiffre d'affaires et un
-    resultat net. Quand cet exercice n'est alimente que par des publications
-    trimestrielles, ses postes de FLUX sont absents — la regle posee pour ne
-    pas melanger les periodes les y interdit — et la grille sort vide alors
-    que la societe a bel et bien publie les chiffres, un ou deux ans plus tot.
+    LE DERNIER EXERCICE ANNUEL, TOUJOURS (25/09/2026). La grille retenait
+    jusqu'ici, parmi l'exercice affiche et les trois precedents, celui qui
+    REMPLISSAIT LE MIEUX la grille : un indicateur manquant en 2025 suffisait
+    a renvoyer toute la grille en 2024 ou 2023 — six titres sur quarante-huit
+    (les BOA, CFAO, Oragroup, SODECI) etaient juges sur des comptes d'un ou
+    deux ans, alors que leur exercice 2025 est publie. Un indicateur absent
+    vaut mieux qu'une grille d'une autre annee : on le montre absent.
 
-    Ecobank Transnational en est l'exemple : la fiche affiche 2026, ou seuls
-    les depots sont connus, tandis que l'exercice 2024 porte le resultat brut
-    d'exploitation, les credits et les depots. On lit donc la grille sur
-    l'exercice le plus complet, et on indique lequel.
-
-    `exercice_pairs` est l'exercice sur lequel la comparaison aux pairs lit ce
-    meme titre — le dernier exercice ANNUEL. La meme page ne devrait pas
-    afficher deux fois le meme indicateur sur deux annees differentes : la SIB
-    lisait sa grille sur 2023 quand sa position sectorielle lisait 2024.
-    L'exercice des pairs est donc PREFERE — mais a egalite de remplissage
-    seulement. Aligner coute que coute aurait fait perdre a la SIB son cout du
-    risque, qui n'existe que sur 2023 : renoncer a l'indicateur central d'une
-    banque pour uniformiser un affichage serait un mauvais echange. Quand les
-    deux exercices divergent malgre tout, chaque bloc porte le sien et
-    l'ecart est annonce plutot que subi.
+    Seule substitution permise : l'exercice affiche par la fiche n'est
+    alimente que par des publications de periode (2026 au premier trimestre,
+    Ecobank Transnational). La grille lit alors le dernier exercice ANNUEL —
+    celui, aussi, sur lequel la comparaison aux pairs lit ce titre.
 
     Retourne (ratios, exercice) — l'exercice etant None quand c'est celui que
     la fiche affiche deja, donc sans rien a signaler.
     """
-    from analysis.sectors import profil_secteur
     from analysis.fundamental import compute_ratios
-    from data.storage import get_fundamentals
-
-    grille = profil_secteur(fundamentals.get("sector")).get("grille") or []
-    cles = [cle for _, cle, _, _ in grille]
-
-    def _remplies(ratios):
-        return sum(1 for c in cles if ratios.get(c) is not None)
+    from data.storage import exercices_annuels, get_fundamentals
 
     ticker = fundamentals.get("ticker")
     annee_courante = fundamentals.get("fiscal_year")
-
-    meilleur = _remplies(ratios_courants)
-    retenus, annee_retenue = ratios_courants, None
-
-    def _essayer(annee, prefere=False):
-        """Retient `annee` si elle remplit mieux la grille — ou aussi bien,
-        quand c'est l'exercice des pairs : a egalite, la coherence tranche."""
-        nonlocal meilleur, retenus, annee_retenue
-        if not annee or annee == annee_courante:
-            return
-        try:
-            autre = get_fundamentals(ticker, fiscal_year=annee)
-            ratios_autre = compute_ratios(autre) if autre else None
-        except Exception:
-            return
-        if not ratios_autre:
-            return
-        combien = _remplies(ratios_autre)
-        if combien > meilleur or (prefere and combien == meilleur and combien):
-            meilleur = combien
-            retenus, annee_retenue = ratios_autre, autre.get("fiscal_year")
-
-    if meilleur >= len(cles) or not ticker or not annee_courante:
+    if not ticker or not annee_courante:
         return ratios_courants, None
-
-    # Les reculs d'abord, l'exercice des pairs ensuite : a remplissage egal
-    # c'est lui qui doit l'emporter, et il ne le peut qu'en passant en dernier.
-    for recul in range(1, 4):
-        _essayer(annee_courante - recul)
-    _essayer(exercice_pairs, prefere=True)
-
-    return retenus, annee_retenue
+    try:
+        annuels = exercices_annuels([ticker]).get(ticker) or set()
+    except Exception:
+        annuels = set()
+    if annee_courante in annuels:
+        return ratios_courants, None
+    cible = max((a for a in annuels if a < annee_courante), default=None) or exercice_pairs
+    if not cible or cible == annee_courante:
+        return ratios_courants, None
+    try:
+        autre = get_fundamentals(ticker, fiscal_year=cible)
+        ratios_autre = compute_ratios(autre) if autre else None
+    except Exception:
+        return ratios_courants, None
+    if not ratios_autre:
+        return ratios_courants, None
+    return ratios_autre, autre.get("fiscal_year")
 
 
 def _render_tendance_periodes(ticker):
