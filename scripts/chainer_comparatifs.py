@@ -32,8 +32,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from analysis.chainage import (POSTES, RESULTAT_NET, TOTAL_BILAN, VARIANTES,  # noqa: E402
-                               candidats, dette, facteur, lire)
+from analysis.chainage import (POSTES, RESULTAT_NET, SIGNES, TOTAL_BILAN,  # noqa: E402
+                               VARIANTES, candidats, dette, facteur, lire)
 from analysis.lecture_bancaire import _egal  # noqa: E402
 from data.db import read_sql_df  # noqa: E402
 from scripts import recouper_par_lecteur as R  # noqa: E402
@@ -173,6 +173,12 @@ def main(ecrire: bool, titre: str = None, corriger: bool = False) -> None:
                 b = float(b) if b == b and b is not None else None
                 if b is None:
                     issue = "TROU"
+                # UN SIGNE CONTRAIRE n'est pas une concordance : `_egal`
+                # compare des valeurs absolues, et le resultat d'exploitation
+                # de Filtisac 2021 (+1,049 en base, -1,049 au document)
+                # passait pour confirme.
+                elif c in SIGNES and (v < 0) != (b < 0):
+                    issue = "GROSSIER"
                 elif _egal(v, b):
                     issue = "concorde"
                 elif not 1 / GROSSIER <= abs(v / b) <= GROSSIER or (v < 0) != (b < 0) and c == "equity":

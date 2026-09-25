@@ -231,6 +231,19 @@ FACTEURS = (1.0, 1e3, 1e6)
 SIGNES = ("ebitda", "ebit", "equity", "cfo")
 
 
+# LE SIGNE DETACHE (25/09/2026). Les etats SYSCOHADA impriment le signe dans
+# sa propre cellule : « RESULTAT D'EXPLOITATION - 4 860 967 440 - 2 715 412 080 ».
+# Le tiret isole etait perdu, et les pertes d'exploitation de Sucrivoire et de
+# Filtisac (2021) s'ecrivaient en benefices. On ne touche pas au texte — le
+# rattacher au premier chiffre derangeait la reconstitution des montants
+# coupes (« - 8 82 181 ») — : on regarde, pour chaque montant lu, si un tiret
+# ou une parenthese le precede dans la ligne, espaces parasites comprises.
+def _signe_detache(ligne: str, valeur: float) -> bool:
+    chiffres = str(int(round(abs(valeur))))
+    motif = r"[-−(]\s*" + r"\s?".join(chiffres) + r"(?!\d)"
+    return re.search(motif, ligne) is not None
+
+
 def candidats(texte: str, motif) -> dict:
     """{valeur absolue en unites du document: negative ?} sur les lignes
     du poste.
@@ -262,7 +275,8 @@ def candidats(texte: str, motif) -> dict:
                             montants_tetes_fusionnees):
                 for v in lecture(reste):
                     if abs(v) >= 100:
-                        sortie[abs(v)] = sortie.get(abs(v), False) or v < 0
+                        sortie[abs(v)] = (sortie.get(abs(v), False) or v < 0
+                                          or _signe_detache(ligne[m.end():], v))
     return sortie
 
 
