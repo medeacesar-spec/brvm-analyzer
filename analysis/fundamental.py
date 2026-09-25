@@ -720,14 +720,20 @@ def _compute_flags(ratios: dict, is_bank: bool, secteur: str = None) -> dict:
     # P/B
     pb = ratios.get("pb")
     if pb is not None:
-        if is_bank:
-            flags["pb"] = ("OK", "Banque - comparer ROE")
+        # Les banques passaient toutes « OK » : BOA Niger a 2,96 fois ses
+        # fonds propres pour un ROE de 1 % s'affichait « Bon » sous un seuil
+        # de 2 (26/09/2026). Meme seuil pour tous ; pour une banque, le motif
+        # rappelle le ROE qui doit justifier la prime.
+        _roe = ratios.get("roe")
+        if is_bank and pb >= 2.0:
+            flags["pb"] = ("Vigilance", "Élevé" + (f" pour un ROE de {_roe*100:.0f} %"
+                                                   if _roe is not None else ""))
         elif pb < 1.0:
             flags["pb"] = ("OK", "Sous la valeur comptable")
         elif pb < 2.0:
             flags["pb"] = ("OK", "Raisonnable")
         else:
-            flags["pb"] = ("Vigilance", "Eleve")
+            flags["pb"] = ("Vigilance", "Élevé")
     else:
         flags["pb"] = ("Risque", "N/A")
 
