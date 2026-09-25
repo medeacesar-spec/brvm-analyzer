@@ -155,17 +155,82 @@ def lignes(mots: list) -> list:
     return sortie
 
 
-def lire_pdf(chemin: str) -> list:
-    """Toutes les lignes lues par position dans un PDF a texte."""
+ETATS = re.compile(r"chiffre\s+d.?affaires|total\s+(actif|general|bilan)|capitaux\s+propres"
+                   r"|flux\s+de\s+tr|produit\s+net\s+bancaire|resultat\s+net", re.I)
+
+
+def mots_ocr(chemin: str, n: int) -> list:
+    """Les mots d'une page SCANNEE, avec leurs boites, au format de
+    pdfplumber (text, x0, x1, top), en points PDF. easyocr rend parfois un
+    groupe de mots dans une seule boite (« 621 042 ») : on le redecoupe en
+    repartissant la largeur au prorata des caracteres. Cache disque."""
+    import json
+    import os
+    cache = os.path.join(os.path.dirname(chemin), ".ocr_mots",
+                         f"{os.path.basename(chemin)}.{n}.json")
+    if os.path.exists(cache):
+        return json.load(open(cache))
+    import fitz
+    from PIL import Image
+    from data.pdf_extractor import _get_ocr_reader
+    reader = _get_ocr_reader()
+    if reader is None:
+        return []
+    import numpy as np
+    dpi = 300
+    with fitz.open(chemin) as doc:
+        pix = doc[n].get_pixmap(dpi=dpi)
+        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+    echelle = 72 / dpi
+    mots = []
+    for boite, texte, _ in reader.readtext(np.array(img), detail=1, paragraph=False):
+        xs = [p[0] for p in boite]
+        ys = [p[1] for p in boite]
+        x0, x1, top = min(xs) * echelle, max(xs) * echelle, min(ys) * echelle
+        morceaux = texte.split()
+        total = sum(len(m) for m in morceaux) + len(morceaux) - 1 or 1
+        pos = x0
+        for m in morceaux:
+            largeur = (x1 - x0) * len(m) / total
+            mots.append({"text": m, "x0": pos, "x1": pos + largeur, "top": top})
+            pos += largeur + (x1 - x0) / total
+    os.makedirs(os.path.dirname(cache), exist_ok=True)
+    json.dump(mots, open(cache, "w"))
+    return mots
+
+
+def lire_pdf(chemin: str, avec_ocr: bool = False) -> list:
+    """Toutes les lignes lues par position. Les pages sans texte sont lues
+    par OCR si `avec_ocr`, et seulement celles que le cache de texte OCR
+    (`recouper_par_lecteur.texte`) designe comme des etats financiers."""
     import pdfplumber
     sortie = []
+    scans = []
     with pdfplumber.open(chemin) as pdf:
         for n, page in enumerate(pdf.pages):
             try:
                 mots = page.extract_words(use_text_flow=False)
             except Exception:                                    # noqa: BLE001
                 continue
+            if sum(len(m["text"]) for m in mots) < 200:
+                scans.append(n)
+                continue
             sortie += [((n, i), lib, v) for i, lib, v in lignes(mots)]
+    if avec_ocr and scans:
+        import os
+        cache = os.path.join(os.path.dirname(chemin), ".ocr_rangees",
+                             os.path.basename(chemin) + ".txt")
+        pages = open(cache).read().split("\n\f\n") if os.path.exists(cache) else []
+        # Le cache range les pages lues dans l'ordre : toutes les pages d'un
+        # scan (15 au plus), ou les seules pages illisibles.
+        rangs = scans[:len(pages)] if pages else []
+        for n, texte in zip(rangs, pages):
+            if ETATS.search(texte):
+                try:
+                    mots = mots_ocr(chemin, n)
+                except Exception:                                # noqa: BLE001
+                    continue
+                sortie += [((n, i), lib, v) for i, lib, v in lignes(mots)]
     return sortie
 
 

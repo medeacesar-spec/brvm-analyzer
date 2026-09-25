@@ -41,7 +41,7 @@ BORNES = {"ebitda": (0.002, 1.0), "ebit": (0.0, 1.0), "interest_expense": (0.000
           "equity": (0.0, 30.0)}
 
 
-def main(ecrire: bool, corriger: bool) -> None:
+def main(ecrire: bool, corriger: bool, ocr: bool = False) -> None:
     df = read_sql_df("SELECT * FROM fundamentals")
     connu = {}
     for r in df.to_dict("records"):
@@ -58,7 +58,7 @@ def main(ecrire: bool, corriger: bool) -> None:
         t = m.group(1)
         base = {(a, c): v for (tt, a, c), v in connu.items() if tt == t}
         try:
-            lu = lire_document(lire_pdf(os.path.join(R.DOSSIER, f)), base)
+            lu = lire_document(lire_pdf(os.path.join(R.DOSSIER, f), avec_ocr=ocr), base)
         except Exception:                                        # noqa: BLE001
             continue
         par_an = defaultdict(dict)
@@ -139,5 +139,6 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--ecrire", action="store_true")
     ap.add_argument("--corriger", action="store_true")
+    ap.add_argument("--ocr", action="store_true", help="lit aussi les pages scannees (long)")
     a = ap.parse_args()
-    main(a.ecrire, a.corriger)
+    main(a.ecrire, a.corriger, a.ocr)
