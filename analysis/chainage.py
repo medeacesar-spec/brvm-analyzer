@@ -48,10 +48,35 @@ POSTES = {
         r"acquisitions?\s+d.?immobilisations\s+corporelles"),
     "capex_incorporelles": re.compile(
         r"acquisitions?\s+d.?immobilisations\s+incorporelles"),
+    # Les soldes de bilan (25/09/2026). Un total de fin N figure dans le
+    # bilan N et dans le comparatif du bilan N+1, quelle que soit la mise en
+    # page : c'est ce qui permet de lire les etats resumes (SITAB, Nestle),
+    # qui n'ont pas les sous-totaux du bilan SYSCOHADA complet.
+    "total_assets": re.compile(
+        r"total\s+(general|de\s+l.?actif|du\s+bilan|bilan|actif|passif)"
+        r"(?!\s*(immobilise|circulant|non\s+courant|courant|et\s+capitaux))"),
+    "equity": re.compile(
+        r"(total\s+(des\s+)?)?capitaux\s+propres(\s+et\s+ressources\s+assimilees)?"
+        r"(?!\s*(part|attribuable|et\s+passif|consolid|de\s+l|au\s+|du\s+|des\s+))"),
+    "cfo": re.compile(
+        r"flux\s+(net\s+)?de\s+tresorerie\s+(net\s+)?(provenant|lie|genere)s?\s+(des|aux|par\s+les)"
+        r"\s+activites\s+(operationnelles|d.?exploitation)"
+        r"|tresorerie\s+(nette\s+)?generee\s+par\s+les\s+activites\s+d.?exploitation"),
 }
-CHIFFRE_AFFAIRES = re.compile(r"chiffre\s+d.?affaires")
+# Une ligne qui porte le libelle mais pas le poste : les FLUX de capitaux
+# propres du tableau de tresorerie, le tableau de VARIATION des capitaux
+# propres, le passif « total general » d'un bilan fonctionnel...
+EXCLUSIONS = {
+    # « Total du passif et des capitaux propres » est le TOTAL du bilan
+    # (Sonatel 2023 : 2 573,9 Md lus comme capitaux propres).
+    "equity": re.compile(r"(provenant|variation|flux|rentabilite|retour|ratio|passif|autres)"),
+    "total_assets": re.compile(r"(variation|flux|tresorerie)"),
+}
+# Le point d'appui de l'unite : le chiffre d'affaires, ou le produit net
+# bancaire, qui en tient lieu dans la base pour les banques.
+CHIFFRE_AFFAIRES = re.compile(r"chiffre\s+d.?affaires|produit\s+net\s+bancaire")
 FACTEURS = (1.0, 1e3, 1e6)
-SIGNES = ("ebitda", "ebit")
+SIGNES = ("ebitda", "ebit", "equity", "cfo")
 
 
 def candidats(texte: str, motif) -> dict:
@@ -69,8 +94,11 @@ def candidats(texte: str, motif) -> dict:
     from analysis.lecture_syscohada import (montants_alternatifs, montants_de_ligne,
                                             montants_tetes_fusionnees)
     sortie = {}
+    exclusion = next((e for p, e in EXCLUSIONS.items() if POSTES.get(p) is motif), None)
     for ligne in texte.split("\n"):
         plie = _plier(ligne)
+        if exclusion is not None and exclusion.search(plie):
+            continue
         for m in motif.finditer(plie):
             # Deux tableaux cote a cote : on lit ce qui suit CE libelle,
             # jusqu'au premier mot.
