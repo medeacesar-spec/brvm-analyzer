@@ -51,5 +51,16 @@
     "attention": "Les noms de fichier portent des accents decomposes (« dactivite%CC%81 ») : copier l'URL telle que la page la donne.",
     "page_brvm": "https://www.brvm.org/fr/rapports-societe-cotes/bank-africa-sn",
     "verifie_le": "2026-09-25"
+  },
+  "CBIBF.bf": {
+    "societe": "Coris Bank International (Burkina Faso)",
+    "communication_financiere": "https://burkina.coris.bank/rapports-dactivites/",
+    "on_y_trouve": [
+      "Rapport annuel de chaque exercice 2010-2025, en texte natif : bilan compare (poste par poste) et compte de resultat sur trois exercices"
+    ],
+    "pourquoi": "Sur brvm.org, les rapports d'activites annuels 2022-2024 sont des scans sans bilan (ni credits ni depots) et les etats 2025 sortent de l'OCR illisibles.",
+    "attention": "Le rapport 2025 pese 86 Mo.",
+    "page_brvm": "https://www.brvm.org/fr/rapports-societe-cotes/coris-bank-international",
+    "verifie_le": "2026-09-25"
   }
 }
