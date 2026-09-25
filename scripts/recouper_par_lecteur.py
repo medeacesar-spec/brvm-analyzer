@@ -78,7 +78,14 @@ def _ocr(chemin, rangs):
 
 def texte(chemin, avec_ocr):
     """(texte, mode) — le texte natif, les pages illisibles et les scans
-    passes par l'OCR en rangees si `avec_ocr`, avec cache disque."""
+    passes par l'OCR en rangees si `avec_ocr`, avec cache disque. Les
+    milliers a virgule (Nestle CI) sont remis au format des autres."""
+    from analysis.lecture_syscohada import milliers_a_virgule
+    t, mode = _texte(chemin, avec_ocr)
+    return (milliers_a_virgule(t) if t else t), mode
+
+
+def _texte(chemin, avec_ocr):
     with pdfplumber.open(chemin) as pdf:
         pages = [(p.extract_text() or "") for p in pdf.pages]
     a_lire = [i for i, p in enumerate(pages) if _illisible(p)]
