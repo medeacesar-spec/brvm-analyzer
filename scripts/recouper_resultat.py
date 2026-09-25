@@ -20,6 +20,18 @@ Avec --ecrire, les valeurs confirmees comblent les trous ; avec --corriger
 en plus, elles remplacent une valeur de la base qui les contredit (ancienne
 valeur imprimee). Seuls les exercices 2021 a 2025 sont ecrits.
 
+UN SEUL DOCUMENT (--un-document). Decision du 25/09/2026 : une lecture a
+un seul document dont les soldes s'enchainent jusqu'au resultat net de la
+base est ecrite aussi, trous et ecarts. Au controle, ces lectures
+retombaient sur la base 47 fois ; la ou deux documents etaient
+disponibles, c'est toujours la base qui avait tort.
+
+Un garde-fou de plus pour elles : sans colonnes, le lecteur peut apparier
+le RAO d'un exercice a l'impot d'un autre, et l'identite tombe juste quand
+meme. Palm CI rendait ainsi le meme resultat d'exploitation, 19,393 Md,
+pour 2024 et 2025. Une valeur lue a l'identique pour deux exercices du
+meme titre est ecartee — sauf si la base la porte deja ainsi.
+
 Usage :
   python3 scripts/recouper_resultat.py              # simulation
   python3 scripts/recouper_resultat.py --titre CIEC.ci
@@ -28,6 +40,7 @@ Usage :
 from __future__ import annotations
 
 import argparse
+import itertools
 import os
 import sys
 from collections import defaultdict
@@ -84,7 +97,8 @@ def lectures(titre: str = None):
     return lu, connu
 
 
-def main(ecrire: bool, titre: str = None, corriger: bool = False) -> None:
+def main(ecrire: bool, titre: str = None, corriger: bool = False,
+         un_document: bool = False) -> None:
     lu, connu = lectures(titre)
     Md = 1e9
     confirmees, seules, desaccords = [], [], []
@@ -116,6 +130,21 @@ def main(ecrire: bool, titre: str = None, corriger: bool = False) -> None:
         for t, an, p, sources in desaccords:
             print(f"  {t:9} {an} {p:9} " + " · ".join(f"{x/Md:.3f} ({d[:22]})" for x, d in sources))
 
+    if un_document:
+        # Le meme montant lu pour deux exercices : des colonnes melees.
+        par_poste = defaultdict(list)
+        for (t, an, poste), sources in lu.items():
+            par_poste[(t, poste)].append((an, sources[0][0]))
+        doubles = set()
+        for (t, poste), lus in par_poste.items():
+            for (a1, v1), (a2, v2) in itertools.combinations(lus, 2):
+                if a1 != a2 and _egal(v1, v2):
+                    doubles |= {(t, a1, COLONNES[poste]), (t, a2, COLONNES[poste])}
+        retenues = [x for x in seules if (x[0], x[1], x[2]) not in doubles]
+        for x in seules:
+            if (x[0], x[1], x[2]) in doubles:
+                print(f"  ecarte (meme montant deux exercices) : {x[0]} {x[1]} {x[2]} {x[3]/Md:.3f} Md")
+        confirmees = confirmees + retenues
     trous = [x for x in confirmees if x[4] is None]
     ecarts = [x for x in confirmees if x[4] is not None and not _egal(x[3], x[4])]
     print(f"\nconfirmees : {len(confirmees)} (concordent {len(confirmees)-len(trous)-len(ecarts)}"
@@ -148,5 +177,7 @@ if __name__ == "__main__":
     ap.add_argument("--ecrire", action="store_true")
     ap.add_argument("--corriger", action="store_true",
                     help="avec --ecrire : remplace les ecarts confirmes par deux documents")
+    ap.add_argument("--un-document", action="store_true",
+                    help="ecrit aussi les lectures a un seul document (decision du 25/09)")
     a = ap.parse_args()
-    main(a.ecrire, a.titre, a.corriger)
+    main(a.ecrire, a.titre, a.corriger, a.un_document)
