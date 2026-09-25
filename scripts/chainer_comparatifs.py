@@ -32,25 +32,27 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from analysis.chainage import POSTES, candidats, facteur, lire  # noqa: E402
+from analysis.chainage import (POSTES, RESULTAT_NET, TOTAL_BILAN, VARIANTES,  # noqa: E402
+                               candidats, dette, facteur, lire)
 from analysis.lecture_bancaire import _egal  # noqa: E402
 from data.db import read_sql_df  # noqa: E402
 from scripts import recouper_par_lecteur as R  # noqa: E402
 
 DEBUT, FIN = 2021, 2025
-CHAMPS = ("ebitda", "ebit", "interest_expense", "capex", "total_assets", "equity", "cfo")
+CHAMPS = ("ebitda", "ebit", "interest_expense", "capex", "total_assets", "equity", "cfo",
+          "total_debt")
 # Pour une banque, seuls les soldes de bilan : son compte de resultat a son
 # propre lecteur (`recouper_bancaire.py`).
 BANCAIRES = ("total_assets", "equity")
 # Plafonds rapportes au chiffre d'affaires : au-dela, un sous-total voisin
 # ou une autre unite a ete lu.
 PLAFOND = {"ebitda": 1.0, "ebit": 1.0, "interest_expense": 0.3, "capex": 1.5,
-           "total_assets": 100.0, "equity": 30.0, "cfo": 1.5}
+           "total_assets": 100.0, "equity": 30.0, "cfo": 1.5, "total_debt": 10.0}
 # Planchers : en deca, c'est un numero de note ou un pourcentage qui s'est
 # chaine (SAPH, frais financiers « 0,002 Md » pour 224 Md de chiffre
 # d'affaires).
 PLANCHER = {"ebitda": 0.002, "ebit": 0.002, "interest_expense": 0.0005, "capex": 0.001,
-            "total_assets": 0.2, "equity": 0.005, "cfo": 0.001}
+            "total_assets": 0.2, "equity": 0.005, "cfo": 0.001, "total_debt": 0.0005}
 # Au-dela d'un facteur deux, la base n'a pas une autre definition du solde :
 # elle a tort (colonne de variation, copie, unite). En deca, l'ecart peut
 # tenir au perimetre (part du groupe ou total, social ou consolide) : on le
@@ -73,7 +75,7 @@ def _isole(t, an, c, v, lus, connu) -> bool:
 
 
 def main(ecrire: bool, titre: str = None, corriger: bool = False) -> None:
-    base = read_sql_df("SELECT ticker, fiscal_year, revenue, " + ", ".join(CHAMPS)
+    base = read_sql_df("SELECT ticker, fiscal_year, revenue, net_income, " + ", ".join(CHAMPS)
                        + ", sector FROM fundamentals")
     connu = {(r.ticker, int(r.fiscal_year)): r for r in base.itertuples()}
     titres = set(base.ticker)
@@ -91,7 +93,12 @@ def main(ecrire: bool, titre: str = None, corriger: bool = False) -> None:
             continue
         revenus = [float(x.revenue) for x in (connu.get((t, an)), connu.get((t, an - 1)))
                    if x is not None and x.revenue == x.revenue and x.revenue]
-        fct = facteur(texte, revenus)
+        voisins = [x for x in (connu.get((t, an)), connu.get((t, an - 1))) if x is not None]
+        secours = tuple((motif, [float(getattr(x, c)) for x in voisins
+                                 if getattr(x, c) == getattr(x, c) and getattr(x, c)])
+                        for motif, c in ((TOTAL_BILAN, "total_assets"),
+                                         (RESULTAT_NET, "net_income")))
+        fct = facteur(texte, revenus, secours)
         if fct is None:
             continue
         docs = par_titre.setdefault(t, {})
@@ -114,6 +121,15 @@ def main(ecrire: bool, titre: str = None, corriger: bool = False) -> None:
             banque = (ligne.sector or "").lower().startswith("banque")
             valeurs = {c: lus.get((an, c)) for c in ("ebitda", "ebit", "interest_expense",
                                                      "total_assets", "equity", "cfo")}
+            # Un champ a plusieurs libelles possibles : le plus precis qui
+            # se chaine l'emporte (frais financiers SYSCOHADA avant les
+            # charges financieres totales).
+            origine = {}
+            for champ, variantes in VARIANTES.items():
+                v = next((v for v in variantes if lus.get((an, v)) is not None), None)
+                valeurs[champ] = lus[(an, v)] if v else None
+                if v and v != champ:
+                    origine[champ] = v
             if banque:
                 valeurs = {c: v for c, v in valeurs.items() if c in BANCAIRES}
             corp, incorp = lus.get((an, "capex_corporelles")), lus.get((an, "capex_incorporelles"))
@@ -124,6 +140,17 @@ def main(ecrire: bool, titre: str = None, corriger: bool = False) -> None:
             elif not banque and corp is None and incorp is None:
                 # Le document ne detaille pas : une ligne pour les deux.
                 valeurs["capex"] = lus.get((an, "capex_global"))
+            # LA DETTE FINANCIERE se reconstitue par ses composantes, sous
+            # tous leurs libelles (`chainage.DETTE_FORMULES`).
+            if not banque:
+                valeurs["total_debt"] = dette(lus, docs, an)
+                # La dette financiere est une part du passif : plus grande que
+                # le total du bilan, c'est un autre montant qui s'est chaine.
+                bilan = valeurs.get("total_assets") or (
+                    float(ligne.total_assets) if ligne.total_assets == ligne.total_assets
+                    and ligne.total_assets else None)
+                if valeurs["total_debt"] and bilan and valeurs["total_debt"] > abs(bilan):
+                    valeurs["total_debt"] = None
             # L'EBE couvre le resultat d'exploitation plus les dotations nettes :
             # plus petit que lui, l'un des deux est un sous-total voisin (NEI-CEDA
             # 2021 : 0,787 contre 0,788). On ne garde ni l'un ni l'autre.
@@ -157,13 +184,14 @@ def main(ecrire: bool, titre: str = None, corriger: bool = False) -> None:
                     issue = "GROSSIER"
                 else:
                     issue = "ecart"
-                issues[issue].append((t, an, c, v, b))
+                issues[issue].append((t, an, c, v, b, origine.get(c, "")))
 
     for issue in ("TROU", "GROSSIER", "ecart"):
         print(f"\n{issue}")
-        for t, an, c, v, b in issues[issue]:
+        for t, an, c, v, b, o in issues[issue]:
             print(f"  {t:9} {an} {c:17} {v/Md:10.3f} Md"
-                  + (f"  base {b/Md:10.3f} Md  x{v/b:5.2f}" if b else ""))
+                  + (f"  base {b/Md:10.3f} Md  x{v/b:5.2f}" if b else "")
+                  + (f"  [{o}]" if o else ""))
     print(f"\nconcorde : {len(issues['concorde'])} · trous : {len(issues['TROU'])}"
           f" · ecarts grossiers : {len(issues['GROSSIER'])} · ecarts moderes (a lire) : "
           f"{len(issues['ecart'])}")
@@ -173,11 +201,11 @@ def main(ecrire: bool, titre: str = None, corriger: bool = False) -> None:
     from data.db import get_connection
     conn = get_connection()
     try:
-        for t, an, c, v, _ in issues["TROU"]:
+        for t, an, c, v, _, _ in issues["TROU"]:
             conn.execute(f"UPDATE fundamentals SET {c} = ?, updated_at = CURRENT_TIMESTAMP "
                          f"WHERE ticker = ? AND fiscal_year = ? AND {c} IS NULL", (v, t, an))
         if corriger:
-            for t, an, c, v, b in issues["GROSSIER"]:
+            for t, an, c, v, b, _ in issues["GROSSIER"]:
                 print(f"  corrige {t} {an} {c} : {b/Md:.3f} -> {v/Md:.3f} Md")
                 conn.execute(f"UPDATE fundamentals SET {c} = ?, updated_at = CURRENT_TIMESTAMP "
                              f"WHERE ticker = ? AND fiscal_year = ?", (v, t, an))
