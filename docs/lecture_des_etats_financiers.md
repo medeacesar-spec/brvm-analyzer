@@ -166,6 +166,44 @@ Le moteur doit reconnaître **la forme avant le contenu**. Recensées à ce jour
   `totaux?` exige « totau » et ne reconnaît jamais le mot « total ». Cette
   seule lettre a fait échouer Servair, la SODECI et la CIE.
 
+## 7 bis. Ce que la lecture à grande échelle a appris (24-25/09/2026)
+
+Le lecteur `analysis/lecture_syscohada.py`, réglé sur quatorze documents lus
+à la main, a été passé sur les 128 exercices lisibles du fonds
+(`scripts/recouper_par_lecteur.py`). Cinq pièges y sont apparus, qu'aucun
+document de l'étalon ne contenait :
+
+- **Exercice, précédent, variation.** Un tableau à trois colonnes vérifie
+  N − (N-1) = variation, la même égalité que brut − amortissements = net.
+  Seul l'actif SYSCOHADA à **quatre** colonnes autorise la règle brut-net.
+- **Les renvois de note.** « Chiffre d'affaires 4.2 1 776 443 » (Sonatel) :
+  « 4.2 » est la note de l'annexe, pas un groupe de chiffres.
+- **L'unité change dans un même document.** SODECI publie ses comptes
+  SYSCOHADA en milliers puis ses comptes IFRS en millions ; BOA Niger annonce
+  « en millions de F CFA » au milieu du rapport. L'unité se lit **par ligne**,
+  à la dernière mention qui la précède — et une valeur au-delà de 10¹⁴ FCFA
+  trahit une mention qui ne s'appliquait pas.
+- **Deux colonnes à moins de 1 % l'une de l'autre.** Vivo : 604 978 (2025)
+  et 600 708 (2024). Une ancre tolérante à 1 % prend la mauvaise ; elle doit
+  retenir la plus proche, à trois pour mille.
+- **Deux référentiels, deux documents.** Quand un exercice a un document IFRS
+  et un SYSCOHADA, la base suit le SYSCOHADA.
+
+Et trois leçons sur la base elle-même :
+
+- **Des exercices recopiés d'une année sur l'autre.** SIB 2024 = SIB 2023,
+  le résultat SGBCI 2025 = celui de 2024, Onatel 2024 = 2023 ; SAFCA 2025
+  porte le résultat 2024 privé de son signe. La sonde « figé » ne voyait que
+  les égalités exactes.
+- **Une ancre ne vaut que la base qui la fournit.** Le chiffre d'affaires
+  SODECI 2023 en base était la « variation du passif circulant », colonne
+  voisine, lue par un extracteur précédent ; le lecteur l'a retrouvée dans la
+  ligne 2024 et s'est trompé à son tour.
+- **« Fiche = base » n'est pas deux sources.** Le chiffre d'affaires et le
+  résultat ont souvent été remplis depuis la fiche société
+  (`scrape_societe.py`). Quand le document s'oppose à la fiche ET à la base,
+  c'est un document contre une fiche : à lire, pas à écrire (SITAB 2024).
+
 ## 8. Règles de conduite
 
 - **Une valeur fournie s'écrit d'abord et se diagnostique ensuite.** Faire
