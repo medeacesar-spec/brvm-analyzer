@@ -6,7 +6,8 @@
     "on_y_trouve": [
       "Resultats au 31 decembre (comptes resumes au format BRVM)",
       "Rapport annuel complet",
-      "Rapports d'activite trimestriels"
+      "Rapports d'activite trimestriels",
+      "Etats financiers 2021-2023 (EF-xx_AAAA) et rapports annuels 2024-2025 : meme structure que les autres BOA"
     ],
     "pourquoi": "Aucun etat financier 2024 ni 2025 depose sur brvm.org (seulement le rapport du CA a l'AGO et le rapport des CAC). Les etats 2021-2023 de brvm.org sont des scans que l'OCR lit mal.",
     "page_brvm": "https://www.brvm.org/fr/rapports-societe-cotes/bank-africa-ng",
@@ -34,8 +35,8 @@
   },
   "BOA (groupe)": {
     "communication_financiere": "https://bank-of-africa.net/en/home/financial-reports/",
-    "pourquoi": "Rapports annuels du groupe et des filiales. A explorer pour BOA Benin 2022 et BOA CI 2021, sans document annuel sur brvm.org. Chaque filiale a son site boa<pays>.com, meme arborescence /institutionnels/communication-financiere/.",
-    "verifie_le": null
+    "pourquoi": "Chaque filiale a son site boa<pays>.com, meme arborescence /institutionnels/communication-financiere/ ; les six filiales cotees y ont ete relevees le 25/09/2026.",
+    "verifie_le": "2026-09-25"
   },
   "BOAS.sn": {
     "societe": "Bank of Africa Senegal",
@@ -45,7 +46,8 @@
       "Resultats au 31 decembre (comptes resumes, 2021-2024)",
       "Rapports d'activite trimestriels, dont le 4e trimestre (encours et resultat de l'annee)",
       "Rapports annuels 2024 et 2025",
-      "Rapport annuel 2025 : bilan compare 2024-2025 page 56 (total actif, depots, credits, capitaux propres)"
+      "Rapport annuel 2025 : bilan compare 2024-2025 page 56 (total actif, depots, credits, capitaux propres)",
+      "Etats financiers 2021-2023 (EF-xx_AAAA) et rapports annuels 2024-2025 : meme structure que les autres BOA"
     ],
     "pourquoi": "Les etats 2024 et 2025 de brvm.org sont des scans : l'OCR perd le bilan (depots, total) et deforme des montants (resultat net 2024 lu « 10 084 » pour 19 984).",
     "attention": "Les noms de fichier portent des accents decomposes (« dactivite%CC%81 ») : copier l'URL telle que la page la donne.",
@@ -61,6 +63,54 @@
     "pourquoi": "Sur brvm.org, les rapports d'activites annuels 2022-2024 sont des scans sans bilan (ni credits ni depots) et les etats 2025 sortent de l'OCR illisibles.",
     "attention": "Le rapport 2025 pese 86 Mo.",
     "page_brvm": "https://www.brvm.org/fr/rapports-societe-cotes/coris-bank-international",
+    "verifie_le": "2026-09-25"
+  },
+  "BOAB.bj": {
+    "societe": "Bank of Africa Benin",
+    "communication_financiere": "https://www.boabenin.com/institutionnels/communication-financiere/",
+    "on_y_trouve": [
+      "Etats financiers 2021, 2022, 2023 (EF-xx_AAAA, texte natif) : bilan et compte de resultat compares",
+      "Rapports annuels 2024 et 2025 (BOA-RA-...) : comptes de la filiale dans les DERNIERES pages (le debut porte les comptes du groupe, en euros)",
+      "Resultats au 31 decembre, rapports d'activite"
+    ],
+    "pourquoi": "Grille bancaire complete (PNB, charges, RBE, cout du risque, resultat d'exploitation, credits, depots, fonds propres, total bilan) : chaque exercice lu dans deux documents (colonne N et comparatif N+1).",
+    "attention": "Le site peut refuser le certificat a certains outils : curl passe.",
+    "verifie_le": "2026-09-25"
+  },
+  "BOABF.bf": {
+    "societe": "Bank of Africa Burkina Faso",
+    "communication_financiere": "https://www.boaburkinafaso.com/institutionnels/communication-financiere/",
+    "on_y_trouve": [
+      "Etats financiers 2021, 2022, 2023 (EF-xx_AAAA, texte natif) : bilan et compte de resultat compares",
+      "Rapports annuels 2024 et 2025 (BOA-RA-...) : comptes de la filiale dans les DERNIERES pages (le debut porte les comptes du groupe, en euros)",
+      "Resultats au 31 decembre, rapports d'activite"
+    ],
+    "pourquoi": "Grille bancaire complete (PNB, charges, RBE, cout du risque, resultat d'exploitation, credits, depots, fonds propres, total bilan) : chaque exercice lu dans deux documents (colonne N et comparatif N+1).",
+    "attention": "Le site peut refuser le certificat a certains outils : curl passe.",
+    "verifie_le": "2026-09-25"
+  },
+  "BOAC.ci": {
+    "societe": "Bank of Africa Cote d'Ivoire",
+    "communication_financiere": "https://www.boacoteivoire.com/institutionnels/communication-financiere/",
+    "on_y_trouve": [
+      "Etats financiers 2021, 2022, 2023 (EF-xx_AAAA, texte natif) : bilan et compte de resultat compares",
+      "Rapports annuels 2024 et 2025 (BOA-RA-...) : comptes de la filiale dans les DERNIERES pages (le debut porte les comptes du groupe, en euros)",
+      "Resultats au 31 decembre, rapports d'activite"
+    ],
+    "pourquoi": "Grille bancaire complete (PNB, charges, RBE, cout du risque, resultat d'exploitation, credits, depots, fonds propres, total bilan) : chaque exercice lu dans deux documents (colonne N et comparatif N+1).",
+    "attention": "Le site peut refuser le certificat a certains outils : curl passe.",
+    "verifie_le": "2026-09-25"
+  },
+  "BOAM.ml": {
+    "societe": "Bank of Africa Mali",
+    "communication_financiere": "https://www.boamali.com/institutionnels/communication-financiere/",
+    "on_y_trouve": [
+      "Etats financiers 2021, 2022, 2023 (EF-xx_AAAA, texte natif) : bilan et compte de resultat compares",
+      "Rapports annuels 2024 et 2025 (BOA-RA-...) : comptes de la filiale dans les DERNIERES pages (le debut porte les comptes du groupe, en euros)",
+      "Resultats au 31 decembre, rapports d'activite"
+    ],
+    "pourquoi": "Grille bancaire complete (PNB, charges, RBE, cout du risque, resultat d'exploitation, credits, depots, fonds propres, total bilan) : chaque exercice lu dans deux documents (colonne N et comparatif N+1).",
+    "attention": "Le site peut refuser le certificat a certains outils : curl passe.",
     "verifie_le": "2026-09-25"
   }
 }
