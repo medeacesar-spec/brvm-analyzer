@@ -333,6 +333,26 @@ def _sans_doublons_d_unite(valeurs: list) -> list:
     return sortie
 
 
+# LES MILLIERS SEPARES PAR DES VIRGULES (25/09/2026). Nestle CI ecrit
+# « 43,543,421,067 » : aucun lecteur n'en tirait rien, et ses trous restaient
+# vides. Le PDF y glisse en plus une espace parasite apres le premier chiffre
+# (« 4 3,543,421,067 », « 1 8,458,492 »). La virgule est aussi le separateur
+# DECIMAL francais (« 19,2 % ») : on ne convertit que les documents qui
+# ecrivent au moins cinq montants a deux groupes de milliers ou plus.
+_VIRGULES_LONGUES = re.compile(r"(?<![\d,.])\d{1,3}(?:,\d{3}){2,}(?![\d,])")
+_ESPACE_PARASITE = re.compile(r"(?<![\d,.])(\d) (\d{1,2}),(?=\d{3}(?:[,\s)]|$))")
+_VIRGULES = re.compile(r"(?<![\d,.])(\d{1,3})((?:,\d{3})+)(?![\d,])")
+
+
+def milliers_a_virgule(texte: str) -> str:
+    """Reecrit « 43,543,421,067 » en « 43 543 421 067 » dans un document
+    qui separe ses milliers par des virgules ; rend les autres intacts."""
+    if not texte or len(_VIRGULES_LONGUES.findall(texte)) < 5:
+        return texte
+    texte = _ESPACE_PARASITE.sub(r"\1\2,", texte)
+    return _VIRGULES.sub(lambda m: m.group(1) + m.group(2).replace(",", " "), texte)
+
+
 def montants_de_ligne(ligne: str) -> list:
     """Les montants d'une ligne, dans l'ordre. Le premier est l'exercice."""
     return _sans_doublons_d_unite(_montants_bruts(ligne))
