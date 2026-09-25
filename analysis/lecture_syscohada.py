@@ -73,6 +73,30 @@ LIBELLES["interest_expense"] += (r"interets?\s*et\s*charges\s*assimilees",
                                  r"charges\s*financieres")
 LIBELLES["deposits"] += (r"dettes\s*envers\s*la\s*clientele",)
 
+# LES CHAMPS DE LA GRILLE BANCAIRE. Le coefficient d'exploitation, la marge
+# brute d'exploitation et le ratio credits / depots ne se calculaient que pour
+# un exercice bancaire sur huit, faute de ces trois postes. Libelles releves
+# sur les 56 documents bancaires du fonds (25/09/2026).
+#
+# « Charges d'exploitation bancaire » n'en fait PAS partie : dans le plan
+# comptable bancaire, ce sont les interets et commissions verses — la matiere
+# du produit net bancaire, pas le cout de la machine.
+LIBELLES["operating_expenses"] = (
+    r"charges?\s*g[ée]n[ée]rales?\s*d.?\s*exploitation",
+    r"frais\s*g[ée]n[ée]raux")
+LIBELLES["gross_operating_income"] = (
+    r"r[ée]sultat\s*brut\s*d.?\s*exploitation",)
+# Les dotations aux amortissements des immobilisations : dans une banque, le
+# resultat brut d'exploitation vaut PNB - charges generales - dotations. Sans
+# elles, l'identite laisse un reste de 3 a 5 % du PNB (BICICI, BOA Mali), et
+# ne prouve rien.
+LIBELLES["depreciation_bank"] = (
+    r"dotations?\s*aux\s*amortissements?.{0,60}?immobilisations",)
+LIBELLES["loans"] = (
+    r"cr[ée]ances?\s*sur\s*la\s*client[èe]le",
+    r"pr[êe]ts?\s*et\s*cr[ée]ances?\s*sur\s*la\s*client[èe]le",
+    r"cr[ée]dits?\s*[àa]\s*la\s*client[èe]le")
+
 # LIBELLES DE SECOURS, lus seulement quand aucun libelle principal ne rend
 # rien. SITAB, distributeur, n'ecrit pas de chiffre d'affaires : ses ventes
 # de marchandises en tiennent lieu. Chez un industriel, la meme ligne n'est
