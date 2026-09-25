@@ -194,6 +194,17 @@ def _classify_pdf(url: str):
         return genre, int(exercice.group(1))
     annees = _ANNEE.findall(corps)
     if not annees:
+        # SANS ANNEE DANS LE NOM (26/09/2026) : « rapport_des_cac_sur_les_
+        # etats_financiers_annuels_-_air_liquide_ci ». Un document ANNUEL se
+        # publie l'annee qui suit l'exercice (cycle UEMOA, jusqu'en decembre
+        # pour les retardataires) : l'exercice est l'annee de publication
+        # moins un. Erium n'avait ainsi aucun document annuel 2021-2024 ;
+        # seize documents etaient ecartes sur l'ensemble de la cote.
+        publication = re.match(r"^((?:19|20)\d{2})\d{4}", fichier)
+        # Les seuls ETATS : un « tableau d'activites » publie en septembre est
+        # un semestriel (Palm CI), qu'aucun nom ne distingue d'un annuel.
+        if publication and genre == "etats_financiers":
+            return genre, int(publication.group(1)) - 1
         return None, None
     return genre, int(annees[-1])
 
