@@ -170,8 +170,17 @@ def _rendements_mensuels(cnx, fenetre: int = FENETRE_COMMUNE) -> dict:
         paiement = (jour.year, jour.month) if jour else None
         dividendes[ligne["ticker"]][ligne["fiscal_year"]] = (ligne["dps"], paiement)
 
+    # LE MOIS EN COURS N'EST PAS UN MOIS. Son point porte la cloture du jour,
+    # pas celle de fin de mois : il bougeait a chaque seance, et avec lui
+    # volatilite, correlations et classement du portefeuille — la meme page
+    # rendait un autre « top 5 » d'une connexion a l'autre. Seuls les mois
+    # clos comptent ; le classement ne change plus qu'une fois par mois.
+    from datetime import date as _date
+    ce_mois = _date.today().replace(day=1)
     series = {}
     for ticker, points in cours.items():
+        points = [p for p in points
+                  if (p[0].year, p[0].month) < (ce_mois.year, ce_mois.month)]
         # Socle commun : les mois les plus récents, autant pour tout le monde.
         if fenetre:
             points = points[-fenetre:]
