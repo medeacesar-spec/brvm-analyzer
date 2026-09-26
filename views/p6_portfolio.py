@@ -995,12 +995,18 @@ def render():
         # Les memes questions, sous l'angle du risque — et elargies a toute la
         # cote : on ne peut pas ameliorer un portefeuille en ne regardant que
         # ce qu'il contient deja.
-        _render_risque_ensemble(portfolio)
-        _render_recommandations_ajustees(portfolio)
-        _render_optimisation(portfolio, cash)
-        # La synthese prolonge l'optimisation : ce qui revient dans toutes
-        # les fenetres, la simulation d'achats et l'historique des choix.
-        _render_synthese_fenetres(portfolio, cash)
+        # Deux sous-onglets. « Par fenêtre » : le détail, qui change avec la
+        # fenêtre choisie. « Synthèse » : ce qui revient dans toutes les
+        # fenêtres, la simulation d'achats et l'historique des choix. Posée à
+        # la suite, la synthèse tombait sous toute l'optimisation et ne se
+        # voyait pas.
+        sous_detail, sous_synthese = st.tabs(["Par fenêtre", "Synthèse"])
+        with sous_detail:
+            _render_risque_ensemble(portfolio)
+            _render_recommandations_ajustees(portfolio)
+            _render_optimisation(portfolio, cash)
+        with sous_synthese:
+            _render_synthese_fenetres(portfolio, cash)
 
     _render_info_box()
 
