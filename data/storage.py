@@ -1168,6 +1168,25 @@ def get_fundamentals(ticker: str, fiscal_year: Optional[int] = None) -> Optional
                 if hr["dps"]:
                     row_dict[f"dps_{suf}"] = hr["dps"]
             row = row_dict
+    if row and fiscal_year:
+        # Un exercice demande nommement (grilles de la fiche, #232) ne recevait
+        # pas son historique : la volatilite du resultat, calculee sur N-3..N,
+        # restait vide meme quand la base portait les quatre annees (Palmci
+        # 2023, SAPH 2024, AGL 2023 — 26/09/2026). On ne comble PAS le bilan
+        # depuis une autre annee : un exercice nomme montre ses propres comptes.
+        # Les annees sont contigues, N-3 a N : un trou reste un trou.
+        row = dict(row)
+        for suf in ("n0", "n1", "n2", "n3"):
+            for champ in ("revenue", "net_income", "dps"):
+                row[f"{champ}_{suf}"] = None
+        for hr in conn.execute(
+                """SELECT fiscal_year, revenue, net_income, dps FROM fundamentals
+                   WHERE ticker = ? AND fiscal_year BETWEEN ? AND ?""",
+                (ticker, int(fiscal_year) - 3, int(fiscal_year))).fetchall():
+            suf = f"n{int(fiscal_year) - int(hr['fiscal_year'])}"
+            for champ in ("revenue", "net_income", "dps"):
+                if hr[champ]:
+                    row[f"{champ}_{suf}"] = hr[champ]
     conn.close()
     if not row:
         return None

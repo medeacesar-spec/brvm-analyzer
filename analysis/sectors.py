@@ -564,6 +564,17 @@ def _exercices_du_secteur(secteur: str) -> dict:
         exercices.setdefault(d["ticker"], []).append(d)
 
     conn.close()
+    # Historique N-3..N recalcule sur les lignes du titre, comme la fiche
+    # (data.storage.get_fundamentals) : les colonnes net_income_n0..n3 de la
+    # table ne sont renseignees que sur un exercice sur quatre, et jamais
+    # mises a jour apres une correction.
+    for lignes in exercices.values():
+        par_an = {int(l["fiscal_year"]): l for l in lignes if l.get("fiscal_year")}
+        for an, l in par_an.items():
+            for i in range(4):
+                h = par_an.get(an - i, {})
+                for champ in ("revenue", "net_income", "dps"):
+                    l[f"{champ}_n{i}"] = h.get(champ) or None
     return exercices
 
 
