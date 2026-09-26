@@ -91,6 +91,13 @@ _SECTEURS = {
                 (2.0, "OK", "Levier confortable ({v} x)"),
                 (3.0, "Vigilance", "Levier a surveiller ({v} x)"),
                 (None, "Risque", "Levier élevé ({v} x)")]),
+            # Sans borne propre, la marge de flux libre recevait le jugement
+            # generique (« Tres bon » des 10 %) tandis que la couleur venait
+            # des pairs : Orange CI 2025, « Tres bon » en orange (26/09/2026).
+            "fcf_margin": ("haut", [
+                (0.10, "OK", "Flux libre solide ({v} % du CA)"),
+                (0.0, "Vigilance", "Flux libre mince ({v} % du CA)"),
+                (None, "Risque", "Flux libre négatif ({v} % du CA)")]),
         },
     },
     "industrie": {
@@ -789,6 +796,10 @@ A_VERIFIER = "À vérifier"
 COUVERTURE_NEGLIGEABLE = 200.0
 
 
+_CLES_POURCENTAGE = {cle for _p in _SECTEURS.values() for _l, cle, fmt, _a in _p["grille"]
+                     if fmt == "pct"}
+
+
 def avis_indicateur(cle: str, valeur, secteur: str, mediane=None) -> dict:
     """Juge une valeur sur DEUX axes, qui ne disent pas la meme chose.
 
@@ -821,13 +832,21 @@ def avis_indicateur(cle: str, valeur, secteur: str, mediane=None) -> dict:
     if mediane not in (None, 0):
         sens = (seuils_secteur(secteur).get(cle) or (None,))[0] or SENS.get(cle, "haut")
         ecart = (valeur - mediane) / abs(mediane) * 100
+        # Un pourcentage se compare en POINTS, et la mediane s'affiche :
+        # « 23 % en dessous » d'une marge de 12,6 % ne disait ni de combien
+        # ni par rapport a quoi.
+        en_pct = cle in _CLES_POURCENTAGE
+        med = (f"{mediane*100:.1f} %" if en_pct else f"{mediane:.2f} x").replace(".", ",")
         if abs(ecart) < 10:
-            sortie["pairs"] = "dans la moyenne du secteur"
+            sortie["pairs"] = f"dans la moyenne du secteur (médiane {med})"
         else:
             mieux = (ecart > 0) if sens != "bas" else (ecart < 0)
+            dist = (f"{abs(valeur - mediane)*100:.1f} pts" if en_pct
+                    else f"{abs(ecart):.0f} %").replace(".", ",")
             sortie["pairs"] = (
-                f"{abs(ecart):.0f} % {'au-dessus' if ecart > 0 else 'en dessous'} "
-                f"de la médiane — {'mieux' if mieux else 'moins bien'} que ses pairs")
+                f"{dist} {'au-dessus' if ecart > 0 else 'en dessous'} de la "
+                f"médiane des pairs ({med}) — {'mieux' if mieux else 'moins bien'}"
+                f" qu'eux")
             if sortie["niveau"] is None:
                 sortie["niveau"] = "OK" if mieux else "Vigilance"
     return sortie

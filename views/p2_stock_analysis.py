@@ -2187,7 +2187,11 @@ def _render_bloc_sectoriel(fundamentals, ratios_src, annee_choisie=None):
             except Exception:
                 _avis = {"niveau": niveau, "standard": commentaire, "pairs": None}
             niveau = _avis.get("niveau") or niveau
-            commentaire = _avis.get("standard") or commentaire
+            # Sans borne du secteur, l'avis vient des pairs seuls : le
+            # commentaire generique (« Tres bon ») contredisait alors la
+            # couleur (26/09/2026, Orange CI).
+            commentaire = _avis.get("standard") or (
+                "" if _avis.get("pairs") else commentaire)
             # Une valeur invraisemblable ne s'affiche pas : 61 547 241 × ne
             # dit rien de la societe, seulement que la donnee est fausse.
             if niveau == "À vérifier":
