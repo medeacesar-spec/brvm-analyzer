@@ -139,7 +139,9 @@ def _generate_recommendation(
         warnings.append(f"Payout ratio très élevé ({ratios['payout_ratio']:.1%})")
     elif ratios.get("payout_ratio") and ratios["payout_ratio"] > 0.70:
         warnings.append(f"Payout ratio élevé ({ratios['payout_ratio']:.1%})")
-    if ratios.get("debt_equity") and ratios["debt_equity"] > 2.0:
+    if ratios.get("debt_equity") is not None and ratios["debt_equity"] < 0:
+        warnings.append("Fonds propres négatifs")
+    elif ratios.get("debt_equity") and ratios["debt_equity"] > 2.0:
         warnings.append(f"Endettement très élevé ({ratios['debt_equity']:.2f}x)")
     elif ratios.get("debt_equity") and ratios["debt_equity"] > 1.0:
         warnings.append(f"Endettement à surveiller ({ratios['debt_equity']:.2f}x)")

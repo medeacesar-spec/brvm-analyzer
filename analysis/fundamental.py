@@ -633,6 +633,10 @@ def _compute_flags(ratios: dict, is_bank: bool, secteur: str = None) -> dict:
         flags["debt_equity"] = ("—", "Non applicable à une banque")
     elif de is None:
         flags["debt_equity"] = ("—", "Donnée absente")
+    elif de < 0:
+        # Des fonds propres negatifs donnent un ratio negatif, que l'echelle
+        # lisait « tres faible » : Unilever CI 2023, -1,45 x, affiche « Bon ».
+        flags["debt_equity"] = ("Risque", "Fonds propres négatifs")
     elif de <= 0.5:
         flags["debt_equity"] = ("OK", "Tres faible")
     elif de <= 1.0:
@@ -728,7 +732,9 @@ def _compute_flags(ratios: dict, is_bank: bool, secteur: str = None) -> dict:
         # de 2 (26/09/2026). Meme seuil pour tous ; pour une banque, le motif
         # rappelle le ROE qui doit justifier la prime.
         _roe = ratios.get("roe")
-        if is_bank and pb >= 2.0:
+        if pb < 0:
+            flags["pb"] = ("Risque", "Fonds propres négatifs")
+        elif is_bank and pb >= 2.0:
             flags["pb"] = ("Vigilance", "Élevé" + (f" pour un ROE de {_roe*100:.0f} %"
                                                    if _roe is not None else ""))
         elif pb < 1.0:
@@ -838,6 +844,7 @@ def _compute_fundamental_breakdown(ratios: dict, is_bank: bool) -> dict:
     else:
         de = ratios.get("debt_equity")
         if de is None: endet += 2
+        elif de < 0: pass  # fonds propres negatifs : pas un endettement faible
         elif de <= 0.3: endet += 5
         elif de <= 0.5: endet += 4
         elif de <= 1.0: endet += 3
