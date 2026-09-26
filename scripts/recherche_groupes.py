@@ -144,6 +144,15 @@ def regles(cours, volume, secteurs, actions):
         "Capitalisation : le cinquième le plus petit": lambda an, u: bas(capitalisation(an), u),
         "La plus grosse capitalisation (1 titre)": lambda an, u: haut(capitalisation(an), u, n=1),
         "La plus petite capitalisation (1 titre)": lambda an, u: bas(capitalisation(an), u, n=1),
+        # Sonatel est la premiere capitalisation chaque annee : les quatre
+        # suivantes disent si la sous-performance tient a la taille ou a
+        # Sonatel seule.
+        "Capitalisation : les 5 plus grosses": lambda an, u: haut(capitalisation(an), u, n=5),
+        "Capitalisation : rangs 2 à 5 (sans la première)": lambda an, u: haut(capitalisation(an), u, n=5)[1:],
+        "Capitalisation : 2e (1 titre)": lambda an, u: haut(capitalisation(an), u, n=2)[1:],
+        "Capitalisation : 3e (1 titre)": lambda an, u: haut(capitalisation(an), u, n=3)[2:],
+        "Capitalisation : 4e (1 titre)": lambda an, u: haut(capitalisation(an), u, n=4)[3:],
+        "Capitalisation : 5e (1 titre)": lambda an, u: haut(capitalisation(an), u, n=5)[4:],
         "Momentum 1 an : le cinquième le plus fort": lambda an, u: haut(perf(an, 1), u),
         "Momentum 1 an : le cinquième le plus faible": lambda an, u: bas(perf(an, 1), u),
         "Le plus fort de l'an dernier (1 titre)": lambda an, u: haut(perf(an, 1), u, n=1),
