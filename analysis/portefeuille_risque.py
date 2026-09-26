@@ -792,12 +792,12 @@ CONSENSUS = "Synthèse"
 TAILLE_TOP = 5
 
 # Les fenetres de l'onglet « Risque et optimisation », une par onglet
-# (demande du 26/09/2026 : trois ans, cinq ans, dix ans, tout l'historique).
-# La synthese et la simulation lisent les memes : elles resument ce que les
-# onglets montrent, rien de plus.
+# (demande du 26/09/2026). La synthese et la simulation lisent les memes :
+# elles resument ce que les onglets montrent, rien de plus.
 FENETRES_PORTEFEUILLE = [
     ("3 ans", 36),
     ("5 ans", 60),
+    ("8 ans", 96),
     ("10 ans", 120),
     ("Tout l'historique", None),
 ]
