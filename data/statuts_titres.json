@@ -1,12 +1,14 @@
 {
-  "_lisez_moi": "Evenements de cote qui changent la lecture d'un titre et que la base ne porte pas : suspension, cession du bloc majoritaire, flottant residuel. Chaque entree a sa source. Ils s'affichent dans le bandeau « A surveiller » de la fiche (views/p2_stock_analysis.py, _alertes_statut). Retirer une entree quand l'evenement prend fin (levee de suspension...).",
+  "_lisez_moi": "Evenements de cote qui changent la lecture d'un titre et que la base ne porte pas : suspension, cession du bloc majoritaire, flottant residuel. Chaque entree a sa source. Ils s'affichent dans le bandeau « A surveiller » de la fiche (views/p2_stock_analysis.py, _alertes_statut). Une suspension porte « depuis » et « fin » : « reprise_des_echanges » : elle disparait seule des qu'un titre s'echange apres cette date. Les autres entrees restent jusqu'a ce qu'on les retire.",
   "SEMC.ci": [
     {
       "niveau": "Risque",
       "titre": "Titre suspendu depuis le 16/09/2026",
       "detail": "Pour non-publication des états financiers 2024 et 2025",
       "source": "https://www.lejecos.com/SUSPENSIONS-A-LA-BRVM-Le-sabre-a-moitie-tire_a31522.html",
-      "verifie_le": "2026-09-26"
+      "verifie_le": "2026-09-26",
+      "depuis": "2026-09-16",
+      "fin": "reprise_des_echanges"
     }
   ],
   "UNLC.ci": [

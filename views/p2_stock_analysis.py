@@ -579,6 +579,11 @@ def _alertes_statut(fundamentals) -> list:
     jamais publies, SIEM suspendue, Unilever cedee a 99,78 %. Trois sources :
     les documents annuels indexes (retard de publication), les cours du jour
     (seances sans echange), et data/statuts_titres.json (evenements sources).
+
+    Chaque alerte s'eteint d'elle-meme : le retard quand la routine de
+    quinzaine indexe les etats manquants, l'absence d'echange a la premiere
+    seance traitee, et une suspension du registre (« fin » :
+    « reprise_des_echanges ») des qu'un titre s'echange apres sa date.
     """
     import datetime
     import json
@@ -589,10 +594,28 @@ def _alertes_statut(fundamentals) -> list:
         return []
     alertes = []
     try:
+        from data.db import read_sql_df
+        cours = read_sql_df(
+            "SELECT date, volume FROM price_cache WHERE ticker = ? "
+            "ORDER BY date DESC LIMIT 250", params=(ticker,))
+        cours["date"] = pd.to_datetime(cours["date"])
+    except Exception:
+        cours = None
+
+    def _echange_depuis(jour) -> bool:
+        if cours is None or not jour:
+            return False
+        apres = cours[cours["date"] > pd.to_datetime(jour)]
+        return bool((apres["volume"].fillna(0) > 0).any())
+
+    try:
         chemin = os.path.join(os.path.dirname(os.path.dirname(__file__)),
                               "data", "statuts_titres.json")
         with open(chemin, encoding="utf-8") as f:
             for ev in json.load(f).get(ticker, []):
+                if (ev.get("fin") == "reprise_des_echanges"
+                        and _echange_depuis(ev.get("depuis"))):
+                    continue
                 alertes.append((ev.get("niveau", "Vigilance"), ev["titre"],
                                 ev.get("detail", "")))
     except Exception:
@@ -612,21 +635,19 @@ def _alertes_statut(fundamentals) -> list:
                             f"États financiers non publiés : {manquants}",
                             f"dernier exercice publié : {int(a)} — les ratios "
                             f"datent de ces comptes"))
-        cours = read_sql_df(
-            "SELECT date, volume FROM price_cache WHERE ticker = ? "
-            "ORDER BY date DESC LIMIT 60", params=(ticker,))
+    except Exception:
+        pass
+    if cours is not None and len(cours):
         n, depuis = 0, None
         for d, v in zip(cours["date"], cours["volume"]):
-            if v:
+            if v and v == v:
                 break
             n, depuis = n + 1, d
         if n >= SEANCES_SANS_ECHANGE:
-            depuis = pd.to_datetime(depuis).strftime("%d/%m/%Y")
             alertes.append(("Vigilance",
-                            f"Aucun échange depuis le {depuis} ({n} séances)",
+                            f"Aucun échange depuis le {depuis.strftime('%d/%m/%Y')} "
+                            f"({n} séances)",
                             "le cours affiché est le dernier connu"))
-    except Exception:
-        pass
     return alertes
 
 
