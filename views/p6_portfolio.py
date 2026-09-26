@@ -995,17 +995,25 @@ def render():
         # Les memes questions, sous l'angle du risque — et elargies a toute la
         # cote : on ne peut pas ameliorer un portefeuille en ne regardant que
         # ce qu'il contient deja.
-        # Deux sous-onglets. « Par fenêtre » : le détail, qui change avec la
-        # fenêtre choisie. « Synthèse » : ce qui revient dans toutes les
-        # fenêtres, la simulation d'achats et l'historique des choix. Posée à
-        # la suite, la synthèse tombait sous toute l'optimisation et ne se
-        # voyait pas.
-        sous_detail, sous_synthese = st.tabs(["Par fenêtre", "Synthèse"])
-        with sous_detail:
-            _render_risque_ensemble(portfolio)
-            _render_recommandations_ajustees(portfolio)
-            _render_optimisation(portfolio, cash)
-        with sous_synthese:
+        # UN SEUL NIVEAU D'ONGLETS : une fenetre par onglet, puis la
+        # synthese (demande du 26/09/2026). Le selecteur de fenetre et les
+        # sous-onglets « Par fenetre / Synthese » faisaient deux niveaux, et
+        # la synthese ne se trouvait pas.
+        from analysis.portefeuille_risque import FENETRES_PORTEFEUILLE
+        st.caption(
+            "Le risque n'a pas de valeur absolue : il dépend de la période "
+            "regardée. Un titre calme sur trois ans peut avoir traversé une "
+            "chute violente au huitième. **Chaque fenêtre donne donc ses "
+            "propres classements** ; la **Synthèse** retient ce qui revient "
+            "dans toutes.")
+        onglets = st.tabs([lib for lib, _ in FENETRES_PORTEFEUILLE] + ["Synthèse"])
+        for onglet, (lib, fen) in zip(onglets, FENETRES_PORTEFEUILLE):
+            with onglet:
+                suffixe = str(fen or "tout")
+                _render_risque_ensemble(portfolio, fen)
+                _render_recommandations_ajustees(portfolio, fen)
+                _render_optimisation(portfolio, cash, fen, suffixe)
+        with onglets[-1]:
             _render_synthese_fenetres(portfolio, cash)
 
     _render_info_box()
@@ -1115,7 +1123,7 @@ def _date_fr(iso: str) -> str:
 
 
 
-def _render_risque_ensemble(portfolio):
+def _render_risque_ensemble(portfolio, fenetre=None):
     """Le risque du portefeuille, qui n'est pas la somme de celui des lignes.
 
     Deux titres qui ne bougent pas ensemble s'annulent en partie. Sur les
@@ -1129,8 +1137,7 @@ def _render_risque_ensemble(portfolio):
     Aucune mesure titre par titre ne peut le dire : cela ne se voit que dans
     l'ensemble.
     """
-    from utils.ui_helpers import (section_heading, kpi_grille,
-                                  selecteur_fenetre_risque)
+    from utils.ui_helpers import section_heading, kpi_grille
     from analysis.risque import formater
     try:
         from analysis.portefeuille_risque import (mesures_portefeuille,
@@ -1146,11 +1153,7 @@ def _render_risque_ensemble(portfolio):
 
     section_heading("Risque d'ensemble", spacing="loose")
 
-    # Le reglage vit ici parce que c'est ici qu'il se voit. Et il est pose
-    # AVANT le calcul, pas apres : un selecteur Streamlit rendu apres la
-    # mesure ne l'influence qu'au rerun SUIVANT — la page semblait alors
-    # ignorer le clic, et le reglage paraissait mort.
-    fenetre = selecteur_fenetre_risque("pf_fenetre_risque")
+    # La fenetre vient de l'onglet ouvert.
 
     try:
         p = mesures_portefeuille(positions, fenetre)
@@ -1953,7 +1956,7 @@ def _render_diversification_suggestion(nb_sectors, top_sector, nb_titres,
 
 
 
-def _render_recommandations_ajustees(portfolio):
+def _render_recommandations_ajustees(portfolio, fenetre=None):
     """Les memes suggestions, une fois le risque et la liquidite comptes.
 
     Les deux versions s'affichent COTE A COTE, et c'est le point. Une
@@ -1979,7 +1982,7 @@ def _render_recommandations_ajustees(portfolio):
         positions = tuple(sorted(
             (r["ticker"], float(r.get("current_value") or 0))
             for _, r in portfolio.iterrows()))
-        p = mesures_portefeuille(positions, _fenetre_risque())
+        p = mesures_portefeuille(positions, fenetre)
     except Exception as err:                                    # noqa: BLE001
         st.caption(f"Ajustement au risque indisponible : {err}")
         return
@@ -2134,7 +2137,7 @@ def _render_alphas(plan, entete, cell, nb):
         "promesse.")
 
 
-def _render_optimisation(portfolio, cash):
+def _render_optimisation(portfolio, cash, fenetre=None, suffixe=""):
     """Ce qu'il faudrait acheter, ou alleger, pour mieux payer le risque porte.
 
     La question n'est pas « ce titre est-il bon », mais « ce titre ameliore-t-il
@@ -2149,7 +2152,7 @@ def _render_optimisation(portfolio, cash):
             (r["ticker"], float(r.get("current_value") or 0))
             for _, r in portfolio.iterrows()))
         r = candidats_amelioration(positions, float(cash or 0),
-                                   fenetre=_fenetre_risque())
+                                   fenetre=fenetre)
     except Exception as err:                                    # noqa: BLE001
         st.caption(f"Optimisation indisponible : {err}")
         return
@@ -2171,14 +2174,14 @@ def _render_optimisation(portfolio, cash):
                     unsafe_allow_html=True)
         seuil_m = st.number_input(
             "Seuil de liquidité", min_value=0.0, max_value=500.0,
-            value=float(round(defaut, 1)), step=5.0, key="pf_seuil_liquidite",
+            value=float(round(defaut, 1)), step=5.0, key=f"pf_seuil_liquidite_{suffixe}",
             label_visibility="collapsed",
             help="Les titres qui échangent moins que cela sont écartés du "
                  "classement : un titre qui ne s'échange pas paraît décorrélé "
                  "sans l'être.")
     if abs(seuil_m * 1e6 - (r.get("seuil_illiquidite") or 0)) > 1:
         r = candidats_amelioration(positions, float(cash or 0),
-                                   fenetre=_fenetre_risque(),
+                                   fenetre=fenetre,
                                    seuil_illiquidite=seuil_m * 1e6)
         if not r:
             return
@@ -2271,7 +2274,7 @@ def _render_optimisation(portfolio, cash):
                                   key=lambda kv: kv[0]))
             plan = allocation_suggeree(positions, float(cash), scores,
                                        seuil_m * 1e6,
-                                       fenetre=_fenetre_risque())
+                                       fenetre=fenetre)
         except Exception:                                       # noqa: BLE001
             plan = None
         if plan and plan.get("lignes"):
@@ -2415,7 +2418,7 @@ def _render_optimisation(portfolio, cash):
     _cites = ([(c["ticker"], _noms.get(c["ticker"], "")) for c in ameliorent[:5]]
               + [(l["ticker"], _noms.get(l["ticker"], ""))
                  for l in ((plan or {}).get("lignes") or [])])
-    _barre_titres(_cites, "optim")
+    _barre_titres(_cites, f"optim_{suffixe}")
 
     detenus_ecartes = [t for t in r["ecartes_illiquides"]
                        if t in {p[0] for p in positions}]
