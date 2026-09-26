@@ -129,12 +129,17 @@ INDICES = {
 # le BRVM 30 : celui-ci ne remonte qu'a 2023 et ne couvre que trente valeurs.
 INDICE_MARCHE = "BRVMC"
 
-# Derniere seance couverte par l'export RichBourse. Au-dela, seuls BRVMC et
-# BRVM30 continuent d'avancer, par sikafinance.
+# Derniere seance couverte par l'export RichBourse. Au-dela, les indices que
+# brvm.org publie chaque jour avancent par le rafraichissement intraday
+# (`data.indices_marche.rafraichir_indices`, depuis le 26/09/2026) ; les
+# anciens indices sectoriels, arretes fin 2025, n'avancent plus.
 FIN_EXPORT = date(2026, 9, 9)
 
-# Les deux seuls indices qu'un collecteur rafraichit aujourd'hui.
-INDICES_A_JOUR = frozenset({"BRVMC", "BRVM30"})
+# Les indices qu'un collecteur rafraichit aujourd'hui : ceux de brvm.org.
+INDICES_A_JOUR = frozenset({
+    "BRVMC", "BRVM30", "IDX_PRESTIGE", "IDX_PRINCIPAL", "IDX_CONSO_BASE",
+    "IDX_CONSO_DISCRETIONNAIRE", "IDX_ENERGIE", "IDX_INDUSTRIELS",
+    "IDX_SERVICES_PUBLICS_N", "IDX_TELECOM"})
 
 
 def est_a_jour(ticker: str) -> bool:

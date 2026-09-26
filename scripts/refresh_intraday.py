@@ -231,7 +231,7 @@ def refresh_intraday() -> dict:
     # Ici, un echec ne coute rien : le cache precedent reste servi.
     try:
         from data.indices_marche import rafraichir_indices
-        n_indices = rafraichir_indices(delai=25)
+        n_indices = rafraichir_indices(delai=25, date_seance=session_date or date_str)
     except Exception as err:                                   # noqa: BLE001
         print(f"  [indices] KO (non bloquant) : {type(err).__name__}: {err}")
         n_indices = 0
