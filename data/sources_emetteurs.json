@@ -134,5 +134,57 @@
     },
     "pourquoi": "Les etats financiers complets ne sont deposes que dans les rapports des commissaires aux comptes, sans annee dans le nom de fichier (retrouves par la PR #235). Aucun etat 2022 : l'exercice 2021 reste sans comparatif.",
     "verifie_le": "2026-09-26"
+  },
+  "SDCC.ci": {
+    "societe": "SODECI",
+    "communication_financiere": "https://sodeci.ci",
+    "documents": {
+      "2021": "https://sodeci.ci/publications-files/ra_sodeci_2021/",
+      "2022": "https://sodeci.ci/publications-files/rapport_de_gestion_2022/",
+      "2023": "https://sodeci.ci/publications-files/rapport_de_gestion_2023/",
+      "2024": "https://sodeci.ci/publications-files/SODECI_RAPPORT_DE_GESTION_2024/",
+      "2025": "https://sodeci.ci/publications-files/rapport_gestion_2025/"
+    },
+    "on_y_trouve": [
+      "Rapports de gestion (visionneuse Flowpaper, pages en image docs/<doc>.pdf_<n>.jpg) : etats SYSCOHADA complets et notes, dont le detail des emprunts"
+    ],
+    "pourquoi": "brvm.org n'a que des resumes, dont des scans ; 2022 y est en IFRS seul. Dette retenue HORS avances des abonnes sur consommation (~40 Md par an dans DA), arbitrage du 26/09/2026.",
+    "verifie_le": "2026-09-26"
+  },
+  "SMBC.ci": {
+    "societe": "SMB (Societe Multinationale de Bitumes)",
+    "documents": [
+      "https://smb.ci/wp-content/uploads/2024/06/RAPPORT-ANNUEL-AGO-2023.pdf",
+      "https://smb.ci/wp-content/uploads/2025/06/VERSION-ALLEGEE-RAPPORT-ANNUEL-2024.pdf",
+      "https://smb.ci/wp-content/uploads/2026/07/Rapport-annuel-de-lExercice-2025.pdf"
+    ],
+    "pourquoi": "Les resumes de brvm.org regroupent les acquisitions (incorporelles, corporelles et financieres) sur une ligne : le detail est dans le tableau des flux des rapports annuels.",
+    "verifie_le": "2026-09-26"
+  },
+  "NTLC.ci": {
+    "societe": "Nestle Cote d'Ivoire",
+    "communication_financiere": "https://www.nestle-cwa.com/en/investors/cotedivoire",
+    "pourquoi": "Rapports annuels 2021-2025, mais sans tableau des flux : les investissements n'y sont qu'un chiffre de gestion arrondi. Site protege contre les robots (navigateur necessaire). Dette = pret intra-groupe + trésorerie-passif ; « autres dettes financieres » = provisions.",
+    "verifie_le": "2026-09-26"
+  },
+  "TTLC.ci": {
+    "societe": "TotalEnergies Marketing Cote d'Ivoire",
+    "communication_financiere": "https://totalenergies.ci/espace-actionnaires/assemblees-generales-dactionnaires",
+    "pourquoi": "Les resumes de brvm.org n'ont pas la ligne des frais financiers ; la liasse complete est dans les rapports annuels (scans). Le lien « 2022 » du site pointe vers le rapport 2021.",
+    "verifie_le": "2026-09-26"
+  },
+  "TTLS.sn": {
+    "societe": "TotalEnergies Marketing Senegal",
+    "communication_financiere": "https://totalenergies.sn/repartition-du-capital/assemblee-generale-ordinaire-avis-de-convocation-2026",
+    "pourquoi": "Rapport annuel 2025 avec la liasse SYSCOHADA complete et le comparatif 2024.",
+    "verifie_le": "2026-09-26"
+  },
+  "CABC.ci": {
+    "societe": "Sicable",
+    "documents_brvm_a_preferer": {
+      "2022": "https://www.brvm.org/sites/default/files/sicable_-_ago_300323_-_etats_financiers_verifies_par_les_cac_non_approuves_en_ago.pdf"
+    },
+    "pourquoi": "Etats 2022 sous un nom de fichier sans date. Le document IFRS 2025 retraite 2019-2025 : ne pas melanger avec la serie SYSCOHADA.",
+    "verifie_le": "2026-09-26"
   }
 }
