@@ -134,5 +134,62 @@
     },
     "pourquoi": "Les etats financiers complets ne sont deposes que dans les rapports des commissaires aux comptes, sans annee dans le nom de fichier (retrouves par la PR #235). Aucun etat 2022 : l'exercice 2021 reste sans comparatif.",
     "verifie_le": "2026-09-26"
+  },
+  "BICB.bj": {
+    "societe": "BIIC (Banque Internationale pour l'Industrie et le Commerce)",
+    "communication_financiere": "https://www.biic-bank.com/fr/informations-financieres.html",
+    "documents": [
+      "https://www.biic-bank.com/images/EF Certifies_31122022.pdf",
+      "https://www.biic-bank.com/images/1_BIIC_ETATS FINANCIERS CERTIFIES AU 31 12 2023.pdf"
+    ],
+    "on_y_trouve": [
+      "Etats certifies PCB 2021-2023 (scans), 2024, rapports semestriels, rapport IFRS 2025"
+    ],
+    "pourquoi": "Cotee fin 2024 : brvm.org n'a rien avant 2024. 2025 est le premier exercice IFRS ; 2024 est retenu dans sa version IFRS retraitee du rapport 2025 (arbitrage du 26/09/2026), 2021-2023 en PCB.",
+    "verifie_le": "2026-09-26"
+  },
+  "BICC.ci": {
+    "societe": "BICI CI",
+    "documents_brvm_a_preferer": {
+      "2022": "https://www.brvm.org/sites/default/files/bilan_et_compte_de_resultat_bicici_31_12_2022_.pdf"
+    },
+    "pourquoi": "Les etats 2022 sont sur brvm.org sous un nom sans date ni « etats financiers » : le scan ne les indexait pas.",
+    "verifie_le": "2026-09-26"
+  },
+  "PALC.ci": {
+    "societe": "PALMCI",
+    "communication_financiere": "https://palmci.ci",
+    "documents": [
+      "https://palmci.ci/pdf/rapports/ra_palmci_2021.pdf",
+      "https://palmci.ci/pdf/rapports/RA_PALMCI_2022.pdf",
+      "https://palmci.ci/pdf/rapports/ra-palmci-2024.pdf",
+      "https://palmci.ci/pdf/rapports/ra-palmci-2025.pdf",
+      "https://www.fgi-bourse.com/wp-content/uploads/2024/11/PALM-CI_-Etats-financiers-Exercice-2023_2024-05-01.pdf"
+    ],
+    "on_y_trouve": [
+      "Rapports annuels complets : bilan detaille avec la dette en DA / DB / DC, que les etats d'une page de brvm.org regroupent"
+    ],
+    "pourquoi": "Les etats de brvm.org tiennent sur une page, en milliers de FCFA, et melent emprunts et provisions. brvm.org n'a pas d'etats 2023 (le rapport annuel 2023 y est, 20240708).",
+    "verifie_le": "2026-09-26"
+  },
+  "SOGC.ci": {
+    "societe": "SOGB",
+    "communication_financiere": "https://www.sogbci.com/publications/documentation/sogb/rapports",
+    "documents": {
+      "2021 annexes (liasse SYSCOHADA)": "https://www.sogbci.com/component/cck/?task=download&client=intro&file=rapport_pdf&id=330",
+      "2022": "https://www.sogbci.com/component/cck/?task=download&client=intro&file=rapport_pdf&id=375",
+      "2024": "https://www.sogbci.com/component/cck/?task=download&client=intro&file=rapport_pdf&id=406"
+    },
+    "pourquoi": "Les etats resumes de brvm.org n'ont pas de ligne d'investissements. Attention : le chiffre d'affaires est TA+TB+TC+TD, pas le « total des produits ». Les flux de tresorerie different d'un document a l'autre (credits d'escompte reclasses en 2024) : preferer la liasse.",
+    "verifie_le": "2026-09-26"
+  },
+  "ETIT.tg": {
+    "societe": "Ecobank Transnational Incorporated",
+    "documents": {
+      "2022": "https://doclib.ngxgroup.com/Financial_NewsDocs/37946_ECOBANK_TRANSNATIONAL_INCORPORATED-_QUARTER_5_-_FINANCIAL_STATEMENT_FOR_2022_FINANCIAL_STATEMENTS_MARCH_2023.pdf",
+      "2023": "https://doclib.ngxgroup.com/Financial_NewsDocs/41114_ECOBANK_TRANSNATIONAL_INCORPORATED-_QUARTER_5_-_FINANCIAL_STATEMENT_FOR_2023_FINANCIAL_STATEMENTS_APRIL_2024.pdf"
+    },
+    "pourquoi": "Comptes IFRS en milliers de dollars (NGX, Lagos). Sur brvm.org, a partir de 2022, chaque montant est en dollars ET en millions de FCFA : la base est en FCFA. Pas d'etats annuels 2022 sur brvm.org ; 2021 en FCFA seulement pour les chiffres cles (charges et cout du risque convertis au taux implicite du PNB publie).",
+    "verifie_le": "2026-09-26"
   }
 }
