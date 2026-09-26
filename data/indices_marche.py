@@ -104,7 +104,7 @@ def cache_perime(seuil_heures: float = FRAICHEUR_HEURES) -> bool:
     return age is None or age > seuil_heures
 
 
-def rafraichir_indices(delai: int = DELAI_DEFAUT) -> int:
+def rafraichir_indices(delai: int = DELAI_DEFAUT, date_seance: str = None) -> int:
     """Relit les 12 indices sur brvm.org et remplit `indices_cache`.
 
     Rend le nombre d'indices ecrits.
@@ -208,8 +208,27 @@ def rafraichir_indices(delai: int = DELAI_DEFAUT) -> int:
             (name, close, var, ytd, cat),
         )
     calcules, effaces = corriger_ytd(conn)
+    # L'historique quotidien des indices vit dans `price_cache`, avec les
+    # titres. Il venait de l'export RichBourse seul et s'arretait donc le
+    # 09/09/2026 : le Composite n'avait plus de seance, et toute performance
+    # relative a l'indice s'arretait avec lui (audit du 26/09/2026). La
+    # cloture du jour s'y ajoute desormais, sous la date de la seance.
+    n_hist = 0
+    if date_seance:
+        from analysis.indices import code_depuis_libelle
+        for name, close, _var, _ytd, _cat in indices:
+            code = code_depuis_libelle(name)
+            if not code or not close:
+                continue
+            conn.execute(
+                "INSERT INTO price_cache (ticker, date, open, high, low, close, volume) "
+                "VALUES (?, ?, ?, ?, ?, ?, NULL) "
+                "ON CONFLICT (ticker, date) DO UPDATE SET close = EXCLUDED.close, "
+                "open = EXCLUDED.open, high = EXCLUDED.high, low = EXCLUDED.low",
+                (code, date_seance, close, close, close, close))
+            n_hist += 1
     conn.commit()
     conn.close()
     print(f"  [indices] {len(indices)} ecrits · YTD recalcule pour {calcules}, "
-          f"efface pour {effaces}")
+          f"efface pour {effaces} · historique : {n_hist} au {date_seance}")
     return len(indices)

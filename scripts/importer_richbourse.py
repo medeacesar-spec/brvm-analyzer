@@ -99,6 +99,23 @@ def correspondance() -> tuple:
             couples[chemin] = cible
         else:
             orphelins.append(os.path.basename(chemin))
+    # Deux fichiers identiques pour deux titres : l'un des deux est un
+    # telechargement mal nomme. « sicor-ci(SICC).csv » etait SAPH et
+    # « unilever-ci(UNLC).csv » Sucrivoire, octet pour octet : Sicor et
+    # Unilever ont porte des annees de cours d'un autre titre (26/09/2026).
+    # Ni l'un ni l'autre n'est importe tant que le doublon n'est pas leve.
+    import hashlib
+    empreintes = defaultdict(list)
+    for chemin in couples:
+        with open(chemin, "rb") as f:
+            empreintes[hashlib.md5(f.read()).hexdigest()].append(chemin)
+    for chemins in empreintes.values():
+        if len(chemins) > 1:
+            for chemin in chemins:
+                orphelins.append(os.path.basename(chemin) + " (contenu identique a "
+                                 + ", ".join(os.path.basename(c) for c in chemins
+                                             if c != chemin) + ")")
+                del couples[chemin]
     return couples, orphelins
 
 
