@@ -4,8 +4,8 @@
     {
       "niveau": "Risque",
       "titre": "Titre suspendu depuis le 16/09/2026",
-      "detail": "Pour non-publication des états financiers 2024 et 2025",
-      "source": "https://www.lejecos.com/SUSPENSIONS-A-LA-BRVM-Le-sabre-a-moitie-tire_a31522.html",
+      "detail": "Pour non-respect des obligations de diffusion d'informations financières périodiques (états financiers 2024 et 2025 non publiés)",
+      "source": "https://www.brvm.org/sites/default/files/20260916_-_avis_ndeg270_brvmdg_-_suspension_-_sonoco_metal_packaging_siem_ci.pdf",
       "verifie_le": "2026-09-26",
       "depuis": "2026-09-16",
       "fin": "reprise_des_echanges"
@@ -18,6 +18,17 @@
       "detail": "Unilever a cédé 99,78 % des actions à un consortium mené par SDTM CI (08/04/2025) ; le titre s'échange très peu",
       "source": "https://www.brvm.org/sites/default/files/20250408_-_communique_de_presse_-_unilever_ci.pdf",
       "verifie_le": "2026-09-26"
+    }
+  ],
+  "SICC.ci": [
+    {
+      "niveau": "Risque",
+      "titre": "Titre suspendu depuis le 16/09/2026",
+      "detail": "Pour non-respect des obligations de diffusion d'informations financières périodiques",
+      "source": "https://www.brvm.org/sites/default/files/20260916_-_avis_ndeg268_brvmdg_-_suspension_-_sicor_ci.pdf",
+      "verifie_le": "2026-09-26",
+      "depuis": "2026-09-16",
+      "fin": "reprise_des_echanges"
     }
   ]
 }

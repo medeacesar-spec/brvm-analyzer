@@ -92,6 +92,13 @@ séance et volume cumulé. 530 lignes en `price_monthly_quarantaine`.
   cinq ans, aucun ancien code ne répond) ne donnent cette liste : il faudra la
   reconstituer à partir des rapports annuels de la BRVM, puis demander les
   exports à RichBourse.
+- **Les suspensions.** `data/evenements_cote.json` relève, avis par avis, les
+  suspensions et radiations d'actions publiées sur brvm.org depuis octobre
+  2016 (l'archive ne remonte pas plus loin) : quinze événements. Deux
+  radiations seulement : Trituraf (05/10/2022, liquidation ; aucun cours en
+  base) et Movis (26/06/2025, offre publique de retrait). Les longues
+  suspensions (SIEM 2024-2026, Movis 2019-2025, Unilever 2019-2020) figent le
+  cours : une règle ne doit ni acheter ni vendre un titre suspendu.
 - **Les dividendes.** Le Composite est un indice de prix, et les cours ajustés
   ne réinvestissent pas les dividendes. Comparer des prix à des prix reste
   juste. Mais un groupe à fort rendement serait pénalisé face à un groupe de
