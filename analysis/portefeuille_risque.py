@@ -791,6 +791,17 @@ CREATE TABLE IF NOT EXISTS optimisation_historique (
 CONSENSUS = "Synthèse"
 TAILLE_TOP = 5
 
+# Les fenetres de l'onglet « Risque et optimisation », une par onglet
+# (demande du 26/09/2026 : trois ans, cinq ans, dix ans, tout l'historique).
+# La synthese et la simulation lisent les memes : elles resument ce que les
+# onglets montrent, rien de plus.
+FENETRES_PORTEFEUILLE = [
+    ("3 ans", 36),
+    ("5 ans", 60),
+    ("10 ans", 120),
+    ("Tout l'historique", None),
+]
+
 
 @_maybe_cache_data(ttl=300)
 def synthese_fenetres(positions: tuple) -> Optional[dict]:
@@ -805,9 +816,8 @@ def synthese_fenetres(positions: tuple) -> Optional[dict]:
     median. Un titre present partout, meme sans jamais etre premier, passe
     devant un titre premier une fois et absent ailleurs.
     """
-    from analysis.risque import FENETRES
     fenetres, par_periode = [], {}
-    for libelle, fenetre in FENETRES:
+    for libelle, fenetre in FENETRES_PORTEFEUILLE:
         r = candidats_amelioration(positions, 0.0, fenetre)
         if not r:
             continue
@@ -929,7 +939,6 @@ def simuler_achats(positions: tuple, achats: tuple) -> Optional[dict]:
     achats s'ajoutent aux lignes existantes ; ils sont supposes payes avec
     des liquidites, qui ne rapportent rien et ne sont pas comptees.
     """
-    from analysis.risque import FENETRES
     avant = {}
     for t, v in positions:
         if v and v > 0:
@@ -951,7 +960,7 @@ def simuler_achats(positions: tuple, achats: tuple) -> Optional[dict]:
                           "trop_gros": bool(plafond and v > plafond)})
 
     fenetres, vues = [], {}
-    for libelle, fenetre in FENETRES:
+    for libelle, fenetre in FENETRES_PORTEFEUILLE:
         series = series_mensuelles(fenetre)
         lignes = [t for t in apres if t in series]
         if not lignes:
