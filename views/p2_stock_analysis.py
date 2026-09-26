@@ -891,15 +891,15 @@ def _render_fundamental(fundamentals, ratios):
         if ratio_key in ("roe", "net_margin", "dividend_yield", "fcf_margin", "payout_ratio"):
             delta = (value - med) * 100
             sign = "+" if delta >= 0 else ""
-            summary = f"{sign}{delta:.1f} pts vs méd."
+            summary = f"{sign}{delta:.1f} pts"
         elif ratio_key in ("per",):
             delta = value - med
             sign = "+" if delta >= 0 else ""
-            summary = f"{sign}{delta:.1f} vs méd."
+            summary = f"{sign}{delta:.1f}"
         else:
             delta = value - med
             sign = "+" if delta >= 0 else ""
-            summary = f"{sign}{delta:.2f}× vs méd."
+            summary = f"{sign}{delta:.2f}×"
         is_good = (diff < -0.05 and prefer_low) or (diff > 0.05 and not prefer_low)
         is_bad = (diff > 0.05 and prefer_low) or (diff < -0.05 and not prefer_low)
         color = "var(--up)" if is_good else "var(--down)" if is_bad else "var(--ink-3)"
@@ -960,7 +960,7 @@ def _render_fundamental(fundamentals, ratios):
         f"<th style='{header_style}'>Seuil</th>"
         f"<th style='{header_style}'>Position · vs pairs</th>"
         f"<th style='{header_style}'>Statut · vs seuil</th>"
-        f"<th style='{header_style}'>Écart</th>"
+        f"<th style='{header_style}'>Écart vs secteur</th>"
         f"</tr>"
     )
     _evol = _evolutions_par_action(fundamentals, ratios)
@@ -990,7 +990,8 @@ def _render_fundamental(fundamentals, ratios):
             flag = ("Vigilance", "Bénéfice exceptionnellement bas")
             bar_html, ecart = _muet, _muet
         _motif = (f"<div style='font-size:11px;color:var(--ink-3);'>{flag[1]}</div>"
-                  if flag[1] and key in ("eps", "dps", "payout_ratio", "per", "pb") else "")
+                  if flag[1] and (key in ("eps", "dps", "payout_ratio", "per", "pb")
+                                  or flag[0] == "—") else "")
         rows_html += (
             f"<tr>"
             f"<td style='{cell_style};font-weight:500;'>{name}"
@@ -1016,8 +1017,8 @@ def _render_fundamental(fundamentals, ratios):
     # pairs. C'etait le cas de Coris Bank — « Bon » et barre rouge.
     st.caption(
         "**Statut** juge la valeur face au **seuil**. **Position** et "
-        "**Écart** la situent face aux **pairs** — le trait vertical est leur "
-        "médiane. Tenir le seuil tout en restant sous la médiane du secteur "
+        "**Écart vs secteur** la situent face aux **pairs** : l'écart est la "
+        "différence avec leur médiane, le trait vertical de la barre. Tenir le seuil tout en restant sous la médiane du secteur "
         "n'est pas une contradiction : les deux colonnes ne répondent pas à "
         "la même question."
     )
@@ -1640,7 +1641,7 @@ def _render_technical(ticker, price_df, result):
             f"<th style='{header_style}'>Type</th>"
             f"<th style='{header_style}'>Niveau</th>"
             f"<th style='{header_style};text-align:right;'>Prix</th>"
-            f"<th style='{header_style};text-align:right;'>Écart</th>"
+            f"<th style='{header_style};text-align:right;'>Écart au cours</th>"
             f"<th style='{header_style}'>Commentaire</th>"
             f"</tr>"
         )

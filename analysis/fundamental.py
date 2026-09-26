@@ -300,7 +300,10 @@ def compute_ratios(data: dict) -> dict:
     # --- Dette / Capitaux propres ---
     # Si la donnée dette est absente (NULL en DB), on renvoie None plutôt que
     # 0 pour éviter l'interprétation "Faible endettement" abusive.
-    if total_debt_missing or equity == 0:
+    # Une banque n'a pas de « dette » au sens d'une entreprise : ses dettes
+    # sont les depots de ses clients. Oragroup 2025 affichait 32,7 x — ses
+    # passifs financiers au cout amorti rapportes aux fonds propres.
+    if total_debt_missing or equity == 0 or is_bank:
         ratios["debt_equity"] = None
     else:
         ratios["debt_equity"] = total_debt / equity
@@ -627,7 +630,7 @@ def _compute_flags(ratios: dict, is_bank: bool, secteur: str = None) -> dict:
     # Dette / Equity — None si donnée absente, ne pas interpréter comme "très faible"
     de = ratios.get("debt_equity")
     if is_bank:
-        flags["debt_equity"] = ("OK", "Banque - non applicable")
+        flags["debt_equity"] = ("—", "Non applicable à une banque")
     elif de is None:
         flags["debt_equity"] = ("—", "Donnée absente")
     elif de <= 0.5:
