@@ -66,9 +66,19 @@ l'export seul ; aucun collecteur ne l'alimentait. Le rafraîchissement intraday
 | Séances en désaccord avec l'export RichBourse | 1 876 | 0 |
 | Lignes mises en quarantaine | — | 10 700 (copies 7 181, jours sans séance 1 187, contredites par sikafinance 122, anciennes versions des lignes reprises 2 210) |
 
-Sicor n'a plus d'historique avant mai 2007, ni Unilever avant août 2010 :
-sikafinance ne remonte pas plus loin. Les deux exports RichBourse sont à
-refaire pour couvrir 1998 à 2007 (Sicor) et 1998 à 2010 (Unilever).
+Les exports de Sicor et d'Unilever ont été retéléchargés le 26/09/2026 : Sicor
+couvre de nouveau 1998-2026, Unilever juin 2001-2026 (RichBourse ne remonte pas
+plus loin). Les séances que sikafinance comptait en plus, au cours de la
+veille et parfois un jour férié, sont passées en quarantaine comme pour les
+autres titres.
+
+**Le mensuel** (`price_monthly`, lu par les mesures de risque et les tests)
+portait lui aussi les copies de SAPH et de Sucrivoire, et 86 mois en double :
+le collecteur sikafinance datait le mois de sa première séance, l'import du
+1er. SAFCA y suivait un autre ajustement de sa division (+1 %, 55 mois). Le
+mensuel est aligné sur l'export : un mois, une ligne, clôture de la dernière
+séance et volume cumulé. 530 lignes en `price_monthly_quarantaine`.
+`price_quarterly`, que rien ne lit, n'a pas été revu.
 
 ## Ce qui limite encore l'étude
 
@@ -95,10 +105,7 @@ refaire pour couvrir 1998 à 2007 (Sicor) et 1998 à 2010 (Unilever).
 
 ## Suite
 
-1. Liste des radiations depuis 1998 et collecte de leurs cours ; nouvel export
-   RichBourse de Sicor (1998-2007) et d'Unilever (1998-2010), en vérifiant
-   que le fichier n'est pas celui d'un autre titre (l'import le refuse
-   désormais).
+1. Liste des radiations depuis 1998 et collecte de leurs cours.
 2. Dividendes antérieurs à 2015.
 3. Le banc de test : chaque groupe est une règle de sélection annuelle,
    comparée au Composite sur 5, 10, 20 et 28 ans, en médiane, en rendement
