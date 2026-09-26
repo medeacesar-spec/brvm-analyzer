@@ -151,6 +151,64 @@ def recollecter(ticker: str, debut: str, fin: str, demander, cnx, ecrire: bool,
     return len(lignes)
 
 
+def aligner_sur_sika(ticker: str, debut: str, fin: str, demander, ecrire: bool) -> None:
+    """Pour une victime, sikafinance fait reference sur toute la periode :
+    une seance en base que sikafinance contredit (plus de 1 %) part en
+    quarantaine, une seance sikafinance absente de la base est ajoutee.
+
+    Les lignes des anciens robots, anterieures a l'import, n'etaient pas
+    des copies exactes mais portaient les memes cours d'un autre titre
+    (Unilever a 1 000 FCFA quand il en valait 6 000)."""
+    sika = {}
+    d0, d1 = date.fromisoformat(debut), date.fromisoformat(fin)
+    while d0 <= d1:
+        d2 = min(d0 + timedelta(days=88), d1)
+        for p in demander(ticker, d0.isoformat(), d2.isoformat(), "0"):
+            if p.get("Close"):
+                sika[_jour(p["Date"])] = p
+        d0 = d2 + timedelta(days=1)
+        time.sleep(0.3)
+    base = read_sql_df("SELECT date, close FROM price_cache WHERE ticker = ? "
+                       "AND date >= ? AND date <= ?", params=(ticker, debut, fin))
+    base["date"] = pd.to_datetime(base["date"]).dt.strftime("%Y-%m-%d")
+    faux = [d for d, c in zip(base["date"], base["close"])
+            if d in sika and abs(c - sika[d]["Close"]) > 0.01 * sika[d]["Close"]]
+    # Un jour sans seance sikafinance (le titre n'a pas traite) : la ligne
+    # n'est gardee que si son cours reste a moins de 30 % du dernier cours
+    # sikafinance connu. Unilever a 475 FCFA entre deux seances a 6 500 ne
+    # l'est pas.
+    jours = sorted(sika)
+    if jours:
+        import bisect
+        for d, c in zip(base["date"], base["close"]):
+            if d in sika or d < jours[0] or d > jours[-1]:
+                continue
+            i = bisect.bisect_left(jours, d) - 1
+            ref = sika[jours[max(i, 0)]]["Close"]
+            if ref and abs(c / ref - 1) > 0.30:
+                faux.append(d)
+    print(f"   {ticker} : {len(sika)} seances sikafinance, {len(faux)} seances "
+          f"contredites" + ("" if ecrire else " (simulation)"))
+    if not ecrire:
+        return
+    cnx = get_connection()
+    motif = f"contredite par sikafinance, {date.today().isoformat()}"
+    for i in range(0, len(faux), PAQUET):
+        vals = ",".join(f"('{ticker}', '{j}')" for j in faux[i:i + PAQUET])
+        cnx.execute(
+            "INSERT INTO price_cache_quarantaine "
+            "(ticker, date, open, high, low, close, volume, motif) "
+            "SELECT p.ticker, p.date, p.open, p.high, p.low, p.close, p.volume, "
+            f"'{motif}' FROM price_cache p WHERE (p.ticker, p.date) IN ({vals})")
+        cnx.execute(f"DELETE FROM price_cache WHERE (ticker, date) IN ({vals})")
+        cnx.commit()
+    cnx.close()
+    cnx = get_connection()
+    n = recollecter(ticker, debut, fin, demander, cnx, True)
+    cnx.close()
+    print(f"   {ticker} : {n} seances ajoutees")
+
+
 def main(ecrire: bool) -> None:
     demander = _sika()
     couples = couples_copies()
@@ -196,4 +254,11 @@ def main(ecrire: bool) -> None:
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--ecrire", action="store_true")
-    main(ap.parse_args().ecrire)
+    ap.add_argument("--sika", nargs="*", default=[],
+                    help="titres a aligner entierement sur sikafinance")
+    arg = ap.parse_args()
+    if arg.sika:
+        for tk in arg.sika:
+            aligner_sur_sika(tk, "1998-01-01", date.today().isoformat(), _sika(), arg.ecrire)
+    else:
+        main(arg.ecrire)

@@ -58,6 +58,18 @@ l'export seul ; aucun collecteur ne l'alimentait. Le rafraîchissement intraday
 écrit désormais la clôture du jour des dix indices publiés par brvm.org
 (`data/indices_marche.py`).
 
+## Résultat
+
+| Mesure | Avant | Après |
+|---|---|---|
+| Sauts de plus de 35 % en une séance | 310 | 5, tous réels (Filtisac −42 % le 26/09/2025 : distribution exceptionnelle de 28,2 Md) |
+| Séances en désaccord avec l'export RichBourse | 1 876 | 0 |
+| Lignes mises en quarantaine | — | 10 700 (copies 7 181, jours sans séance 1 187, contredites par sikafinance 122, anciennes versions des lignes reprises 2 210) |
+
+Sicor n'a plus d'historique avant mai 2007 : sikafinance ne remonte pas plus
+loin, et l'export RichBourse de Sicor est à refaire. Unilever repart de
+décembre 2016, comme l'export.
+
 ## Ce qui limite encore l'étude
 
 - **Le biais du survivant.** Seuls les titres cotés aujourd'hui ont un
@@ -65,7 +77,11 @@ l'export seul ; aucun collecteur ne l'alimentait. Le rafraîchissement intraday
   manquent. Une règle « acheter les plus petites capitalisations » testée sur
   les seuls survivants ignore précisément celles qui ont disparu. Il faut
   retrouver la liste des radiations et leurs cours avant de publier un
-  classement sur vingt-huit ans.
+  classement sur vingt-huit ans. Ni brvm.org (sa rubrique « Radiation »
+  recense surtout des obligations) ni sikafinance (historique mensuel limité à
+  cinq ans, aucun ancien code ne répond) ne donnent cette liste : il faudra la
+  reconstituer à partir des rapports annuels de la BRVM, puis demander les
+  exports à RichBourse.
 - **Les dividendes.** Le Composite est un indice de prix, et les cours ajustés
   ne réinvestissent pas les dividendes. Comparer des prix à des prix reste
   juste. Mais un groupe à fort rendement serait pénalisé face à un groupe de
@@ -79,7 +95,10 @@ l'export seul ; aucun collecteur ne l'alimentait. Le rafraîchissement intraday
 
 ## Suite
 
-1. Liste des radiations depuis 1998 et collecte de leurs cours.
+1. Liste des radiations depuis 1998 et collecte de leurs cours ; nouvel export
+   RichBourse de Sicor (1998-2007) et d'Unilever (avant 2016), en vérifiant
+   que le fichier n'est pas celui d'un autre titre (l'import le refuse
+   désormais).
 2. Dividendes antérieurs à 2015.
 3. Le banc de test : chaque groupe est une règle de sélection annuelle,
    comparée au Composite sur 5, 10, 20 et 28 ans, en médiane, en rendement
