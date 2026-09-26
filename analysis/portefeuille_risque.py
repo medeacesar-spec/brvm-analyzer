@@ -756,3 +756,229 @@ def allocation_suggeree(positions: tuple, cash: float, scores: tuple,
         "eligibles": len(eligibles),
         "ex_aequo": len(proches),
     }
+
+
+# ─── Synthese des fenetres ────────────────────────────────────────────────
+#
+# Demande du 26/09/2026 : « les reponses different pour chaque fenetre de
+# mesure et en plus a chaque connexion ». Les deux constats ont des causes
+# distinctes.
+#
+# D'UNE FENETRE A L'AUTRE, c'est attendu : trois ans et dix ans ne racontent
+# pas la meme histoire. Sur le portefeuille qui l'a signale, le top 5 a trois
+# et cinq ans (Filtisac, BOA Benin, Ecobank CI…) n'a qu'un titre commun avec
+# celui a huit et dix ans (BICI CI, Solibra, Sicable…). Choisir une fenetre,
+# c'est choisir sa reponse. La synthese ne choisit pas : elle retient ce qui
+# revient dans toutes.
+#
+# D'UNE CONNEXION A L'AUTRE, c'etaient les donnees : le mois en cours compte
+# comme un mois clos (corrige dans `analysis.risque`), et le mensuel a ete
+# corrige plusieurs fois en septembre 2026. L'historique garde chaque jour le
+# top 5 de chaque fenetre : un titre qui y reste des semaines merite plus
+# d'attention qu'un titre qui y passe.
+
+HISTORIQUE = """
+CREATE TABLE IF NOT EXISTS optimisation_historique (
+    user_id      TEXT NOT NULL,
+    jour         DATE NOT NULL,
+    fenetre      TEXT NOT NULL,
+    rang         INTEGER NOT NULL,
+    ticker       TEXT NOT NULL,
+    composition  TEXT,
+    PRIMARY KEY (user_id, jour, fenetre, rang)
+)
+"""
+CONSENSUS = "Synthèse"
+TAILLE_TOP = 5
+
+
+@_maybe_cache_data(ttl=300)
+def synthese_fenetres(positions: tuple) -> Optional[dict]:
+    """Le classement de chaque fenetre, et ce qui leur est commun.
+
+    Deux fenetres qui couvrent en fait la meme periode — « 10 ans » et « tout
+    l'historique » quand une ligne n'a que neuf ans de cotation — n'en font
+    qu'une : les compter deux fois donnerait double voix a la meme mesure.
+
+    L'ordre de la synthese : le nombre de fenetres ou le titre est dans le top
+    5, puis le nombre de fenetres ou il ameliore le portefeuille, puis son rang
+    median. Un titre present partout, meme sans jamais etre premier, passe
+    devant un titre premier une fois et absent ailleurs.
+    """
+    from analysis.risque import FENETRES
+    fenetres, par_periode = [], {}
+    for libelle, fenetre in FENETRES:
+        r = candidats_amelioration(positions, 0.0, fenetre)
+        if not r:
+            continue
+        cle = r["observations"]
+        if cle in par_periode:
+            par_periode[cle]["libelle"] += f" = {libelle.lower()}"
+            continue
+        ameliorent = [c for c in r["candidats"] if c["ameliore"]]
+        f = {"libelle": libelle, "observations": cle,
+             "rangs": {c["ticker"]: i + 1 for i, c in enumerate(ameliorent)},
+             "rendements": {c["ticker"]: c["rendement_annuel"] for c in ameliorent},
+             "top": [c["ticker"] for c in ameliorent[:TAILLE_TOP]]}
+        par_periode[cle] = f
+        fenetres.append(f)
+    if not fenetres:
+        return None
+
+    titres = []
+    for ticker in sorted({t for f in fenetres for t in f["rangs"]}):
+        rangs = [f["rangs"].get(ticker) for f in fenetres]
+        presents = [r for r in rangs if r]
+        titres.append({
+            "ticker": ticker,
+            "rangs": rangs,
+            "nb_top": sum(1 for r in presents if r <= TAILLE_TOP),
+            "nb_ameliore": len(presents),
+            "rang_median": st.median(presents),
+            "rendement_median": st.median(
+                f["rendements"][ticker] for f in fenetres if ticker in f["rendements"]),
+        })
+    titres.sort(key=lambda t: (-t["nb_top"], -t["nb_ameliore"],
+                               t["rang_median"], t["ticker"]))
+    return {"fenetres": fenetres, "titres": titres,
+            "consensus": [t["ticker"] for t in titres[:TAILLE_TOP]]}
+
+
+def enregistrer_synthese(user_id: str, positions: tuple, synthese: dict,
+                         jour=None) -> None:
+    """Garde le top 5 du jour, par fenetre et en synthese. Une fois par jour :
+    un nouvel enregistrement le meme jour remplace le precedent."""
+    from datetime import date
+    if not synthese or not user_id:
+        return
+    jour = (jour or date.today()).isoformat()
+    composition = ",".join(sorted({t for t, v in positions if v and v > 0}))
+    lignes = [(CONSENSUS, i + 1, t) for i, t in enumerate(synthese["consensus"])]
+    for f in synthese["fenetres"]:
+        lignes += [(f["libelle"], i + 1, t) for i, t in enumerate(f["top"])]
+    cnx = get_connection()
+    try:
+        cnx.execute(HISTORIQUE)
+        cnx.execute("DELETE FROM optimisation_historique WHERE user_id = ? AND jour = ?",
+                    (user_id, jour))
+        for fenetre, rang, ticker in lignes:
+            cnx.execute("INSERT INTO optimisation_historique "
+                        "(user_id, jour, fenetre, rang, ticker, composition) "
+                        "VALUES (?, ?, ?, ?, ?, ?)",
+                        (user_id, jour, fenetre, rang, ticker, composition))
+        cnx.commit()
+    finally:
+        cnx.close()
+
+
+def historique_synthese(user_id: str, jours: int = 60):
+    """Les top 5 enregistres sur les `jours` derniers jours, du plus recent."""
+    from datetime import date, timedelta
+    from data.db import read_sql_df
+    try:
+        return read_sql_df(
+            "SELECT jour, fenetre, rang, ticker, composition "
+            "FROM optimisation_historique WHERE user_id = ? AND jour >= ? "
+            "ORDER BY jour DESC, fenetre, rang",
+            params=(user_id, (date.today() - timedelta(days=jours)).isoformat()))
+    except Exception:                                           # noqa: BLE001
+        return None
+
+
+# ─── Simulation d'achats ──────────────────────────────────────────────────
+#
+# Demande du 26/09/2026 : la synthese designe des titres ; il faut pouvoir
+# les « acheter » a blanc et voir ce que deviendrait le portefeuille —
+# rendement, alpha, beta, volatilite — dans chaque fenetre.
+#
+# AVANT ET APRES SUR LES MEMES MOIS. Un titre introduit recemment raccourcit
+# la periode commune : mesurer l'avant sur dix ans et l'apres sur quatre
+# comparerait deux periodes, pas deux portefeuilles. Les deux sont donc
+# mesures sur les mois ou TOUTES les lignes, anciennes et simulees, cotent.
+
+
+def _indicateurs(valeurs: dict, rendements: dict, n: int, mois, marche: dict,
+                 indice: dict) -> Optional[dict]:
+    total = sum(valeurs.values())
+    if not total:
+        return None
+    part = {t: v / total for t, v in valeurs.items()}
+    serie = [sum(part[t] * rendements[t][i] for t in part) for i in range(n)]
+    cumul = 1.0
+    for r in serie:
+        cumul *= 1 + r
+    trajectoire = _mesures_trajectoire(serie, mois, marche)
+    a = _alpha(valeurs, rendements, mois, indice) if mois and indice else None
+    return {
+        "rendement_annuel": (1 + st.mean(serie)) ** 12 - 1,
+        "rendement_cumule": cumul - 1,
+        "volatilite": st.stdev(serie) * math.sqrt(12) if n > 1 else None,
+        "sharpe": trajectoire.get("sharpe"),
+        "beta": trajectoire.get("beta"),
+        "alpha": a["alpha"] if a else None,
+        "perte_maximale": trajectoire.get("perte_maximale"),
+        "correlation_marche": trajectoire.get("correlation_marche"),
+    }
+
+
+@_maybe_cache_data(ttl=300)
+def simuler_achats(positions: tuple, achats: tuple) -> Optional[dict]:
+    """Le portefeuille avant et apres des achats simules, fenetre par fenetre.
+
+    `positions` et `achats` : tuples de (ticker, montant en francs). Les
+    achats s'ajoutent aux lignes existantes ; ils sont supposes payes avec
+    des liquidites, qui ne rapportent rien et ne sont pas comptees.
+    """
+    from analysis.risque import FENETRES
+    avant = {}
+    for t, v in positions:
+        if v and v > 0:
+            avant[t] = avant.get(t, 0) + v
+    apres = dict(avant)
+    for t, v in achats:
+        if v and v > 0:
+            apres[t] = apres.get(t, 0) + v
+    if not apres or apres == avant:
+        return None
+
+    mesures = toutes_les_mesures(None)
+    liquidite = []
+    for t, v in achats:
+        echange = (mesures.get(t) or {}).get("montant_echange")
+        plafond = (echange / SEANCES_PAR_MOIS * SEANCES_DE_SORTIE_ACCEPTABLES
+                   if echange else None)
+        liquidite.append({"ticker": t, "montant": v, "plafond": plafond,
+                          "trop_gros": bool(plafond and v > plafond)})
+
+    fenetres, vues = [], {}
+    for libelle, fenetre in FENETRES:
+        series = series_mensuelles(fenetre)
+        lignes = [t for t in apres if t in series]
+        if not lignes:
+            continue
+        n = min(len(series[t][0]) for t in lignes)
+        if n < MINIMUM_MOIS:
+            continue
+        if n in vues:
+            vues[n]["libelle"] += f" = {libelle.lower()}"
+            continue
+        rendements = {t: series[t][0][-n:] for t in lignes}
+        mois = _mois_alignes(series, lignes, n)
+        marche = _serie_marche(series)
+        indice = _serie_indice(series, "BRVMC")
+        f = {
+            "libelle": libelle, "observations": n,
+            "avant": _indicateurs({t: v for t, v in avant.items() if t in rendements},
+                                  rendements, n, mois, marche, indice),
+            "apres": _indicateurs({t: v for t, v in apres.items() if t in rendements},
+                                  rendements, n, mois, marche, indice),
+            "debut": mois[0] if mois else None,
+            "fin": mois[-1] if mois else None,
+        }
+        vues[n] = f
+        fenetres.append(f)
+    return {"fenetres": fenetres, "liquidite": liquidite,
+            "hors_mesure": sorted(t for t in apres
+                                  if t not in series_mensuelles(None)),
+            "total_avant": sum(avant.values()),
+            "total_apres": sum(apres.values())}

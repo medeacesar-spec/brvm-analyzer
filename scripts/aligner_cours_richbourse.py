@@ -74,6 +74,10 @@ DEBUT = "2021-04-01"
 PROPRIETAIRES = {"saph-ci(SPHC).csv": "SPHC.ci", "sucrivoire-ci(SCRC).csv": "SCRC.ci"}
 TOLERANCE_COURS = 0.005
 TOLERANCE_VOLUME = 0.5
+# Au mensuel, le volume est une somme exacte des seances de l'export : un
+# ecart de 1 % n'est plus un arrondi. Le collecteur sikafinance y avait laisse
+# des volumes gonfles de 7 a 10 % (Servair, aout 2026 : 64 912 pour 58 645).
+TOLERANCE_VOLUME_MOIS = 0.01
 PAQUET = 400
 
 
@@ -140,7 +144,7 @@ def _mensuel(tk, csv, mensuel):
             continue
         c, v = g.loc[mois, "c"], g.loc[mois, "v"]
         bon = ((lot["close"] - c).abs() <= TOLERANCE_COURS * c) & \
-              ((lot["volume"].fillna(0) - v).abs() <= TOLERANCE_VOLUME * max(v, 1))
+              ((lot["volume"].fillna(0) - v).abs() <= TOLERANCE_VOLUME_MOIS * max(v, 1))
         garde = lot[bon]["date"].iloc[0] if bon.any() else None
         sortir += [(tk, d, "remplacee par l export RichBourse" if garde is None
                     else "doublon du mois") for d in lot["date"] if d != garde]

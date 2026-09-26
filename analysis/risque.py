@@ -126,6 +126,33 @@ def _seuil_illiquidite(montants) -> float:
     return valeurs[int(QUANTILE_ILLIQUIDE * (len(valeurs) - 1))]
 
 
+def _combler(points: list) -> list:
+    """Un mois sans ligne devient un mois sans variation.
+
+    LES SERIES SE COMPARENT PAR POSITION : le portefeuille, la covariance et
+    le beta prennent « les n derniers rendements » de chaque titre. Un mois
+    manquant decalait donc toute la serie. Solibra, suspendue d'avril a
+    septembre 2024, n'avait pas ces cinq mois : ses rendements anterieurs
+    etaient compares a ceux des autres titres cinq mois plus tard, et sa
+    correlation avec le portefeuille etait fausse. SIEM (2024-2025) de meme.
+    Un titre suspendu ne bouge pas : son mois vaut zero, au dernier cours.
+    """
+    if len(points) < 2:
+        return points
+    from datetime import date as _date
+    sortie = [points[0]]
+    for jour, cours, volume in points[1:]:
+        precedent = sortie[-1][0]
+        a, m = precedent.year, precedent.month
+        while True:
+            a, m = (a + 1, 1) if m == 12 else (a, m + 1)
+            if (a, m) >= (jour.year, jour.month):
+                break
+            sortie.append((_date(a, m, 1), sortie[-1][1], 0))
+        sortie.append((jour, cours, volume))
+    return sortie
+
+
 @_maybe_cache_data(ttl=300)
 def series_mensuelles(fenetre: int = FENETRE_COMMUNE) -> dict:
     """Les series de rendement de toute la cote, memoisees.
@@ -170,8 +197,23 @@ def _rendements_mensuels(cnx, fenetre: int = FENETRE_COMMUNE) -> dict:
         paiement = (jour.year, jour.month) if jour else None
         dividendes[ligne["ticker"]][ligne["fiscal_year"]] = (ligne["dps"], paiement)
 
+    # LE MOIS EN COURS N'EST PAS UN MOIS. Son point porte la cloture du jour,
+    # pas celle de fin de mois : il bougeait a chaque seance, et avec lui
+    # volatilite, correlations et classement du portefeuille — la meme page
+    # rendait un autre « top 5 » d'une connexion a l'autre. Seuls les mois
+    # clos comptent ; le classement ne change plus qu'une fois par mois.
+    from datetime import date as _date
+    ce_mois = _date.today().replace(day=1)
     series = {}
+    from config import tickers_retires
+    hors_cote = tickers_retires()
     for ticker, points in cours.items():
+        # Un titre radie ne s'achete plus : il n'a rien a faire dans un
+        # classement ni dans une matrice de covariance.
+        if ticker in hors_cote:
+            continue
+        points = _combler([p for p in points
+                           if (p[0].year, p[0].month) < (ce_mois.year, ce_mois.month)])
         # Socle commun : les mois les plus récents, autant pour tout le monde.
         if fenetre:
             points = points[-fenetre:]

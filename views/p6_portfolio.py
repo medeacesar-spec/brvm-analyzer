@@ -279,8 +279,9 @@ def render():
     # plutot que trois entrees de menu : la navigation, les liens et
     # l'authentification ne bougent pas, et c'est deja le motif d'« Analyse
     # d'un titre ».
-    onglet_perf, onglet_reco, onglet_neuf = st.tabs(
-        ["Performance", "Recommandations", "Risque et optimisation"])
+    onglet_perf, onglet_reco, onglet_neuf, onglet_synthese = st.tabs(
+        ["Performance", "Recommandations", "Risque et optimisation",
+         "Synthèse des fenêtres"])
 
     with onglet_perf:
         # --- Portfolio summary (pas de divider — la hiérarchie suffit) ---
@@ -998,6 +999,9 @@ def render():
         _render_risque_ensemble(portfolio)
         _render_recommandations_ajustees(portfolio)
         _render_optimisation(portfolio, cash)
+
+    with onglet_synthese:
+        _render_synthese_fenetres(portfolio, cash)
 
     _render_info_box()
 
@@ -2430,6 +2434,262 @@ def _render_optimisation(portfolio, cash):
                   f"color:var(--ink-2);margin-bottom:6px;'>· {_gras_html(a)}</div>"
                   for a in avertissements)
         + "</div>", unsafe_allow_html=True)
+
+
+def _render_synthese_fenetres(portfolio, cash=0.0):
+    """Ce qui revient d'une fenetre a l'autre, et d'un jour a l'autre.
+
+    Demande du 26/09/2026 : le top 5 de l'optimisation changeait avec la
+    fenetre de mesure, et d'une connexion a l'autre. Aucune fenetre n'a raison
+    seule ; un titre qui ameliore le portefeuille sur trois ans ET sur dix ans
+    est une piste plus solide qu'un titre premier sur une seule. L'historique
+    montre la meme chose dans le temps : un choix qui tient des semaines.
+    """
+    from utils.ui_helpers import section_heading
+    from data.db import current_user_id, ANONYME, read_sql_df
+    from analysis.portefeuille_risque import (synthese_fenetres,
+                                              enregistrer_synthese,
+                                              historique_synthese, CONSENSUS)
+    positions = tuple(sorted(
+        (r["ticker"], float(r.get("current_value") or 0))
+        for _, r in portfolio.iterrows()))
+    try:
+        s = synthese_fenetres(positions)
+    except Exception as err:                                    # noqa: BLE001
+        st.caption(f"Synthèse indisponible : {err}")
+        return
+    if not s:
+        st.caption("Pas assez d'historique de cours pour comparer les fenêtres.")
+        return
+    uid = current_user_id()
+    if uid and uid != ANONYME:
+        try:
+            enregistrer_synthese(uid, positions, s)
+        except Exception:                                       # noqa: BLE001
+            pass
+
+    _noms = {}
+    try:
+        _t = read_sql_df("SELECT ticker, company_name FROM market_data")
+        _noms = {r0["ticker"]: r0["company_name"] for _, r0 in _t.iterrows()}
+    except Exception:                                           # noqa: BLE001
+        pass
+    detenus = {t for t, v in positions if v > 0}
+
+    section_heading("Ce qui revient dans toutes les fenêtres", spacing="loose")
+    st.caption(
+        "Chaque fenêtre de mesure classe les titres qui **améliorent le "
+        "portefeuille** (rendement rapporté au risque qu'ils ajoutent). Trois "
+        "ans et dix ans ne racontent pas la même histoire : aucune fenêtre "
+        "n'a raison seule. La synthèse retient d'abord les titres présents "
+        "dans le **top 5 du plus grand nombre de fenêtres**, puis ceux qui "
+        "améliorent le portefeuille dans le plus de fenêtres. Le classement "
+        "ne change qu'une fois par mois, quand un mois se clôt.")
+
+    entete = ("font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;"
+              "color:var(--ink-3);font-weight:500;padding:9px 10px;"
+              "border-bottom:1px solid var(--border);background:var(--bg-sunken);")
+    cell = "padding:8px 10px;font-size:13px;border-bottom:1px solid var(--border);"
+    nb = cell + "text-align:right;font-variant-numeric:tabular-nums;"
+    n_f = len(s["fenetres"])
+
+    html = f"<tr><th style='{entete};text-align:left;'>Titre</th>"
+    for f in s["fenetres"]:
+        html += f"<th style='{entete};text-align:right;'>{f['libelle']}</th>"
+    html += (f"<th style='{entete};text-align:right;'>Top 5</th>"
+             f"<th style='{entete};text-align:right;'>Améliore</th>"
+             f"<th style='{entete};text-align:right;'>Rendement annuel</th></tr>")
+    for i, t in enumerate(s["titres"][:12]):
+        fond = "background:var(--up-soft, rgba(22,163,74,.06));" if i < 5 else ""
+        html += (f"<tr style='{fond}'><td style='{cell}'>"
+                 f"<span class='ticker'>{t['ticker']}</span> "
+                 f"<span style='color:var(--ink-2);'>{_noms.get(t['ticker'], '')}</span>"
+                 + (" <span class='muted' style='font-size:11px;'>détenu</span>"
+                    if t["ticker"] in detenus else "") + "</td>")
+        for r in t["rangs"]:
+            if r is None:
+                html += f"<td style='{nb};color:var(--ink-3);'>—</td>"
+            else:
+                teinte = "var(--up);font-weight:600" if r <= 5 else "var(--ink-2)"
+                html += f"<td style='{nb};color:{teinte};'>{r}<sup>e</sup></td>"
+        html += (f"<td style='{nb};font-weight:600;'>{t['nb_top']}/{n_f}</td>"
+                 f"<td style='{nb}'>{t['nb_ameliore']}/{n_f}</td>"
+                 f"<td style='{nb}'>{t['rendement_median']:.1%}</td></tr>")
+    st.markdown(
+        f"<div style='border:1px solid var(--border);border-radius:12px;"
+        f"overflow-x:auto;background:var(--bg-elev);margin-top:10px;'>"
+        f"<table style='width:100%;border-collapse:collapse;'>{html}</table>"
+        f"</div>", unsafe_allow_html=True)
+    st.caption(
+        "Les chiffres des colonnes de fenêtre sont les **rangs** dans cette "
+        "fenêtre ; « — » : le titre n'y améliore pas le portefeuille. Deux "
+        "fenêtres qui couvrent en fait la même période (quand une ligne détenue "
+        "n'a pas dix ans de cotation) sont fusionnées. Les cinq premières "
+        "lignes, surlignées, forment la synthèse. Rendement annuel : médiane "
+        "des fenêtres. Un rendement passé n'est pas un rendement attendu : ce "
+        "sont des pistes à examiner, pas des ordres.")
+
+    _render_simulation_achats(positions, s, _noms, float(cash or 0),
+                              entete, cell, nb)
+
+    # ── L'historique ───────────────────────────────────────────────────
+    h = historique_synthese(uid) if uid and uid != ANONYME else None
+    section_heading("Les choix des derniers jours", spacing="loose")
+    if h is None or h.empty:
+        st.caption("L'historique commence aujourd'hui : il s'enrichit d'un "
+                   "relevé par jour.")
+        return
+    h["jour"] = pd.to_datetime(h["jour"]).dt.date
+    cons = h[h["fenetre"] == CONSENSUS]
+    jours = sorted(cons["jour"].unique(), reverse=True)
+    par_jour = {j: list(cons[cons["jour"] == j].sort_values("rang")["ticker"])
+                for j in jours}
+
+    # La constance d'abord : combien de relevés chaque titre a tenus.
+    frequence = cons["ticker"].value_counts()
+    st.caption(
+        f"**{len(jours)} relevé(s)** depuis le {min(jours):%d/%m/%Y}. "
+        "Un titre qui reste dans la synthèse jour après jour est une piste "
+        "plus solide qu'un titre qui y passe.")
+    lignes_freq = " · ".join(
+        f"<span class='ticker'>{t}</span> {n}/{len(jours)}"
+        for t, n in frequence.head(8).items())
+    st.markdown(f"<div style='font-size:13px;margin:6px 0 12px;'>"
+                f"Présence dans la synthèse : {lignes_freq}</div>",
+                unsafe_allow_html=True)
+
+    html = (f"<tr><th style='{entete};text-align:left;'>Jour</th>"
+            f"<th style='{entete};text-align:left;'>Synthèse (top 5)</th>"
+            f"<th style='{entete};text-align:left;'>Entrées</th>"
+            f"<th style='{entete};text-align:left;'>Sorties</th></tr>")
+    for k, j in enumerate(jours[:15]):
+        top = par_jour[j]
+        avant = par_jour[jours[k + 1]] if k + 1 < len(jours) else None
+        entrees = [t for t in top if avant is not None and t not in avant]
+        sorties = [t for t in (avant or []) if t not in top]
+        html += (f"<tr><td style='{cell}'>{j:%d/%m/%Y}</td>"
+                 f"<td style='{cell}'>{' · '.join(top)}</td>"
+                 f"<td style='{cell};color:var(--up);'>{' · '.join(entrees) or ('—' if avant is not None else '')}</td>"
+                 f"<td style='{cell};color:var(--down);'>{' · '.join(sorties) or ('—' if avant is not None else '')}</td></tr>")
+    st.markdown(
+        f"<div style='border:1px solid var(--border);border-radius:12px;"
+        f"overflow-x:auto;background:var(--bg-elev);'>"
+        f"<table style='width:100%;border-collapse:collapse;'>{html}</table>"
+        f"</div>", unsafe_allow_html=True)
+    compositions = h.drop_duplicates("jour")[["jour", "composition"]]
+    if compositions["composition"].nunique() > 1:
+        st.caption("La composition du portefeuille a changé sur la période : "
+                   "une partie des entrées et sorties vient de là, pas des cours.")
+
+
+def _render_simulation_achats(positions, synthese, noms, cash, entete, cell, nb):
+    """Acheter a blanc et voir le portefeuille qui en resulterait.
+
+    Demande du 26/09/2026 : la synthese designe des titres ; encore faut-il
+    savoir ce que leur achat ferait au portefeuille. Chaque indicateur est
+    donne avant et apres, dans chaque fenetre, sur les memes mois.
+    """
+    from utils.ui_helpers import section_heading
+    from analysis.risque import toutes_les_mesures
+    from analysis.portefeuille_risque import simuler_achats
+
+    def _m(v):
+        return f"{v:,.0f}".replace(",", "\u202f")
+
+    section_heading("Simuler des achats", spacing="loose")
+    st.caption(
+        "Choisissez des titres et des montants : le portefeuille est recalculé "
+        "comme si ces achats avaient été détenus sur toute la fenêtre, aux "
+        "côtés des lignes actuelles. Rien n'est enregistré.")
+
+    cotes = sorted(toutes_les_mesures(None))
+    ordre = [t["ticker"] for t in synthese["titres"]]
+    options = ordre + [t for t in cotes if t not in ordre]
+    choix = st.multiselect(
+        "Titres à acheter", options, default=synthese["consensus"][:3],
+        format_func=lambda t: f"{t} · {noms.get(t, '')}",
+        key="pf_simu_titres")
+    if not choix:
+        return
+    defaut = (round(cash / len(choix) / 1e5) * 1e5) if cash > 0 else 1_000_000
+    colonnes = st.columns(min(len(choix), 4))
+    achats = []
+    for i, t in enumerate(choix):
+        with colonnes[i % len(colonnes)]:
+            montant = st.number_input(
+                f"{t} · FCFA", min_value=0.0, value=float(max(defaut, 1e5)),
+                step=100_000.0, format="%.0f", key=f"pf_simu_{t}")
+        achats.append((t, float(montant)))
+    total_achats = sum(v for _, v in achats)
+    if cash > 0 and total_achats > cash:
+        st.caption(f"⚠ Les achats ({_m(total_achats)} FCFA) dépassent les "
+                   f"liquidités disponibles ({_m(cash)} FCFA).")
+
+    r = simuler_achats(positions, tuple(achats))
+    if not r or not r["fenetres"]:
+        st.caption("Simulation impossible : pas assez d'historique commun.")
+        return
+
+    INDICATEURS = [
+        ("rendement_annuel", "Rendement annuel", "Gain moyen par an, dividendes compris", "pct", True),
+        ("rendement_cumule", "Rendement cumulé", "Gain total sur la fenêtre", "pct", True),
+        ("volatilite", "Volatilité", "Amplitude des variations, par an", "pct", False),
+        ("sharpe", "Ratio de Sharpe", "Rendement par unité de risque", "num", True),
+        ("beta", "Bêta (Beta)", "Sensibilité au BRVM Composite (1 = comme le marché)", "num", None),
+        ("alpha", "Alpha (Alpha)", "Gain au-delà de ce qu'explique le marché, par an", "pct", True),
+        ("perte_maximale", "Perte maximale (Max drawdown)", "Pire chute d'un sommet à un creux", "pct", True),
+        ("correlation_marche", "Corrélation au marché", "1 = suit le Composite pas à pas", "num", None),
+    ]
+
+    def _f(v, genre):
+        if v is None:
+            return "—"
+        return f"{v:.1%}" if genre == "pct" else f"{v:.2f}"
+
+    html = f"<tr><th style='{entete};text-align:left;'>Indicateur</th>"
+    for f in r["fenetres"]:
+        html += f"<th style='{entete};text-align:right;'>{f['libelle']}</th>"
+    html += "</tr>"
+    for cle, nom, aide, genre, mieux_si_hausse in INDICATEURS:
+        html += (f"<tr><td style='{cell}'><div style='font-weight:500;'>{nom}</div>"
+                 f"<div style='font-size:11.5px;color:var(--ink-3);"
+                 f"white-space:nowrap;'>{aide}</div></td>")
+        for f in r["fenetres"]:
+            a, b = (f["avant"] or {}).get(cle), (f["apres"] or {}).get(cle)
+            teinte = "var(--ink-1)"
+            if a is not None and b is not None and mieux_si_hausse is not None \
+                    and abs(b - a) > 1e-9:
+                meilleur = (b > a) if mieux_si_hausse else (b < a)
+                teinte = "var(--up)" if meilleur else "var(--down)"
+            html += (f"<td style='{nb}'><span style='color:var(--ink-3);'>"
+                     f"{_f(a, genre)}</span> → <span style='font-weight:600;"
+                     f"color:{teinte};'>{_f(b, genre)}</span></td>")
+        html += "</tr>"
+    st.markdown(
+        f"<div style='border:1px solid var(--border);border-radius:12px;"
+        f"overflow-x:auto;background:var(--bg-elev);margin-top:10px;'>"
+        f"<table style='width:100%;border-collapse:collapse;'>{html}</table>"
+        f"</div>", unsafe_allow_html=True)
+
+    periodes = " · ".join(
+        f"{f['libelle']} : {f['debut'][1]:02d}/{f['debut'][0]} à "
+        f"{f['fin'][1]:02d}/{f['fin'][0]}"
+        for f in r["fenetres"] if f.get("debut"))
+    st.caption(
+        f"Avant → après, sur les **mêmes mois** : {periodes}. En vert, "
+        "l'indicateur s'améliore ; en rouge, il se dégrade (le bêta et la "
+        "corrélation ne sont ni bons ni mauvais en soi). Portefeuille de "
+        f"{_m(r['total_avant'])} FCFA porté à {_m(r['total_apres'])} FCFA ; "
+        "les liquidités ne sont pas comptées. Un rendement passé n'est pas un "
+        "rendement attendu.")
+    trop = [l for l in r["liquidite"] if l["trop_gros"]]
+    for l in trop:
+        st.caption(f"⚠ **{l['ticker']}** : {_m(l['montant'])} FCFA dépasse ce "
+                   f"qui se revend en cinq séances ({_m(l['plafond'])} FCFA). "
+                   "La ligne se détiendrait, mais ne se vendrait pas vite.")
+    if r["hors_mesure"]:
+        st.caption("Sans historique suffisant, non mesurés : "
+                   + ", ".join(r["hors_mesure"]) + ".")
 
 
 def _render_info_box():

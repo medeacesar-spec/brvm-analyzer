@@ -577,6 +577,28 @@ def set_meta(conn, key: str, value: str):
     conn.commit()
 
 
+def enregistrer_syntheses_du_jour() -> int:
+    """Le top 5 de chaque fenetre, et leur synthese, pour chaque portefeuille."""
+    from data.db import read_sql_df, ANONYME
+    from analysis.portefeuille_risque import synthese_fenetres, enregistrer_synthese
+    lignes = read_sql_df("SELECT user_id, ticker, quantity FROM portfolio")
+    prix = dict(read_sql_df("SELECT ticker, price FROM market_data "
+                            "WHERE price > 0").values)
+    n = 0
+    for uid, g in lignes.groupby("user_id"):
+        if uid == ANONYME:
+            continue
+        positions = tuple(sorted(
+            (t, float(q or 0) * float(prix.get(t, 0)))
+            for t, q in zip(g["ticker"], g["quantity"])))
+        s = synthese_fenetres(positions)
+        if s:
+            enregistrer_synthese(uid, positions, s)
+            n += 1
+            print(f"  [synthese] {uid} : {' · '.join(s['consensus'])}")
+    return n
+
+
 def build_all() -> dict:
     """Construit tous les snapshots. Retourne un résumé."""
     t0 = time.time()
@@ -593,6 +615,15 @@ def build_all() -> dict:
         # (ex. vendredi soir si rien n'a tourné lundi avant 16h UTC).
         ingested = ingest_today_prices(conn)
         result["ingested_prices"] = ingested
+
+        # ── Étape 0 bis : le mensuel, depuis les seances du jour ──
+        # Mesures de risque et optimisation lisent price_monthly ; sans cette
+        # etape, il s'arretait au dernier import manuel.
+        try:
+            from scripts.mettre_a_jour_mensuel import main as _mensuel
+            result["mensuel"] = _mensuel()
+        except Exception as e:
+            print(f"  [mensuel] KO (non bloquant): {e}")
 
         # ── Étape 0bis : découverte + intégration des nouveaux PDFs ──
         # 1. scan_brvm_reports : ajoute à report_links les PDFs fraichement
@@ -668,6 +699,14 @@ def build_all() -> dict:
         result["scoring"] = build_scoring_snapshot(conn, all_stocks, all_prices)
         result["ticker_perf"] = build_ticker_performance(conn, all_prices)
         result["signal_perf"] = build_signal_performance(conn, all_prices)
+
+        # ── Synthese des fenetres, un releve par portefeuille et par jour ──
+        # L'historique des « top 5 » ne doit pas dependre des visites : un
+        # jour sans connexion laisserait un trou dans la serie.
+        try:
+            result["syntheses"] = enregistrer_syntheses_du_jour()
+        except Exception as e:
+            print(f"  [synthese] KO (non bloquant): {e}")
 
         duration = round(time.time() - t0, 1)
         set_meta(conn, "last_build_at", datetime.now().isoformat(timespec="seconds"))
