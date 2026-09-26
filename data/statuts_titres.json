@@ -1,0 +1,21 @@
+{
+  "_lisez_moi": "Evenements de cote qui changent la lecture d'un titre et que la base ne porte pas : suspension, cession du bloc majoritaire, flottant residuel. Chaque entree a sa source. Ils s'affichent dans le bandeau « A surveiller » de la fiche (views/p2_stock_analysis.py, _alertes_statut). Retirer une entree quand l'evenement prend fin (levee de suspension...).",
+  "SEMC.ci": [
+    {
+      "niveau": "Risque",
+      "titre": "Titre suspendu depuis le 16/09/2026",
+      "detail": "Pour non-publication des états financiers 2024 et 2025",
+      "source": "https://www.lejecos.com/SUSPENSIONS-A-LA-BRVM-Le-sabre-a-moitie-tire_a31522.html",
+      "verifie_le": "2026-09-26"
+    }
+  ],
+  "UNLC.ci": [
+    {
+      "niveau": "Risque",
+      "titre": "Flottant quasi nul : 0,22 % du capital",
+      "detail": "Unilever a cédé 99,78 % des actions à un consortium mené par SDTM CI (08/04/2025) ; le titre s'échange très peu",
+      "source": "https://www.brvm.org/sites/default/files/20250408_-_communique_de_presse_-_unilever_ci.pdf",
+      "verifie_le": "2026-09-26"
+    }
+  ]
+}

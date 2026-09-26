@@ -564,6 +564,72 @@ def _evolutions_par_action(fundamentals, ratios):
     return sortie
 
 
+# Les comptes d'un exercice sont attendus au plus tard six mois apres la
+# cloture : au 1er juillet N+1, l'exercice N doit etre publie.
+MOIS_LIMITE_PUBLICATION = 7
+# Au-dela de cinq seances consecutives sans un seul titre echange, le cours
+# affiche ne dit plus rien : suspension ou marche mort.
+SEANCES_SANS_ECHANGE = 5
+
+
+def _alertes_statut(fundamentals) -> list:
+    """Ce qui rend les chiffres du titre caducs ou son cours inexploitable.
+
+    Demande du 26/09/2026 pour Unilever CI et SIEM : comptes 2024 et 2025
+    jamais publies, SIEM suspendue, Unilever cedee a 99,78 %. Trois sources :
+    les documents annuels indexes (retard de publication), les cours du jour
+    (seances sans echange), et data/statuts_titres.json (evenements sources).
+    """
+    import datetime
+    import json
+    import os
+
+    ticker = fundamentals.get("ticker")
+    if not ticker:
+        return []
+    alertes = []
+    try:
+        chemin = os.path.join(os.path.dirname(os.path.dirname(__file__)),
+                              "data", "statuts_titres.json")
+        with open(chemin, encoding="utf-8") as f:
+            for ev in json.load(f).get(ticker, []):
+                alertes.append((ev.get("niveau", "Vigilance"), ev["titre"],
+                                ev.get("detail", "")))
+    except Exception:
+        pass
+    try:
+        from data.db import read_sql_df
+        auj = datetime.date.today()
+        attendu = auj.year - 1 if auj.month >= MOIS_LIMITE_PUBLICATION else auj.year - 2
+        dern = read_sql_df(
+            "SELECT max(fiscal_year) AS a FROM report_links WHERE ticker = ? "
+            "AND report_type IN ('etats_financiers', 'rapport_annuel')",
+            params=(ticker,))
+        a = dern.iloc[0]["a"] if len(dern) else None
+        if a is not None and a == a and int(a) < attendu:
+            manquants = ", ".join(str(y) for y in range(int(a) + 1, attendu + 1))
+            alertes.append(("Risque",
+                            f"États financiers non publiés : {manquants}",
+                            f"dernier exercice publié : {int(a)} — les ratios "
+                            f"datent de ces comptes"))
+        cours = read_sql_df(
+            "SELECT date, volume FROM price_cache WHERE ticker = ? "
+            "ORDER BY date DESC LIMIT 60", params=(ticker,))
+        n, depuis = 0, None
+        for d, v in zip(cours["date"], cours["volume"]):
+            if v:
+                break
+            n, depuis = n + 1, d
+        if n >= SEANCES_SANS_ECHANGE:
+            depuis = pd.to_datetime(depuis).strftime("%d/%m/%Y")
+            alertes.append(("Vigilance",
+                            f"Aucun échange depuis le {depuis} ({n} séances)",
+                            "le cours affiché est le dernier connu"))
+    except Exception:
+        pass
+    return alertes
+
+
 def _alertes_resultat_dividende(fundamentals, ratios) -> list:
     """Les alertes qui doivent sauter aux yeux : dividende et benefice.
 
@@ -629,7 +695,7 @@ def _alertes_resultat_dividende(fundamentals, ratios) -> list:
                             f"Bénéfice par action stagnant ({g:+.0%} sur un an)".replace("%", " %"),
                             detail))
     alertes.sort(key=lambda a: 0 if a[0] == "Risque" else 1)
-    return alertes
+    return _alertes_statut(fundamentals) + alertes
 
 
 def _bandeau_alertes(alertes) -> str:
@@ -908,41 +974,36 @@ def _render_fundamental(fundamentals, ratios):
     flags = ratios.get("flags", {})
     # (name, key, value_fmt, seuil, prefer_low)
     ratio_rows = [
-        ("Marge nette",    "net_margin",      ratios.get("net_margin"),      "pct",     "≥ 10%",       False),
-        ("Dette / fonds propres", "debt_equity", ratios.get("debt_equity"),  "x",       "≤ 1.5×",      True),
-        ("Rendement du dividende", "dividend_yield", ratios.get("dividend_yield"), "pct", "≥ 6%",      False),
+        ("Marge nette (Net margin)", "net_margin",      ratios.get("net_margin"),      "pct",     "≥ 10%",       False),
+        ("Dette / fonds propres (Debt/Equity)", "debt_equity", ratios.get("debt_equity"),  "x",       "≤ 1.5×",      True),
+        ("Rendement du dividende (Dividend yield)", "dividend_yield", ratios.get("dividend_yield"), "pct", "≥ 6%",      False),
         ("PER (P/E)",      "per",             ratios.get("per"),             "decimal", "≤ 15",        True),
         # Le cours rapporte a l'actif net par action : ce que le marche paie
         # un franc de fonds propres (25/09/2026, demande pour tous les titres).
         ("Cours / valeur comptable (P/B)", "pb", ratios.get("pb"),           "x",       "≤ 2×",        True),
-        ("Taux de distribution", "payout_ratio", ratios.get("payout_ratio"), "pct",     "≤ 70%",       True),
-        ("Bénéfice par action (BPA)", "eps", ratios.get("eps"),              "number",  "vs N-1 et pairs", False),
-        ("Dividende par action (DPA)", "dps", ratios.get("dps"),             "number",  "vs N-1",      False),
+        ("Taux de distribution (Payout ratio)", "payout_ratio", ratios.get("payout_ratio"), "pct",     "≤ 70%",       True),
+        ("Bénéfice par action (BPA ou EPS)", "eps", ratios.get("eps"),              "number",  "vs N-1 et pairs", False),
+        ("Dividende par action (DPA ou DPS)", "dps", ratios.get("dps"),             "number",  "vs N-1",      False),
         ("Rentabilité des fonds propres (ROE)", "roe", ratios.get("roe"),    "pct",     "≥ 15%",       False),
-        ("Marge de flux libre (FCF)", "fcf_margin", ratios.get("fcf_margin"), "pct",    "≥ 5%",        False),
+        ("Marge de flux libre (FCF margin)", "fcf_margin", ratios.get("fcf_margin"), "pct",    "≥ 5%",        False),
     ]
     # Un sigle seul ne dit rien a qui n'est pas du metier (26/09/2026, « aride
     # pour les non-inities ») : chaque ligne porte sa definition en clair.
     _banque = "banq" in (fundamentals.get("sector") or "").lower()
+    # Deux lignes par indicateur (26/09/2026) : le nom, puis une definition
+    # courte qui tient sur une ligne.
     _aide = {
-        "net_margin": ("Bénéfice net rapporté au produit net bancaire" if _banque else
-                       "Bénéfice net rapporté au chiffre d'affaires : ce qui reste "
-                       "sur 100 FCFA de ventes"),
-        "debt_equity": "Dette financière rapportée aux capitaux propres : le poids "
-                       "de l'endettement",
-        "dividend_yield": "Dividende de l'année rapporté au cours : le revenu versé "
-                          "à l'actionnaire",
-        "per": "Cours divisé par le bénéfice par action : combien d'années de "
-               "bénéfice le marché paie",
-        "pb": "Cours rapporté aux fonds propres par action : ce que le marché paie "
-              "1 FCFA de fonds propres",
-        "payout_ratio": "Part du bénéfice reversée aux actionnaires en dividendes",
-        "eps": "Bénéfice net divisé par le nombre d'actions, en FCFA",
+        "net_margin": ("Bénéfice net / produit net bancaire" if _banque else
+                       "Bénéfice net / chiffre d'affaires"),
+        "debt_equity": "Dette financière / capitaux propres",
+        "dividend_yield": "Dividende de l'année / cours de bourse",
+        "per": "Cours / bénéfice par action, en années de bénéfice",
+        "pb": "Cours / fonds propres par action",
+        "payout_ratio": "Part du bénéfice versée en dividendes",
+        "eps": "Bénéfice net / nombre d'actions, en FCFA",
         "dps": "Dividende versé pour une action, en FCFA",
-        "roe": "Bénéfice net rapporté aux capitaux propres : ce que rapporte "
-               "l'argent des actionnaires",
-        "fcf_margin": "Trésorerie d'exploitation moins investissements, rapportée "
-                      "au chiffre d'affaires",
+        "roe": "Bénéfice net / capitaux propres",
+        "fcf_margin": "Trésorerie d'exploitation moins investissements / CA",
     }
 
     header_style = (
@@ -986,17 +1047,22 @@ def _render_fundamental(fundamentals, ratios):
         # Le P/E se calcule et s'affiche toujours ; au-dela de cent, il dit que
         # le benefice de l'exercice s'est effondre, et la comparaison aux pairs
         # n'a plus de sens.
+        if key in ("debt_equity", "pb") and value is not None and value < 0:
+            # Fonds propres negatifs : le ratio n'a plus d'echelle, ni face
+            # au seuil ni face aux pairs.
+            bar_html, ecart = _muet, _muet
         if key == "per" and value and value > PER_NON_SIGNIFICATIF:
             flag = ("Vigilance", "Bénéfice exceptionnellement bas")
             bar_html, ecart = _muet, _muet
         _motif = (f"<div style='font-size:11px;color:var(--ink-3);'>{flag[1]}</div>"
                   if flag[1] and (key in ("eps", "dps", "payout_ratio", "per", "pb")
-                                  or flag[0] == "—") else "")
+                                  or flag[0] == "—"
+                                  or flag[1] == "Fonds propres négatifs") else "")
         rows_html += (
             f"<tr>"
-            f"<td style='{cell_style};font-weight:500;'>{name}"
+            f"<td style='{cell_style};font-weight:500;white-space:nowrap;'>{name}"
             + (f"<div style='font-size:11px;font-weight:400;color:var(--ink-3);"
-               f"max-width:260px;'>{_aide[key]}</div>" if key in _aide else "")
+               f"white-space:nowrap;'>{_aide[key]}</div>" if key in _aide else "")
             + "</td>"
             f"<td style='{cell_style};text-align:right;font-variant-numeric:tabular-nums;'>{val_str}</td>"
             f"<td style='{cell_style};color:var(--ink-3);'>{seuil}</td>"
@@ -1007,8 +1073,10 @@ def _render_fundamental(fundamentals, ratios):
         )
 
     st.markdown(
+        # Noms et definitions ne passent pas a la ligne : sur un ecran etroit,
+        # le tableau defile horizontalement plutot que de les couper.
         f"<div style='border:1px solid var(--border);border-radius:12px;"
-        f"overflow:hidden;background:var(--bg-elev);'>"
+        f"overflow-x:auto;background:var(--bg-elev);'>"
         f"<table style='width:100%;border-collapse:collapse;'>{rows_html}</table></div>",
         unsafe_allow_html=True,
     )
@@ -2113,7 +2181,8 @@ def _render_bloc_sectoriel(fundamentals, ratios_src, annee_choisie=None):
             lignes += (
                 f"<tr>"
                 f"<td style='padding:6px 14px 6px 0;font-size:12.5px;color:var(--ink);'>"
-                f"{lib}<div style='font-size:11px;color:var(--ink-3);'>{aide}</div></td>"
+                f"<span style='white-space:nowrap;'>{lib}</span><div style='font-size:11px;"
+                f"color:var(--ink-3);white-space:nowrap;'>{aide}</div></td>"
                 f"<td style='padding:6px 14px 6px 0;font-size:15px;font-weight:600;"
                 f"text-align:right;font-variant-numeric:tabular-nums;'>{affiche}</td>"
                 f"<td style='padding:6px 0;font-size:11.5px;color:{couleur};'>"
