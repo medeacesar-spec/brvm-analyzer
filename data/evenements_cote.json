@@ -1,0 +1,146 @@
+{
+  "_lisez_moi": "Suspensions et radiations d'actions relevees dans les avis de brvm.org (https://www.brvm.org/fr/marche/avis-et-publications/avis), releves le 26/09/2026. L'archive n'est complete qu'a partir d'octobre 2016 : les evenements anterieurs (radiations de 1998 a 2016 notamment) n'y figurent pas. « fin » vide : evenement en cours, ou levee non publiee. Les obligations et les droits (DPS, droits d'attribution) sont exclus.",
+  "evenements": [
+    {
+      "ticker": "UNLC.ci",
+      "type": "suspension",
+      "debut": "2018-06-13",
+      "fin": "2018-06-27",
+      "motif": "Assemblée générale mixte appelée à statuer sur une offre publique de retrait",
+      "avis": "avis 088-2018",
+      "source": "https://www.brvm.org/sites/default/files/20180612_-_avis_ndeg088_brvmdg_-_suspension_de_cotation_-_unilever_ci.pdf"
+    },
+    {
+      "ticker": "UNLC.ci",
+      "type": "suspension",
+      "debut": "2018-06-28",
+      "fin": null,
+      "motif": "Déséquilibre entre ordres d'achat et de vente ; levée non publiée sur brvm.org",
+      "avis": "avis 105-2018",
+      "source": "https://www.brvm.org/sites/default/files/20180702_-_avis_ndeg105_brvmdg_-_suspension_unilever_ci.pdf"
+    },
+    {
+      "ticker": "SVOC.ci",
+      "type": "suspension",
+      "debut": "2019-05-16",
+      "fin": "2025-04-08",
+      "motif": "Réduction du capital à zéro suivie d'une augmentation de capital",
+      "avis": "avis 070-2019",
+      "source": "https://www.brvm.org/sites/default/files/communique_de_presse_relatif_a_loperation_de_restructuration_de_capital_de_movis_06_05_2019_vfd_1.pdf",
+      "source_fin": "https://www.brvm.org/sites/default/files/20250407-_avis_ndeg068_brvmdg_-_levee_de_la_suspension_movis_ci.pdf"
+    },
+    {
+      "ticker": "UNLC.ci",
+      "type": "suspension",
+      "debut": "2019-07-24",
+      "fin": "2020-06-02",
+      "motif": "Réduction du capital à zéro suivie d'une augmentation de capital ; reprise constatée dans les cours (aucun avis de levée publié)",
+      "avis": "avis 125-2019",
+      "source": "https://www.brvm.org/sites/default/files/20190723_-_avis_ndeg126_brvmdg_-_valeur_theorique_-_droit_preferentiel_de_souscription_-_unilever_ci.pdf"
+    },
+    {
+      "ticker": "ORGT.tg",
+      "type": "suspension",
+      "debut": "2020-10-30",
+      "fin": null,
+      "motif": "Information importante sur la structure du capital non encore publiée ; les échanges reprennent dès les séances suivantes",
+      "avis": "avis 180-2020",
+      "source": "https://www.brvm.org/sites/default/files/20201028_-_avis_180-2020_brvmdg_-_suspension_du_titre_oragroup.pdf"
+    },
+    {
+      "ticker": "TTRC.ci",
+      "type": "radiation",
+      "debut": "2022-10-05",
+      "fin": null,
+      "motif": "Liquidation des biens clôturée (jugement du 08/02/2017)",
+      "avis": "avis 189-2022",
+      "source": "https://www.brvm.org/sites/default/files/20220921_-_avis_ndeg189_brvmdg_-_radiation_-_trituraf_ci.pdf"
+    },
+    {
+      "ticker": "BICC.ci",
+      "type": "suspension",
+      "debut": "2022-09-26",
+      "fin": "2022-09-29",
+      "motif": "Cession d'une part importante du capital en attente de diffusion",
+      "avis": "avis 193-2022",
+      "source": "https://www.brvm.org/sites/default/files/20220926_-_avis_ndeg193_brvmdg_-_suspension_titre_bici_ci_0.pdf",
+      "source_fin": "https://www.brvm.org/sites/default/files/20220929_-_avis_ndeg195_brvmdg_-_levee_suspension_titre_bici_ci.pdf"
+    },
+    {
+      "ticker": "SEMC.ci",
+      "type": "suspension",
+      "debut": "2024-01-02",
+      "fin": "2026-01-02",
+      "motif": "Non-respect de dispositions réglementaires ; prorogée le 02/01/2025 puis le 29/07/2025",
+      "avis": "avis 003-2024",
+      "source": "https://www.brvm.org/sites/default/files/20240102_-_avis_ndeg003_brvmdg_-suspension_-_crown_siem_ci_0.pdf",
+      "source_fin": "https://www.brvm.org/sites/default/files/20260102_-_avis_ndeg004_brvmdg_-_levee_de_la_suspension_-_eviosys_packaging_ci.pdf"
+    },
+    {
+      "ticker": "SLBC.ci",
+      "type": "suspension",
+      "debut": "2024-04-02",
+      "fin": "2024-09-11",
+      "motif": "Non-respect de dispositions réglementaires",
+      "avis": "avis 054-2024",
+      "source": "https://www.brvm.org/sites/default/files/20240402_-_avis_ndeg054_brvmdg_-_suspension_-_solibra_ci.pdf",
+      "source_fin": "https://www.brvm.org/sites/default/files/20240911_-_avis_ndeg227_brvmdg_-_levee_de_la_suspension_du_titre.pdf"
+    },
+    {
+      "ticker": "SVOC.ci",
+      "type": "suspension",
+      "debut": "2025-05-19",
+      "fin": "2025-06-26",
+      "motif": "Clôture de l'offre publique de retrait (40 000 FCFA par action)",
+      "avis": "avis 110-2025",
+      "source": "https://www.brvm.org/sites/default/files/20250516_-_avis_ndeg110_brvmdg_-_suspension_movis_ci_opr.pdf"
+    },
+    {
+      "ticker": "SVOC.ci",
+      "type": "radiation",
+      "debut": "2025-06-26",
+      "fin": null,
+      "motif": "Offre publique de retrait souscrite à 100 %",
+      "avis": "avis 142-2025",
+      "source": "https://www.brvm.org/sites/default/files/20250625_-_avis_ndeg142_brvmdg_-_radiation_movis_ci.pdf"
+    },
+    {
+      "ticker": "UNLC.ci",
+      "type": "suspension",
+      "debut": "2025-08-04",
+      "fin": "2025-09-01",
+      "motif": "Article 1511 des règles de négociation (après la cession de 99,78 % du capital)",
+      "avis": "avis 189-2025",
+      "source": "https://www.brvm.org/sites/default/files/20250804_-_avis_ndeg189_brvmdg_-_suspension_-_unilever_ci.pdf",
+      "source_fin": "https://www.brvm.org/sites/default/files/20250901_-_avis_ndeg213_brvmdg_-_levee_de_la_suspension_unilever_ci.pdf"
+    },
+    {
+      "ticker": "SEMC.ci",
+      "type": "suspension",
+      "debut": "2026-09-16",
+      "fin": null,
+      "motif": "Non-respect des obligations de diffusion d'informations financières périodiques",
+      "avis": "avis 270-2026",
+      "source": "https://www.brvm.org/sites/default/files/20260916_-_avis_ndeg270_brvmdg_-_suspension_-_sonoco_metal_packaging_siem_ci.pdf"
+    },
+    {
+      "ticker": "SCRC.ci",
+      "type": "suspension",
+      "debut": "2026-09-16",
+      "fin": "2026-09-22",
+      "motif": "Dans l'attente d'un communiqué ; levée après publication du rapport du 1er trimestre 2026",
+      "avis": "avis 269-2026",
+      "source": "https://www.brvm.org/sites/default/files/20260916_-_avis_ndeg269_brvmdg_-_suspension_-_sucrivoire_ci.pdf",
+      "source_fin": "https://www.brvm.org/sites/default/files/20260921_-_avis_ndeg276_brvmdg_-_levee_de_la_suspension_sucrivoire_s.a.pdf"
+    },
+    {
+      "ticker": "SICC.ci",
+      "type": "suspension",
+      "debut": "2026-09-16",
+      "fin": null,
+      "motif": "Non-respect des obligations de diffusion d'informations financières périodiques",
+      "avis": "avis 268-2026",
+      "source": "https://www.brvm.org/sites/default/files/20260916_-_avis_ndeg268_brvmdg_-_suspension_-_sicor_ci.pdf"
+    }
+  ]
+}

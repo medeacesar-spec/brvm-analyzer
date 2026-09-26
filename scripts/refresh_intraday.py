@@ -75,10 +75,16 @@ def refresh_intraday() -> dict:
     n_market = 0
     n_cache = 0
 
+    # Un titre radie de la cote n'a plus de seance. brvm.org continuait
+    # d'afficher Movis CI (radie le 26/06/2025) a son dernier cours : le robot
+    # lui ecrivait chaque jour une seance fantome a volume nul.
+    from config import tickers_retires
+    hors_cote = tickers_retires()
+
     for _, row in quotes.iterrows():
         ticker = row.get("ticker") or ""
         last_price = row.get("last") or 0
-        if not ticker or not last_price:
+        if not ticker or not last_price or ticker in hors_cote:
             continue
 
         try:
