@@ -279,9 +279,8 @@ def render():
     # plutot que trois entrees de menu : la navigation, les liens et
     # l'authentification ne bougent pas, et c'est deja le motif d'« Analyse
     # d'un titre ».
-    onglet_perf, onglet_reco, onglet_neuf, onglet_synthese = st.tabs(
-        ["Performance", "Recommandations", "Risque et optimisation",
-         "Synthèse des fenêtres"])
+    onglet_perf, onglet_reco, onglet_neuf = st.tabs(
+        ["Performance", "Recommandations", "Risque et optimisation"])
 
     with onglet_perf:
         # --- Portfolio summary (pas de divider — la hiérarchie suffit) ---
@@ -999,8 +998,8 @@ def render():
         _render_risque_ensemble(portfolio)
         _render_recommandations_ajustees(portfolio)
         _render_optimisation(portfolio, cash)
-
-    with onglet_synthese:
+        # La synthese prolonge l'optimisation : ce qui revient dans toutes
+        # les fenetres, la simulation d'achats et l'historique des choix.
         _render_synthese_fenetres(portfolio, cash)
 
     _render_info_box()
