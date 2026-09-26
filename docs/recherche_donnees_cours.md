@@ -66,9 +66,9 @@ l'export seul ; aucun collecteur ne l'alimentait. Le rafraîchissement intraday
 | Séances en désaccord avec l'export RichBourse | 1 876 | 0 |
 | Lignes mises en quarantaine | — | 10 700 (copies 7 181, jours sans séance 1 187, contredites par sikafinance 122, anciennes versions des lignes reprises 2 210) |
 
-Sicor n'a plus d'historique avant mai 2007 : sikafinance ne remonte pas plus
-loin, et l'export RichBourse de Sicor est à refaire. Unilever repart de
-décembre 2016, comme l'export.
+Sicor n'a plus d'historique avant mai 2007, ni Unilever avant août 2010 :
+sikafinance ne remonte pas plus loin. Les deux exports RichBourse sont à
+refaire pour couvrir 1998 à 2007 (Sicor) et 1998 à 2010 (Unilever).
 
 ## Ce qui limite encore l'étude
 
@@ -96,7 +96,7 @@ décembre 2016, comme l'export.
 ## Suite
 
 1. Liste des radiations depuis 1998 et collecte de leurs cours ; nouvel export
-   RichBourse de Sicor (1998-2007) et d'Unilever (avant 2016), en vérifiant
+   RichBourse de Sicor (1998-2007) et d'Unilever (1998-2010), en vérifiant
    que le fichier n'est pas celui d'un autre titre (l'import le refuse
    désormais).
 2. Dividendes antérieurs à 2015.
