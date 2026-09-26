@@ -3,7 +3,7 @@
 Registre des demandes en attente. Une ligne par demande, dans l'ordre décidé
 par le donneur d'ordre. Rien n'en sort sans être fait ou explicitement retiré.
 
-Mis à jour le 2026-09-25.
+Mis à jour le 2026-09-26.
 
 ## En cours
 
@@ -59,6 +59,12 @@ Mis à jour le 2026-09-25.
 | 47 | **Soldes de bilan à lire — écarts modérés** relevés par le chaînage (#217) : deux documents s'accordent, la base porte 2 à 44 % de moins, peut-être par périmètre (part du groupe ou total). Oragroup 2021-2022 capitaux propres (165 contre 116-119) · SGBCI 2021 · Ecobank CI 2022 et 2024 · BOA CI 2023 total (939 contre 843, copie probable de 2022) · NSIA 2021 · SIB 2022 · SAFCA 2021 · Uniwax 2021 flux. Erium 2024 total : deux méthodes divergent (14,0 et 10,8). | à lire |
 | 37 | **Les quatorze montants « figés » de la sonde n'avaient jamais été instruits** (voir #10). La sonde les voyait bien — SIB 2024, SGBCI 2022, 2023 et 2025, Onatel 2024, TotalEnergies CI 2025, CIE 2024, Ecobank CI 2024 — et le recoupement par le lecteur en confirme neuf (#196). Restent : les **quasi-copies**, qui lui échappent (BOA Mali 2025 : 36,157 → 36,159 Md ; BOA Niger 2023), et les copies de bilan de #32. | sonde à affiner |
 | 14 | Bernabé : la dette lue vaut 208 527 219 d'emprunts **plus 16 688 923 003**, qui est la « Trésorerie nette » du tableau de flux et non la trésorerie-passif du bilan (18 535 854 210 en 2025). Suspecte avant comme après la #89. | à corriger |
+| 48 | **Résultat avant impôt, neuf lignes douteuses** (champ hors de tout ratio affiché) : Coris 2024 36 653 Md et AGL 2022 19 036 Md (échelle), BOA Mali 2023-2024, Coris 2025, Bernabé 2022 et 2025, SIB 2022, SETAO 2022. Beaucoup de résultats avant impôt bancaires venaient de trimestriels (SGBCI, Ecobank CI, ETI : corrigés le 26/09). | à nettoyer |
+| 49 | **Publiés nulle part** (recherche brvm.org, sites des émetteurs et de leurs groupes, 26/09) : investissements de SETAO (comptes condensés), de Filtisac (flux d'investissement net seul) et de Nestlé CI (chiffre de gestion arrondi seulement) ; frais financiers de SETAO ; total de bilan et frais financiers CFAO 2025 ; ventilation DA/DB de la dette de Vivo Energy CI ; bilan détaillé AGL 2023-2025. | à surveiller |
+| 50 | **Dettes à base incertaine, laissées en l'état** : Filtisac 2021-2024 (ligne « dettes financières » peut-être avec provisions) · Uniwax 2021-2022 (DD, provisions comprises) · Sicable 2021 et 2025 (valeurs IFRS au milieu d'une série SYSCOHADA à zéro) · Vivo Energy 2021-2025 (entre la trésorerie-passif seule et DD + DT) · SETAO (probablement des provisions de chantier) · AGL 2023-2025 (emprunts estimés). | à trancher |
+| 51 | **Bases mélangées encore en base** : capitaux propres de TotalEnergies Sénégal (IFRS consolidé, 24,9 Md en SYSCOHADA pour 2021) · capitaux propres CFAO 2025 et total 2025 vidés (chiffres de Tractafric IFRS 2022) · chiffre d'affaires SIEM 2024 (23,2 Md, source introuvable) · NEI-CEDA T1 2025 chiffre d'affaires 48,5 M (invraisemblable). | à lire |
+| 52 | **« Dette totale » des banques** : Oragroup 2025 (3 704 Md) et ETI 2021-2026 portent leurs passifs financiers. Le ratio n'est plus calculé pour une banque (#239) ; les valeurs restent en base. | à nettoyer |
+| 53 | **Investissements SODECI 2025** : le résumé brvm.org (11 755 M, cessions recopiées de 2024) et le rapport de gestion de l'AGO (11 784 M) divergent. | à trancher |
 
 ## Décisions à confirmer
 
@@ -71,6 +77,8 @@ Mis à jour le 2026-09-25.
 
 | Requête | Livré |
 |---|---|
+| Grilles sectorielles 2021-2025 : 74 → 88 % (états 90 → 95 %). Sites des émetteurs (orabank.net, biic-bank.com, palmci.ci, sogbci.com, sodeci.ci, smb.ci, totalenergies.ci/.sn, nestle-cwa.com), NGX pour ETI, résultats 2017-2020 pour la volatilité. Environ 700 valeurs corrigées ou ajoutées ; erreur la plus fréquente : chiffres trimestriels écrits comme annuels (Oragroup, BICI CI, BIIC, ETI, SGBCI, SETAO). Arbitrages : BIIC 2024 et Unilever 2021-2022 en version retraitée ; dette SODECI hors avances des abonnés ; actif CIE hors comptes du secteur. Règle #38 et #47 soldées pour Oragroup, SGBCI, Ecobank CI, SAFCA, Uniwax | 2026-09-26 |
+| Écrans : alertes nommées et chiffrées, indicateurs sur deux lignes avec leur nom standard, P/B et fonds propres négatifs jugés, dette / fonds propres non applicable aux banques, alertes de statut (retard de publication, séances sans échange, suspension qui s'éteint seule), volatilité recalculée sur N-3..N, flux libre des télécoms (#237, #239, #240, #242, #243, #244) | 2026-09-26 |
 | Compte de résultat et bancaire à un seul document (décision du 25/09) : 57 + 37 trous, 30 + 16 corrections (#208, #212) | 2026-09-25 |
 | Télécoms : Sonatel, Orange CI et Onatel alignés sur leurs comptes annuels ; grille à 0 % de marge corrigée (#209) | 2026-09-25 |
 | Parcs télécoms 2021-2026 : 57 parcs, cohérence de série (#210) | 2026-09-25 |
