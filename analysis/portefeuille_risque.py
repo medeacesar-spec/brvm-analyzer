@@ -883,3 +883,102 @@ def historique_synthese(user_id: str, jours: int = 60):
             params=(user_id, (date.today() - timedelta(days=jours)).isoformat()))
     except Exception:                                           # noqa: BLE001
         return None
+
+
+# ─── Simulation d'achats ──────────────────────────────────────────────────
+#
+# Demande du 26/09/2026 : la synthese designe des titres ; il faut pouvoir
+# les « acheter » a blanc et voir ce que deviendrait le portefeuille —
+# rendement, alpha, beta, volatilite — dans chaque fenetre.
+#
+# AVANT ET APRES SUR LES MEMES MOIS. Un titre introduit recemment raccourcit
+# la periode commune : mesurer l'avant sur dix ans et l'apres sur quatre
+# comparerait deux periodes, pas deux portefeuilles. Les deux sont donc
+# mesures sur les mois ou TOUTES les lignes, anciennes et simulees, cotent.
+
+
+def _indicateurs(valeurs: dict, rendements: dict, n: int, mois, marche: dict,
+                 indice: dict) -> Optional[dict]:
+    total = sum(valeurs.values())
+    if not total:
+        return None
+    part = {t: v / total for t, v in valeurs.items()}
+    serie = [sum(part[t] * rendements[t][i] for t in part) for i in range(n)]
+    cumul = 1.0
+    for r in serie:
+        cumul *= 1 + r
+    trajectoire = _mesures_trajectoire(serie, mois, marche)
+    a = _alpha(valeurs, rendements, mois, indice) if mois and indice else None
+    return {
+        "rendement_annuel": (1 + st.mean(serie)) ** 12 - 1,
+        "rendement_cumule": cumul - 1,
+        "volatilite": st.stdev(serie) * math.sqrt(12) if n > 1 else None,
+        "sharpe": trajectoire.get("sharpe"),
+        "beta": trajectoire.get("beta"),
+        "alpha": a["alpha"] if a else None,
+        "perte_maximale": trajectoire.get("perte_maximale"),
+        "correlation_marche": trajectoire.get("correlation_marche"),
+    }
+
+
+@_maybe_cache_data(ttl=300)
+def simuler_achats(positions: tuple, achats: tuple) -> Optional[dict]:
+    """Le portefeuille avant et apres des achats simules, fenetre par fenetre.
+
+    `positions` et `achats` : tuples de (ticker, montant en francs). Les
+    achats s'ajoutent aux lignes existantes ; ils sont supposes payes avec
+    des liquidites, qui ne rapportent rien et ne sont pas comptees.
+    """
+    from analysis.risque import FENETRES
+    avant = {}
+    for t, v in positions:
+        if v and v > 0:
+            avant[t] = avant.get(t, 0) + v
+    apres = dict(avant)
+    for t, v in achats:
+        if v and v > 0:
+            apres[t] = apres.get(t, 0) + v
+    if not apres or apres == avant:
+        return None
+
+    mesures = toutes_les_mesures(None)
+    liquidite = []
+    for t, v in achats:
+        echange = (mesures.get(t) or {}).get("montant_echange")
+        plafond = (echange / SEANCES_PAR_MOIS * SEANCES_DE_SORTIE_ACCEPTABLES
+                   if echange else None)
+        liquidite.append({"ticker": t, "montant": v, "plafond": plafond,
+                          "trop_gros": bool(plafond and v > plafond)})
+
+    fenetres, vues = [], {}
+    for libelle, fenetre in FENETRES:
+        series = series_mensuelles(fenetre)
+        lignes = [t for t in apres if t in series]
+        if not lignes:
+            continue
+        n = min(len(series[t][0]) for t in lignes)
+        if n < MINIMUM_MOIS:
+            continue
+        if n in vues:
+            vues[n]["libelle"] += f" = {libelle.lower()}"
+            continue
+        rendements = {t: series[t][0][-n:] for t in lignes}
+        mois = _mois_alignes(series, lignes, n)
+        marche = _serie_marche(series)
+        indice = _serie_indice(series, "BRVMC")
+        f = {
+            "libelle": libelle, "observations": n,
+            "avant": _indicateurs({t: v for t, v in avant.items() if t in rendements},
+                                  rendements, n, mois, marche, indice),
+            "apres": _indicateurs({t: v for t, v in apres.items() if t in rendements},
+                                  rendements, n, mois, marche, indice),
+            "debut": mois[0] if mois else None,
+            "fin": mois[-1] if mois else None,
+        }
+        vues[n] = f
+        fenetres.append(f)
+    return {"fenetres": fenetres, "liquidite": liquidite,
+            "hors_mesure": sorted(t for t in apres
+                                  if t not in series_mensuelles(None)),
+            "total_avant": sum(avant.values()),
+            "total_apres": sum(apres.values())}
