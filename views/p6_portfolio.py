@@ -411,6 +411,8 @@ def render():
                                     f"{n_sectors} secteur{'s' if n_sectors > 1 else ''}"),
                          unsafe_allow_html=True)
 
+        _render_performance_periodes(portfolio, price_map)
+
         # ═══════════════════════════════════════════════════════════════════
         # Tableau Positions editorial
         # ═══════════════════════════════════════════════════════════════════
@@ -1017,6 +1019,89 @@ def render():
             _render_synthese_fenetres(portfolio, cash)
 
     _render_info_box()
+
+
+def _render_performance_periodes(portfolio, price_map):
+    """La performance sur dix periodes, du jour au maximum.
+
+    Demande du 03/10/2026 : l'onglet ne donnait que la performance depuis le
+    premier achat. Une ligne achetee pendant la periode compte depuis son prix
+    d'achat ; la reference place les memes montants aux memes dates dans le
+    Composite (analysis/performance_portefeuille.py).
+    """
+    from utils.ui_helpers import section_heading
+    from analysis.performance_portefeuille import performance_par_periode, PERIODES
+    try:
+        r = performance_par_periode(portfolio.to_dict("records"), price_map)
+    except Exception as err:                                    # noqa: BLE001
+        st.caption(f"Performance par période indisponible : {err}")
+        return
+    if not r or not r["periodes"]:
+        return
+    per = r["periodes"]
+    colonnes = [p for p in PERIODES if p in per]
+
+    section_heading("Performance par période", spacing="loose")
+    entete = ("font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;"
+              "color:var(--ink-3);font-weight:500;padding:9px 8px;"
+              "border-bottom:1px solid var(--border);background:var(--bg-sunken);"
+              "text-align:right;white-space:nowrap;")
+    cell = "padding:8px 8px;font-size:13px;border-bottom:1px solid var(--border);"
+    nb = cell + "text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;"
+
+    def _pct(v, gras=False, teinter=True, attenuer=False):
+        if v is None:
+            return f"<td style='{nb};color:var(--ink-3);'>—</td>"
+        teinte = ("var(--up)" if v > 0 else "var(--down)" if v < 0 else "var(--ink)") \
+            if teinter else "var(--ink-2)"
+        if attenuer:
+            teinte = "var(--ink-3)"
+        return (f"<td style='{nb};color:{teinte};{'font-weight:600;' if gras else ''}'>"
+                f"{v * 100:+.2f} %".replace(".", ",") + "</td>")
+
+    html = f"<tr><th style='{entete};text-align:left;'></th>"
+    for p in colonnes:
+        etoile = "*" if per[p]["depuis_achat"] else ""
+        html += f"<th style='{entete}'>{p}{etoile}</th>"
+    html += "</tr>"
+    for cle, nom, gras, teinter in (("portefeuille", "Portefeuille", True, True),
+                                    ("indice", "BRVM Composite, mêmes montants", False, False),
+                                    ("ecart", "Écart", False, True)):
+        html += f"<tr><td style='{cell};white-space:nowrap;{'font-weight:600;' if gras else ''}'>{nom}</td>"
+        for p in colonnes:
+            html += _pct(per[p][cle], gras, teinter, attenuer=per[p]["depuis_achat"])
+        html += "</tr>"
+    st.markdown(
+        f"<div style='border:1px solid var(--border);border-radius:12px;"
+        f"overflow-x:auto;background:var(--bg-elev);margin-top:10px;'>"
+        f"<table style='width:100%;border-collapse:collapse;'>{html}</table>"
+        f"</div>", unsafe_allow_html=True)
+
+    notes = [f"Cours au {r['derniere_seance']:%d/%m/%Y}, dividendes non compris "
+             "(ils sont dans le Total Return). Une ligne achetée pendant la "
+             "période compte depuis son prix d'achat, frais compris. Le "
+             "Composite reçoit les mêmes montants aux mêmes dates : l'écart "
+             "mesure le choix des titres."]
+    if any(per[p]["depuis_achat"] for p in colonnes):
+        notes.append("\\* Toutes les lignes ont été achetées pendant la période : "
+                     "la mesure est celle depuis l'achat, égale à Max.")
+    st.caption(" ".join(notes))
+
+    # Par ligne : le meme decoupage, titre par titre.
+    with st.expander("Par ligne"):
+        tickers = sorted({t for p in colonnes for t in per[p]["lignes"]})
+        html = f"<tr><th style='{entete};text-align:left;'>Ligne</th>"
+        html += "".join(f"<th style='{entete}'>{p}</th>" for p in colonnes) + "</tr>"
+        for t in tickers:
+            html += f"<tr><td style='{cell}'><span class='ticker'>{t}</span></td>"
+            for p in colonnes:
+                html += _pct(per[p]["lignes"].get(t), attenuer=per[p]["depuis_achat"])
+            html += "</tr>"
+        st.markdown(
+            f"<div style='border:1px solid var(--border);border-radius:12px;"
+            f"overflow-x:auto;background:var(--bg-elev);'>"
+            f"<table style='width:100%;border-collapse:collapse;'>{html}</table>"
+            f"</div>", unsafe_allow_html=True)
 
 
 def _render_dividendes_a_venir(portfolio):
