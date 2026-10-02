@@ -2005,14 +2005,16 @@ def _render_tendance_periodes(ticker):
     if not quatre or all(t.get("absent") for t in quatre):
         return
 
-    section_heading("Quatre derniers trimestres", spacing="loose")
-
     def _montant(valeur):
         if valeur is None:
             return "<span style='color:var(--ink-3);'>—</span>"
         if abs(valeur) >= 1e9:
             return f"{valeur/1e9:,.1f} Md"
         return f"{valeur/1e6:,.0f} M"
+
+    _render_trimestres_par_annee(ticker, _montant)
+
+    section_heading("Quatre derniers trimestres", spacing="loose")
 
     entetes = "".join(
         f"<th style='padding:0 12px 5px;font-size:11px;font-weight:500;"
@@ -2118,6 +2120,95 @@ def _render_tendance_periodes(ticker):
             f"{mobile['exercice_ref']}. Cette croissance précède de plusieurs "
             f"mois celle que l'exercice suivant entérinera."
         )
+
+
+def _render_trimestres_par_annee(ticker, _montant):
+    """Trimestre par trimestre sur trois exercices : chaque trimestre a cote
+    du meme trimestre de l'annee precedente.
+
+    Demande du 03/10/2026 : comparer les deux dernieres annees trimestre par
+    trimestre, quand c'est publie. Lignes T1 a T4, colonnes N-2, N-1, N et
+    les deux variations ; une case vide est un trimestre non publie (ou non
+    deductible), jamais comble.
+    """
+    from utils.ui_helpers import section_heading
+    from analysis.trimestres import trimestres_normalises
+
+    connus = {(t["annee"], t["trimestre"]): t for t in trimestres_normalises(ticker)}
+    if not connus:
+        return
+    n = max(a for a, _ in connus)
+    annees = [n - 2, n - 1, n]
+    if not any((a, q) in connus for a in annees[:2] for q in range(1, 5)):
+        return                      # rien a comparer
+
+    section_heading("Trimestre par trimestre", spacing="loose")
+    th = ("padding:6px 10px;font-size:11px;font-weight:500;color:var(--ink-3);"
+          "text-align:right;white-space:nowrap;border-bottom:1px solid var(--border);")
+    td = ("padding:7px 10px;font-size:13px;text-align:right;"
+          "font-variant-numeric:tabular-nums;white-space:nowrap;")
+
+    def _var(a, b):
+        if a is None or b in (None, 0):
+            return f"<td style='{td};color:var(--ink-3);'>—</td>"
+        v = (a - b) / abs(b) * 100
+        couleur = "var(--up)" if v >= 0 else "var(--down)"
+        return f"<td style='{td};font-size:12px;font-weight:600;color:{couleur};'>{v:+.1f} %</td>"
+
+    def _tableau(champ, titre):
+        tete = (f"<tr><th style='{th};text-align:left;'>{titre}</th>"
+                f"<th style='{th}'>{annees[0]}</th><th style='{th}'>{annees[1]}</th>"
+                f"<th style='{th}'>vs {annees[0]}</th><th style='{th}'>{annees[2]}</th>"
+                f"<th style='{th}'>vs {annees[1]}</th></tr>")
+        corps = ""
+        totaux = {a: [] for a in annees}
+        for q in range(1, 5):
+            v = [(connus.get((a, q)) or {}).get(champ) for a in annees]
+            for a, x in zip(annees, v):
+                totaux[a].append(x)
+            corps += (f"<tr style='border-top:1px solid var(--border);'>"
+                      f"<td style='{td};text-align:left;'>T{q}</td>"
+                      f"<td style='{td}'>{_montant(v[0])}</td>"
+                      f"<td style='{td}'>{_montant(v[1])}</td>{_var(v[1], v[0])}"
+                      f"<td style='{td}'>{_montant(v[2])}</td>{_var(v[2], v[1])}</tr>")
+        # L'annee complete, seulement si les quatre trimestres sont connus.
+        def _annee(a):
+            v = totaux[a]
+            return sum(v) if all(x is not None for x in v) else None
+        a0, a1 = _annee(annees[0]), _annee(annees[1])
+        style_total = f"{td};text-align:left;color:var(--ink-3);font-size:11.5px;"
+        corps += (f"<tr style='border-top:2px solid var(--border);'>"
+                  f"<td style='{style_total}'>Année</td>"
+                  f"<td style='{td}'>{_montant(a0)}</td><td style='{td}'>{_montant(a1)}</td>"
+                  f"{_var(a1, a0)}<td style='{td}'></td><td style='{td}'></td></tr>")
+        # L'annee en cours : les trimestres publies, face aux MEMES trimestres
+        # de l'annee precedente.
+        k = 0
+        while k < 4 and totaux[annees[2]][k] is not None and totaux[annees[1]][k] is not None:
+            k += 1
+        if 0 < k < 4:
+            c2 = sum(totaux[annees[2]][:k]); r2 = sum(totaux[annees[1]][:k])
+            corps += (f"<tr style='border-top:1px solid var(--border);'>"
+                      f"<td style='{style_total}'>{'T1' if k == 1 else f'Cumul T1–T{k}'}</td><td style='{td}'></td>"
+                      f"<td style='{td}'>{_montant(r2)}</td><td style='{td}'></td>"
+                      f"<td style='{td}'>{_montant(c2)}</td>{_var(c2, r2)}</tr>")
+        return (f"<div style='flex:1;min-width:320px;overflow-x:auto;border:1px solid var(--border);"
+                f"border-radius:12px;padding:6px 10px;background:var(--bg-elev);'>"
+                f"<table style='width:100%;border-collapse:collapse;'>{tete}{corps}</table></div>")
+
+    st.markdown(f"<div style='display:flex;gap:12px;flex-wrap:wrap;'>"
+                f"{_tableau('revenue', 'Chiffre d’affaires')}"
+                f"{_tableau('net_income', 'Résultat net')}</div>",
+                unsafe_allow_html=True)
+    st.caption(
+        "Chaque trimestre face au **même trimestre de l'année précédente**, la "
+        "seule comparaison qui neutralise la saisonnalité. Un trimestre se lit "
+        "tel que publié, ou se déduit de deux cumuls (le deuxième trimestre est "
+        "le semestre moins le premier). Une case vide est un trimestre non "
+        "publié. **Année** n'est donnée que si les quatre trimestres sont "
+        "connus ; le **cumul** de l'année en cours se compare aux mêmes "
+        "trimestres de l'année précédente. Pour une banque, le chiffre d'affaires est le "
+        "produit net bancaire.")
 
 
 def _render_bloc_sectoriel(fundamentals, ratios_src, annee_choisie=None):
