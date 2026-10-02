@@ -48,13 +48,12 @@ from data.db import read_sql_df  # noqa: E402
 # designent le meme arrete (30 juin) ; T4 et S2 le meme (31 decembre).
 RANG = {"T1": 1, "T2": 2, "S1": 2, "T3": 3, "T4": 4, "S2": 4}
 
-# (ticker, exercice) qui publient le TRIMESTRE SEUL et non le cumul.
-# Chaque entree a ete verifiee dans le rapport de l'emetteur.
-AUTONOMES = {
-    ("STBC.ci", 2025): "rapport T3 2025 : CA 64,8 Md contre 131,0 Md au S1",
-    ("STBC.ci", 2026): "meme convention que 2025",
-    ("CFAC.ci", 2025): "rapport T3 2025 : « ce trimestre, 2 942 vehicules »",
-}
+# (ticker, exercice) qui publient le TRIMESTRE SEUL et non le cumul. La liste
+# vit dans analysis/trimestres.py, ou l'application la lit aussi : une seule
+# source, verifiee au rapport de l'emetteur pour chaque entree.
+from analysis.trimestres import TRIMESTRES_AUTONOMES  # noqa: E402
+AUTONOMES = {cle: ", ".join(sorted(v)) for cle, v in TRIMESTRES_AUTONOMES.items()
+             if v - {"T1"} and cle != ("STBC.ci", 2023)}
 # STBC.ci 2023 publiait en CUMULE (T3 2023 = 123,6 Md, volumes 5 364,7 milliers
 # de tiges pour un exercice a ~6 700) mais son T4 est autonome : la societe a
 # change de convention en cours de route. Son exercice 2023 est donc exclu du

@@ -28,6 +28,21 @@ from typing import Optional
 # Duree couverte, en mois, par chaque libelle de publication.
 _COUVERTURE = {"T1": 3, "S1": 6, "T2": 6, "T3": 9, "T4": 12, "S2": 12}
 
+# LE CUMUL N'EST PAS UNIVERSEL. Certains emetteurs publient le TRIMESTRE SEUL :
+# leur « T3 » couvre juillet-septembre, pas neuf mois. Le traiter en cumul
+# fabriquait des trimestres faux — SITAB ressortait a 1,2 Md au T2 2026
+# (70,0 - 68,8) et 8,1 Md au T4 2025 (72,9 - 64,8), son T3 2025 disparaissant
+# (64,8 - 131,0 < 0). Chaque entree est verifiee au rapport de l'emetteur ;
+# elle liste les publications qui sont des trimestres seuls. Le S1, lui, reste
+# un cumul de six mois chez tous.
+TRIMESTRES_AUTONOMES = {
+    ("STBC.ci", 2023): {"T4"},          # T3 2023 cumule (123,6 Md), T4 seul
+    ("STBC.ci", 2024): {"T3", "T4"},    # comparatifs des rapports T3/T4 2025
+    ("STBC.ci", 2025): {"T1", "T2", "T3", "T4"},   # T3 2025 : 64,8 Md, S1 131,0
+    ("STBC.ci", 2026): {"T1", "T2", "T3", "T4"},
+    ("CFAC.ci", 2025): {"T1", "T3"},    # « ce trimestre, 2 942 vehicules »
+}
+
 LIBELLES = {1: "T1", 2: "T2", 3: "T3", 4: "T4"}
 
 
@@ -38,13 +53,22 @@ def _variation(actuel, precedent):
     return (actuel - precedent) / abs(precedent) * 100
 
 
-def _cumuls(lignes: list) -> dict:
-    """Cumuls disponibles pour un exercice : {mois couverts: ligne}."""
+def _periode(ligne: dict) -> str:
+    periode = (ligne.get("periode") or "").upper()
+    if not periode and ligne.get("quarter") in (1, 2, 3, 4):
+        periode = f"T{ligne['quarter']}"
+    return periode
+
+
+def _cumuls(lignes: list, autonomes: set = frozenset()) -> dict:
+    """Cumuls disponibles pour un exercice : {mois couverts: ligne}. Un
+    trimestre publie seul n'est pas un cumul, sauf le premier (T1 = 3 mois
+    dans les deux conventions)."""
     sortie = {}
     for ligne in lignes:
-        periode = (ligne.get("periode") or "").upper()
-        if not periode and ligne.get("quarter") in (1, 2, 3, 4):
-            periode = f"T{ligne['quarter']}"
+        periode = _periode(ligne)
+        if periode in autonomes and periode != "T1":
+            continue
         mois = _COUVERTURE.get(periode)
         if not mois:
             continue
@@ -117,22 +141,43 @@ def trimestres_normalises(ticker: str) -> list:
     for annee, groupe in par_annee.items():
         if not annee:
             continue
-        cumuls = _cumuls(groupe)
+        autonomes = TRIMESTRES_AUTONOMES.get((ticker, annee), set())
+        seuls = {_periode(l): l for l in groupe if _periode(l) in autonomes}
+        cumuls = _cumuls(groupe, autonomes)
         # L'exercice clos fournit le cumul douze mois, donc le quatrieme
         # trimestre par difference.
         if 12 not in cumuls and annee in annuels:
             cumuls[12] = annuels[annee]
 
+        trouves = {}
         for rang, (mois, precedent) in enumerate(
                 [(3, None), (6, 3), (9, 6), (12, 9)], start=1):
-            courant = cumuls.get(mois)
-            if courant is None:
-                continue
-            anterieur = cumuls.get(precedent) if precedent else None
-            if precedent and anterieur is None:
-                continue          # on ne devine pas le cumul manquant
-            ca = _difference(courant, anterieur, "revenue")
-            rn = _difference(courant, anterieur, "net_income")
+            seul = seuls.get(f"T{rang}")
+            if seul is not None:
+                # Publie tel quel : rien a deduire.
+                ca, rn = seul.get("revenue") or None, seul.get("net_income")
+                anterieur = None
+            else:
+                courant = cumuls.get(mois)
+                if courant is None:
+                    continue
+                anterieur = cumuls.get(precedent) if precedent else None
+                if precedent and anterieur is None:
+                    # Trimestres publies seuls : le dernier se deduit de
+                    # l'exercice, s'il est clos et que les trois autres sont la.
+                    if rang == 4 and all(r in trouves for r in (1, 2, 3)):
+                        ca = _difference(courant, {"revenue": sum(
+                            trouves[r]["revenue"] or 0 for r in (1, 2, 3))}, "revenue")
+                        rn = None
+                        if all(trouves[r]["net_income"] is not None for r in (1, 2, 3)):
+                            rn = _difference(courant, {"net_income": sum(
+                                trouves[r]["net_income"] for r in (1, 2, 3))}, "net_income")
+                        anterieur = courant
+                    else:
+                        continue          # on ne devine pas le cumul manquant
+                else:
+                    ca = _difference(courant, anterieur, "revenue")
+                    rn = _difference(courant, anterieur, "net_income")
 
             # Un trimestre pese environ un quart de l'exercice. Au-dela de
             # 60 %, la difference ne decrit pas un trimestre mais l'ecart
@@ -154,6 +199,7 @@ def trimestres_normalises(ticker: str) -> list:
                 ca = None
             if ca is None and rn is None:
                 continue
+            trouves[rang] = {"revenue": ca, "net_income": rn}
             sortie.append({
                 "annee": annee,
                 "trimestre": rang,
