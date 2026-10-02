@@ -599,8 +599,57 @@ def enregistrer_syntheses_du_jour() -> int:
     return n
 
 
-def build_all() -> dict:
-    """Construit tous les snapshots. Retourne un résumé."""
+def _collecter() -> None:
+    """Découverte et intégration des nouvelles publications (build du soir)."""
+    # ── Étape 0bis : découverte + intégration des nouveaux PDFs ──
+    # 1. scan_brvm_reports : ajoute à report_links les PDFs fraichement
+    #    publies sur brvm.org pour les 48 societes.
+    # 2. extract_pending_pubs : extract uniquement les PDFs lies aux
+    #    publications encore "À intégrer" (ne re-traite pas tout).
+    # → Idempotent : si rien de nouveau, ces deux scripts sont quasi-no-ops.
+    try:
+        from scripts.scan_brvm_reports import main as _scan_brvm
+        print("  [pdfs] scan brvm.org pour nouveaux PDFs …")
+        _scan_brvm()
+    except Exception as e:
+        print(f"  [pdfs] scan_brvm_reports KO (non bloquant): {e}")
+    try:
+        from scripts.scan_publications import main as _scan_pubs
+        print("  [news] scan richbourse + sikafinance …")
+        _scan_pubs()
+    except Exception as e:
+        print(f"  [news] scan_publications KO (non bloquant): {e}")
+    try:
+        from scripts.scan_boc import main as _scan_boc
+        print("  [boc] bulletin officiel de la cote …")
+        _scan_boc()
+    except Exception as e:
+        print(f"  [boc] scan_boc KO (non bloquant): {e}")
+    try:
+        from scripts.scan_news import main as _scan_news
+        print("  [revue] collecte des depeches sikafinance …")
+        _scan_news()
+    except Exception as e:
+        print(f"  [revue] scan_news KO (non bloquant): {e}")
+    try:
+        from scripts.extract_pending_pubs import main as _extract_pending
+        print("  [pdfs] extract pending publications …")
+        _extract_pending()
+    except Exception as e:
+        print(f"  [pdfs] extract_pending_pubs KO (non bloquant): {e}")
+
+
+def build_all(collecte: bool = True) -> dict:
+    """Construit tous les snapshots. Retourne un résumé.
+
+    `collecte=False` : les calculs seulement (cours du jour, mensuel, scores,
+    performances, synthèses). C'est ce que demande le bouton « Regénérer
+    snapshots » de l'application. La collecte — brvm.org pour 49 sociétés,
+    RichBourse, sikafinance, bulletin officiel, extraction des PDF — prend
+    environ quinze des dix-huit minutes du build du soir ; lancée depuis le
+    bouton, elle bloquait la page plus d'une demi-heure (30/09/2026). Le
+    build quotidien (GitHub Actions) la fait de toute façon chaque soir.
+    """
     t0 = time.time()
     print(f"[{datetime.now().isoformat(timespec='seconds')}] build_daily_snapshot — start")
 
@@ -625,42 +674,8 @@ def build_all() -> dict:
         except Exception as e:
             print(f"  [mensuel] KO (non bloquant): {e}")
 
-        # ── Étape 0bis : découverte + intégration des nouveaux PDFs ──
-        # 1. scan_brvm_reports : ajoute à report_links les PDFs fraichement
-        #    publies sur brvm.org pour les 48 societes.
-        # 2. extract_pending_pubs : extract uniquement les PDFs lies aux
-        #    publications encore "À intégrer" (ne re-traite pas tout).
-        # → Idempotent : si rien de nouveau, ces deux scripts sont quasi-no-ops.
-        try:
-            from scripts.scan_brvm_reports import main as _scan_brvm
-            print("  [pdfs] scan brvm.org pour nouveaux PDFs …")
-            _scan_brvm()
-        except Exception as e:
-            print(f"  [pdfs] scan_brvm_reports KO (non bloquant): {e}")
-        try:
-            from scripts.scan_publications import main as _scan_pubs
-            print("  [news] scan richbourse + sikafinance …")
-            _scan_pubs()
-        except Exception as e:
-            print(f"  [news] scan_publications KO (non bloquant): {e}")
-        try:
-            from scripts.scan_boc import main as _scan_boc
-            print("  [boc] bulletin officiel de la cote …")
-            _scan_boc()
-        except Exception as e:
-            print(f"  [boc] scan_boc KO (non bloquant): {e}")
-        try:
-            from scripts.scan_news import main as _scan_news
-            print("  [revue] collecte des depeches sikafinance …")
-            _scan_news()
-        except Exception as e:
-            print(f"  [revue] scan_news KO (non bloquant): {e}")
-        try:
-            from scripts.extract_pending_pubs import main as _extract_pending
-            print("  [pdfs] extract pending publications …")
-            _extract_pending()
-        except Exception as e:
-            print(f"  [pdfs] extract_pending_pubs KO (non bloquant): {e}")
+        if collecte:
+            _collecter()
 
         # ── Contrôle de vraisemblance ──
         # Une extraction fausse ne proteste pas : elle rend un nombre. On la

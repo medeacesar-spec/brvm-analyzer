@@ -607,7 +607,9 @@ if is_admin() and _is_logged_in():
                           help="Précalcule les agrégats pour accélérer Signaux / Performance / Historique"):
         from scripts.build_daily_snapshot import build_all
         with st.spinner("Construction des snapshots…"):
-            res = build_all()
+            # Les calculs seulement : la collecte (brvm.org, PDF…) tourne
+            # chaque soir sur GitHub et bloquait la page plus d'une demi-heure.
+            res = build_all(collecte=False)
         if res.get("status") == "ok":
             st.sidebar.success(
                 f"Snapshots en {res['duration_sec']}s "
