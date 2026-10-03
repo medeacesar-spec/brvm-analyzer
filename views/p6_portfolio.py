@@ -411,6 +411,7 @@ def render():
                                     f"{n_sectors} secteur{'s' if n_sectors > 1 else ''}"),
                          unsafe_allow_html=True)
 
+        _render_courbe_performance(portfolio, price_map)
         _render_performance_periodes(portfolio, price_map)
 
         # ═══════════════════════════════════════════════════════════════════
@@ -1019,6 +1020,82 @@ def render():
             _render_synthese_fenetres(portfolio, cash)
 
     _render_info_box()
+
+
+def _render_courbe_performance(portfolio, price_map):
+    """La performance en %, jour par jour, avec un choix de periode.
+
+    Demande du 03/10/2026, sur le modele d'une courbe de solde : une ligne,
+    une aire degradee dessous, et les periodes en haut a droite. En % plutot
+    qu'en francs : un versement ne doit pas passer pour un gain.
+    """
+    import plotly.graph_objects as go
+    from utils.ui_helpers import section_heading
+    from analysis.performance_portefeuille import serie_performance
+    try:
+        s = serie_performance(portfolio.to_dict("records"), price_map)
+    except Exception as err:                                    # noqa: BLE001
+        st.caption(f"Courbe de performance indisponible : {err}")
+        return
+    if s is None or len(s) < 2:
+        return
+
+    col_titre, col_choix = st.columns([2, 3])
+    with col_titre:
+        section_heading("Évolution de la performance", spacing="loose")
+    with col_choix:
+        st.markdown("<div style='padding-top:22px;'></div>", unsafe_allow_html=True)
+        choix = st.segmented_control(
+            "Période", ["1 mois", "3 mois", "6 mois", "YTD", "1 an", "5 ans", "Max"],
+            default="Max", key="pf_courbe_periode", label_visibility="collapsed") or "Max"
+    fin = s.index[-1]
+    debut = {"1 mois": fin - pd.DateOffset(months=1), "3 mois": fin - pd.DateOffset(months=3),
+             "6 mois": fin - pd.DateOffset(months=6), "YTD": pd.Timestamp(fin.year - 1, 12, 31),
+             "1 an": fin - pd.DateOffset(years=1), "5 ans": fin - pd.DateOffset(years=5)}.get(choix)
+    vue = s if debut is None or debut <= s.index[0] else s[s.index >= s[s.index <= debut].index[-1]]
+    # Rebase au debut de la periode : la courbe part de 0 %.
+    base_p, base_i = 1 + vue["portefeuille"].iloc[0], 1 + vue["indice"].iloc[0]
+    if vue.index[0] == s.index[0] and (debut is None or debut <= s.index[0]):
+        p_serie, i_serie = vue["portefeuille"] * 100, vue["indice"] * 100
+    else:
+        p_serie = ((1 + vue["portefeuille"]) / base_p - 1) * 100
+        i_serie = ((1 + vue["indice"]) / base_i - 1) * 100
+    total, indice = p_serie.iloc[-1], i_serie.iloc[-1]
+    couleur = "var(--up)" if total >= 0 else "var(--down)"
+    st.markdown(
+        f"<div style='display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;'>"
+        f"<span style='font-size:34px;font-weight:600;letter-spacing:-0.02em;"
+        f"color:{couleur};font-variant-numeric:tabular-nums;'>"
+        f"{total:+.2f} %".replace(".", ",") + "</span>"
+        f"<span style='font-size:13px;color:var(--ink-3);'>Composite "
+        f"{indice:+.2f} %".replace(".", ",") + f" · écart {total - indice:+.2f} pts".replace(".", ",")
+        + f"</span></div><div style='font-size:12.5px;color:var(--ink-3);margin-bottom:4px;'>"
+        f"En date du {fin:%d/%m/%Y}.</div>", unsafe_allow_html=True)
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=p_serie.index, y=p_serie.values, name="Portefeuille", mode="lines",
+        line=dict(color="#1f2a44", width=2.2), fill="tozeroy",
+        fillcolor="rgba(31,42,68,0.12)",
+        hovertemplate="%{x|%d/%m/%Y}<br>Portefeuille %{y:+.2f} %<extra></extra>"))
+    fig.add_trace(go.Scatter(
+        x=i_serie.index, y=i_serie.values, name="BRVM Composite", mode="lines",
+        line=dict(color="#9aa3b2", width=1.4, dash="dot"),
+        hovertemplate="%{x|%d/%m/%Y}<br>Composite %{y:+.2f} %<extra></extra>"))
+    fig.update_layout(
+        template="plotly_white", height=330, margin=dict(l=0, r=0, t=6, b=0),
+        legend=dict(orientation="h", y=1.08, x=0, font=dict(size=11)),
+        hovermode="x unified", font=dict(family="Inter, sans-serif", size=12),
+        yaxis=dict(side="right", ticksuffix=" %", gridcolor="rgba(0,0,0,0.07)", zeroline=True,
+                   zerolinecolor="rgba(0,0,0,0.25)"),
+        xaxis=dict(showgrid=False))
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    st.caption(
+        "Performance **pondérée par le temps** : chaque jour compte le rendement des lignes "
+        "déjà détenues ; un achat entre à son coût et ne crée pas de saut. Elle peut différer "
+        "du gain sur le montant investi (cartes et tableau ci-dessous), qui pèse davantage un "
+        "achat fait juste avant une hausse. Cours seuls, dividendes non compris ; Composite "
+        "sur les mêmes jours.")
 
 
 def _render_performance_periodes(portfolio, price_map):
