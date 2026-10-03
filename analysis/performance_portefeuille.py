@@ -128,3 +128,68 @@ def performance_par_periode(lignes: list, prix_du_jour: dict) -> Optional[dict]:
             "lignes": {t: v[1] / v[0] - 1 for t, v in par_ligne.items() if v[0]},
         }
     return {"periodes": sortie, "derniere_seance": derniere}
+
+
+def serie_performance(lignes: list, prix_du_jour: dict) -> Optional[pd.DataFrame]:
+    """La performance du portefeuille, jour par jour, en pourcentage.
+
+    Demande du 03/10/2026 : une courbe en %, avec 6 mois, 1 an, 5 ans, max.
+
+    PERFORMANCE PONDEREE PAR LE TEMPS. Chaque jour, le rendement est celui des
+    lignes detenues la veille ; un achat du jour entre a son cout de revient
+    et ne cree aucun saut. Sans cela, chaque versement ferait monter la
+    courbe comme un gain. Les rendements quotidiens s'enchainent :
+    (1 + r1)(1 + r2)… - 1. Le Composite, sur les memes jours, sert de repere.
+
+    C'est pourquoi la courbe peut differer un peu du tableau par periode, qui
+    rapporte le gain a l'argent reellement investi : un achat fait juste avant
+    une hausse pese davantage dans le second que dans la premiere.
+    """
+    lignes = [l for l in lignes if (l.get("quantity") or 0) > 0]
+    if not lignes:
+        return None
+    achats = [(pd.Timestamp(str(l.get("purchase_date"))[:10]), l["ticker"], float(l["quantity"]),
+               float(l["quantity"]) * float(l.get("avg_price") or 0) + float(l.get("fees") or 0))
+              for l in lignes if l.get("purchase_date")]
+    if not achats:
+        return None
+    debut = min(a[0] for a in achats)
+    tickers = sorted({a[1] for a in achats} | {INDICE})
+    cles = ",".join(f"'{t}'" for t in tickers)
+    d = read_sql_df(f"SELECT ticker, date, close FROM price_cache WHERE ticker IN ({cles}) "
+                    "AND close > 0 AND date >= ?", params=((debut - pd.Timedelta(days=15)).date().isoformat(),))
+    if d.empty:
+        return None
+    d["date"] = pd.to_datetime(d["date"])
+    cours = d.pivot_table(index="date", columns="ticker", values="close", aggfunc="last").sort_index()
+    if INDICE not in cours:
+        return None
+    jours = cours.index[cours.index >= debut]
+    cours = cours.ffill()
+    # Le dernier jour porte le cours affiche par l'application.
+    for t, p in prix_du_jour.items():
+        if t in cours.columns and p:
+            cours.loc[cours.index[-1], t] = float(p)
+    lignes_jour = []
+    perf, prec = 1.0, None
+    for j in jours:
+        detenus = [a for a in achats if a[0] <= j]
+        valeur = sum(q * cours.at[j, t] for _, t, q, _ in detenus if pd.notna(cours.at[j, t]))
+        flux = sum(c for a, _, _, c in detenus if a.normalize() == j.normalize()) \
+            + sum(c for a, _, _, c in detenus if prec is None and a < j)
+        if prec is None:
+            r = valeur / flux - 1 if flux else 0.0
+        else:
+            r = (valeur - flux) / prec - 1 if prec else 0.0
+        perf *= 1 + r
+        prec = valeur
+        lignes_jour.append((j, perf - 1, valeur, sum(c for _, _, _, c in detenus)))
+    sortie = pd.DataFrame(lignes_jour, columns=["date", "portefeuille", "valeur", "investi"]).set_index("date")
+    indice = cours.loc[sortie.index, INDICE]
+    sortie["indice"] = indice / indice.iloc[0] - 1
+    # Le Composite part du cours de la veille du premier achat, comme le
+    # portefeuille part de son cout.
+    avant = cours.loc[cours.index < sortie.index[0], INDICE]
+    if len(avant):
+        sortie["indice"] = indice / avant.iloc[-1] - 1
+    return sortie
