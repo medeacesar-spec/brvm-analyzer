@@ -1420,7 +1420,12 @@ def get_cached_prices(ticker: str) -> pd.DataFrame:
     return df
 
 
-@_maybe_cache_data(ttl=300)
+# Une heure, pas cinq minutes : les cours ne changent qu'a la cloture (build
+# du soir) et aux quatre rafraichissements de seance. A cinq minutes, chaque
+# visite et chaque reveil du keep-alive retelechargeaient l'historique : c'est
+# la premiere source du trafic sortant Supabase (14,1 Go pour 5,5 autorises,
+# alerte de septembre 2026 ; 373 M de lignes servies par cette requete).
+@_maybe_cache_data(ttl=3600)
 def get_all_cached_prices(depuis_jours: int = None) -> dict:
     """{ticker: DataFrame} des cours, en une seule requete.
 

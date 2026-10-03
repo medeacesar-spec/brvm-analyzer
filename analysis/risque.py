@@ -153,7 +153,11 @@ def _combler(points: list) -> list:
     return sortie
 
 
-@_maybe_cache_data(ttl=300)
+# Six heures : price_monthly n'est ecrit qu'une fois par jour (build du
+# soir). Chaque fenetre (3, 5, 8, 10 ans, tout) est une entree de cache
+# distincte ; a cinq minutes, la page Risque relisait toute la table cinq
+# fois a chaque visite — deuxieme source du trafic sortant Supabase.
+@_maybe_cache_data(ttl=6 * 3600)
 def series_mensuelles(fenetre: int = FENETRE_COMMUNE) -> dict:
     """Les series de rendement de toute la cote, memoisees.
 
