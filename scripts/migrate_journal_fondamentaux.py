@@ -73,6 +73,10 @@ BEGIN
     RETURN NEW;
 END;
 $journal$ LANGUAGE plpgsql
+-- search_path fige (alerte Supabase « Function Search Path Mutable »,
+-- 03/10/2026) : la fonction ecrit dans public.fundamentals_journal, et un
+-- search_path modifiable lui ferait ecrire ailleurs.
+SET search_path = public, pg_temp
 """
 
 DECLENCHEUR = """
