@@ -153,12 +153,36 @@ def _combler(points: list) -> list:
     return sortie
 
 
-# Six heures : price_monthly n'est ecrit qu'une fois par jour (build du
-# soir). Chaque fenetre (3, 5, 8, 10 ans, tout) est une entree de cache
-# distincte ; a cinq minutes, la page Risque relisait toute la table cinq
-# fois a chaque visite — deuxieme source du trafic sortant Supabase.
-@_maybe_cache_data(ttl=6 * 3600)
+@_maybe_cache_data(ttl=120)
+def _tampon_mensuel() -> str:
+    """Empreinte de price_monthly et des dividendes : change a chaque ecriture."""
+    try:
+        cnx = get_connection()
+        try:
+            r = cnx.execute(
+                "SELECT (SELECT MAX(date)::text || '|' || COUNT(*) FROM price_monthly) AS mensuel, "
+                "(SELECT COUNT(*) || '|' || COALESCE(SUM(dps), 0) FROM fundamentals "
+                "WHERE dps IS NOT NULL) AS dividendes").fetchone()
+        finally:
+            cnx.close()
+        return f"{r[0]}|{r[1]}"
+    except Exception:                           # noqa: BLE001
+        import time as _time
+        return f"h{int(_time.time() // 3600)}"
+
+
 def series_mensuelles(fenetre: int = FENETRE_COMMUNE) -> dict:
+    """Voir `_series_memoisees` : relues seulement quand la table a change.
+
+    Une entree de cache par fenetre (3, 5, 8, 10 ans, tout) : a duree fixe,
+    la page Risque relisait toute la table cinq fois a chaque expiration —
+    deuxieme source du trafic sortant Supabase (octobre 2026).
+    """
+    return _series_memoisees(fenetre, _tampon_mensuel())
+
+
+@_maybe_cache_data(ttl=12 * 3600)
+def _series_memoisees(fenetre: int = FENETRE_COMMUNE, tampon: str = "") -> dict:
     """Les series de rendement de toute la cote, memoisees.
 
     Elles sont lues par le profil d'un titre, par le tableau de la cote, par le
