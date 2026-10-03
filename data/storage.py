@@ -1420,14 +1420,45 @@ def get_cached_prices(ticker: str) -> pd.DataFrame:
     return df
 
 
-# Une heure, pas cinq minutes : les cours ne changent qu'a la cloture (build
-# du soir) et aux quatre rafraichissements de seance. A cinq minutes, chaque
-# visite et chaque reveil du keep-alive retelechargeaient l'historique : c'est
-# la premiere source du trafic sortant Supabase (14,1 Go pour 5,5 autorises,
-# alerte de septembre 2026 ; 373 M de lignes servies par cette requete).
-@_maybe_cache_data(ttl=3600)
+@_maybe_cache_data(ttl=120)
+def _tampon_cours() -> str:
+    """Empreinte de price_cache : change des qu'une seance est ecrite ou retiree.
+
+    Deux nombres, quelques octets. Memoisee deux minutes pour ne pas ouvrir
+    une connexion a chaque clic.
+    """
+    try:
+        conn = get_connection()
+        try:
+            r = conn.execute("SELECT MAX(date) AS derniere, COUNT(*) AS lignes FROM price_cache").fetchone()
+        finally:
+            conn.close()
+        return f"{r[0]}|{r[1]}"
+    except Exception:                           # noqa: BLE001
+        import time as _time
+        return f"h{int(_time.time() // 3600)}"
+
+
 def get_all_cached_prices(depuis_jours: int = None) -> dict:
+    """Voir `_cours_memoises` : l'historique n'est relu que s'il a change.
+
+    Trafic sortant Supabase (alerte de septembre 2026 : 14,1 Go pour 5,5
+    autorises ; 3,9 Go deja consommes a mi-cycle en octobre). Un cache a duree
+    fixe relisait l'historique a chaque expiration, y compris quand rien
+    n'avait bouge — le keep-alive reveille l'app toutes les deux heures, sept
+    jours sur sept. La cle de cache porte desormais l'empreinte de la table :
+    l'historique est relu quand une seance arrive, et seulement alors.
+    """
+    return _cours_memoises(depuis_jours, _tampon_cours())
+
+
+# Filet de securite : une correction de cours ecrite sur place, sans changer
+# ni la derniere date ni le nombre de lignes, est vue au plus tard en 12 h.
+@_maybe_cache_data(ttl=12 * 3600)
+def _cours_memoises(depuis_jours: int = None, tampon: str = "") -> dict:
     """{ticker: DataFrame} des cours, en une seule requete.
+
+    `tampon` ne sert que de cle de cache (voir `get_all_cached_prices`).
 
     `depuis_jours` borne la profondeur lue. Ce n'est pas un detail : depuis
     l'import RichBourse, `price_cache` porte 218 000 seances depuis 1998, et
