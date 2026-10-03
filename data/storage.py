@@ -962,8 +962,8 @@ def _est_un_trimestre(candidat: dict, trimestres: list) -> bool:
 def _choisir_exercice(candidats: list, annuels: set, trimestres: dict = None) -> Optional[dict]:
     """L'exercice de reference d'un titre — LA regle, et la seule.
 
-    `candidats` : les exercices du titre ayant chiffre d'affaires ET resultat
-    net, du plus recent au plus ancien. `annuels` : les exercices pour
+    `candidats` : les exercices du titre ayant un resultat net (le chiffre
+    d'affaires peut manquer), du plus recent au plus ancien. `annuels` : les exercices pour
     lesquels un document annuel est reference.
 
     1. Le plus recent qui dispose d'un document ANNUEL. Le cycle UEMOA publie
@@ -1017,11 +1017,16 @@ def _choisir_exercice(candidats: list, annuels: set, trimestres: dict = None) ->
         if _est_un_trimestre(candidat, (trimestres or {}).get(candidat.get("fiscal_year"))):
             continue
         return candidat
-    for candidat in candidats:
+    # Sans document annuel, l'echelle du chiffre d'affaires est le seul
+    # repere : un exercice sans CA ne peut pas etre juge, il est ecarte.
+    avec_ca = [c for c in candidats if c.get("revenue")]
+    for candidat in avec_ca:
         if partiel(candidat):
             continue
         return candidat
-    incertain = dict(candidats[0])
+    if not avec_ca:
+        return None
+    incertain = dict(avec_ca[0])
     incertain["_exercice_incertain"] = True
     return incertain
 
@@ -1050,7 +1055,7 @@ def meilleurs_exercices() -> dict:
 
     sortie = {}
     for ticker, exercices in par_titre.items():
-        complets = [e for e in exercices if e.get("revenue") and e.get("net_income")]
+        complets = [e for e in exercices if e.get("net_income")]
         par_exercice = {a: lot for (t, a), lot in trimestres.items() if t == ticker}
         choix = _choisir_exercice(complets, annuels.get(ticker, set()),
                                   trimestres=par_exercice)
@@ -1088,9 +1093,12 @@ def get_fundamentals(ticker: str, fiscal_year: Optional[int] = None) -> Optional
         # On repère ces exercices par leur ordre de grandeur : un chiffre
         # d'affaires inférieur à la moitié de la médiane du titre n'est pas
         # une année, c'est une fraction d'année.
+        # Le chiffre d'affaires n'est plus exige : un exercice CLOS (document
+        # annuel) dont seul le CA net manque reste l'exercice de reference —
+        # Solibra 2025, dont les comptes ne publient que « CA et autres
+        # produits » (03/10/2026). Sans CA, seule la regle 1 peut le retenir.
         candidats = [dict(l) for l in conn.execute(
             """SELECT * FROM fundamentals WHERE ticker=?
-               AND revenue IS NOT NULL AND revenue != 0
                AND net_income IS NOT NULL AND net_income != 0
                ORDER BY fiscal_year DESC""",
             (ticker,),
