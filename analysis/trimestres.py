@@ -96,9 +96,12 @@ def _difference(recent, anterieur, champ) -> Optional[float]:
     if b in (None, 0):
         return None
     ecart = a - b
-    # Un cumul qui DECROIT n'est pas un cumul : l'une des deux valeurs est
-    # fausse. On prefere ne rien produire plutot qu'un trimestre negatif.
-    if ecart < 0 and a > 0:
+    # Un chiffre d'affaires cumule qui DECROIT n'est pas un cumul : l'une des
+    # deux valeurs est fausse. On prefere ne rien produire plutot qu'un
+    # trimestre negatif. Le resultat, lui, peut baisser : un trimestre en
+    # perte est un vrai trimestre (BOA Niger T4 2025 : 2,8 Md sur 9 mois,
+    # 0,4 Md sur l'annee ; Sucrivoire T3 2024, intercampagne).
+    if champ == "revenue" and ecart < 0 and a > 0:
         return None
     return ecart
 

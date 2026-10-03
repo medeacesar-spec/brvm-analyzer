@@ -2175,12 +2175,16 @@ def _render_trimestres_par_annee(ticker, _montant):
         def _annee(a):
             v = totaux[a]
             return sum(v) if all(x is not None for x in v) else None
-        a0, a1 = _annee(annees[0]), _annee(annees[1])
+        a0, a1, a2 = (_annee(a) for a in annees)
         style_total = f"{td};text-align:left;color:var(--ink-3);font-size:11.5px;"
+        # L'annee N a aussi son total quand ses quatre trimestres sont connus
+        # (CFAO 2025 : derniere annee publiee, et complete).
+        fin = (f"<td style='{td}'>{_montant(a2)}</td>{_var(a2, a1)}" if a2 is not None
+               else f"<td style='{td}'></td><td style='{td}'></td>")
         corps += (f"<tr style='border-top:2px solid var(--border);'>"
                   f"<td style='{style_total}'>Année</td>"
                   f"<td style='{td}'>{_montant(a0)}</td><td style='{td}'>{_montant(a1)}</td>"
-                  f"{_var(a1, a0)}<td style='{td}'></td><td style='{td}'></td></tr>")
+                  f"{_var(a1, a0)}{fin}</tr>")
         # L'annee en cours : les trimestres publies, face aux MEMES trimestres
         # de l'annee precedente.
         k = 0
