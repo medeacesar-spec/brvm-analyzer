@@ -412,8 +412,44 @@ def init_db(forcer: bool = False):
     _migrate_user_scoped_tables(conn)
 
     conn.commit()
+    _activer_rls(conn)
     conn.close()
     _schema_reconcilie = True
+
+
+def _activer_rls(conn) -> None:
+    """Active la securite par ligne (RLS) sur toute table publique qui ne l'a pas.
+
+    Supabase expose le schema public par son API web : sans RLS, la cle
+    publique du projet suffit a lire, modifier ou vider une table. Le
+    03/10/2026, treize tables creees en cours de route (cours mensuels,
+    quarantaines, journal des fondamentaux, BOC...) l'etaient. RLS sans
+    aucune regle ferme l'API a la cle publique ; l'application se connecte
+    en `postgres`, qui passe outre, et ne voit aucune difference.
+
+    Rejoue a chaque init_db (demarrage de l'app, build du soir) : une table
+    creee a la volee par un script est couverte au passage suivant.
+    """
+    from data.db import is_postgres
+    if not is_postgres():
+        return
+    try:
+        tables = [r[0] for r in conn.execute(
+            "SELECT c.relname FROM pg_class c "
+            "JOIN pg_namespace n ON n.oid = c.relnamespace "
+            "WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') "
+            "AND NOT c.relrowsecurity").fetchall()]
+        for nom in tables:
+            conn.execute(f'ALTER TABLE public."{nom}" ENABLE ROW LEVEL SECURITY')
+        if tables:
+            conn.commit()
+    except Exception:                           # noqa: BLE001
+        # Un role sans droit de proprietaire ne doit pas empecher l'app de
+        # demarrer : la verification se refera au prochain passage.
+        try:
+            conn.rollback()
+        except Exception:                       # noqa: BLE001
+            pass
 
 
 def _table_columns(conn, table: str) -> list:
