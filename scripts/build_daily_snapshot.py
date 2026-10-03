@@ -604,9 +604,15 @@ def _collecter() -> None:
     # ── Étape 0bis : découverte + intégration des nouveaux PDFs ──
     # 1. scan_brvm_reports : ajoute à report_links les PDFs fraichement
     #    publies sur brvm.org pour les 48 societes.
-    # 2. extract_pending_pubs : extract uniquement les PDFs lies aux
-    #    publications encore "À intégrer" (ne re-traite pas tout).
-    # → Idempotent : si rien de nouveau, ces deux scripts sont quasi-no-ops.
+    # 2. L'extraction automatique des chiffres (extract_pending_pubs) est
+    #    COUPEE depuis le 03/10/2026, sur decision du donneur d'ordre : 3
+    #    reussites sur 70 tentatives en septembre, et la plupart des erreurs
+    #    corrigees ce jour-la (colonne N-1, variation prise pour le montant,
+    #    parentheses de perte perdues) venaient de ses 202 lignes. Les
+    #    chiffres periodiques passent par le releve au PDF, recoupe, puis
+    #    ecrit. La decouverte des rapports, elle, continue : c'est elle qui
+    #    dit ce qui reste a relever.
+    # → Idempotent : si rien de nouveau, ces scripts sont quasi-no-ops.
     try:
         from scripts.scan_brvm_reports import main as _scan_brvm
         print("  [pdfs] scan brvm.org pour nouveaux PDFs …")
@@ -631,12 +637,6 @@ def _collecter() -> None:
         _scan_news()
     except Exception as e:
         print(f"  [revue] scan_news KO (non bloquant): {e}")
-    try:
-        from scripts.extract_pending_pubs import main as _extract_pending
-        print("  [pdfs] extract pending publications …")
-        _extract_pending()
-    except Exception as e:
-        print(f"  [pdfs] extract_pending_pubs KO (non bloquant): {e}")
 
 
 def build_all(collecte: bool = True) -> dict:
