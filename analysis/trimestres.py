@@ -40,6 +40,7 @@ TRIMESTRES_AUTONOMES = {
     ("STBC.ci", 2024): {"T3", "T4"},    # comparatifs des rapports T3/T4 2025
     ("STBC.ci", 2025): {"T1", "T2", "T3", "T4"},   # T3 2025 : 64,8 Md, S1 131,0
     ("STBC.ci", 2026): {"T1", "T2", "T3", "T4"},
+    ("CFAC.ci", 2024): {"T3"},          # comparatif du rapport T3 2025, trimestre seul
     ("CFAC.ci", 2025): {"T1", "T3"},    # « ce trimestre, 2 942 vehicules »
 }
 
