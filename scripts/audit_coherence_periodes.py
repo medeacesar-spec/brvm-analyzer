@@ -64,7 +64,7 @@ CUMUL_PUIS_AUTONOME = {("STBC.ci", 2023)}
 # Valeurs SIGNALEES par les controles mais VERIFIEES JUSTES au PDF de
 # l'emetteur, le 10/09/2026. Un controle statistique ne sait pas
 # distinguer une erreur d'extraction d'un exercice reellement mauvais :
-# ces douze-la sont des exercices reellement mauvais, ou des produits
+# ces lignes sont des exercices reellement mauvais, ou des produits
 # exceptionnels. Sans cette liste, le prochain qui lance l'audit relit
 # les memes douze PDF pour retrouver les memes douze reponses.
 #
@@ -93,6 +93,32 @@ VERIFIEES = {
         "trimestre en perte, rapport T1 2025"),
     ("SDSC.ci", 2025, "S1"): (44_452_596_088, -427_470_498,
         "semestre en perte : absence de dividendes des filiales"),
+    # Releve trimestriel de toute la cote, 03/10/2026 : lu au PDF, recoupe
+    # avec le comparatif N-1 du rapport suivant ou avec les comptes annuels.
+    ("BNBC.ci", 2023, "T1"): (12_386_377_171, 516_579_871,
+        "rapport T1 2023 = comparatif T1 2024 ; 2023 beneficiaire avant redressement fiscal"),
+    ("BNBC.ci", 2023, "T3"): (34_428_743_391, 454_466_910,
+        "9 mois 2023, RN retraite par le rapport T3 2024 (353,9 M a l'origine)"),
+    ("FTSC.ci", 2025, "S1"): (13_406_000_000, 105_000_000,
+        "petit semestre, le gros de l'annee tombe au T4 (campagne cacao)"),
+    ("FTSC.ci", 2026, "T1"): (8_901_000_000, -154_000_000,
+        "trimestre en perte, rapport T1 2026"),
+    ("NEIC.ci", 2023, "T1"): (92_677_733, -270_229_489,
+        "editeur scolaire : T1 ~1 % du CA annuel ; = comparatif T1 2024"),
+    ("NEIC.ci", 2024, "T1"): (105_828_000, -94_719_300,
+        "meme saisonnalite, rapport T1 2024"),
+    ("NEIC.ci", 2024, "S1"): (1_697_300_000, -20_528_900,
+        "semestre proche de l'equilibre, rapport S1 2024"),
+    ("PRSC.ci", 2024, "T1"): (18_344_124_120, 81_026_629,
+        "resultat faible au T1, rapport T1 2024"),
+    ("PRSC.ci", 2024, "S1"): (34_722_600_000, 50_601_600,
+        "etats intermediaires 6 mois 2024"),
+    ("SAFC.ci", 2025, "T1"): (1_080_000_000, 13_000_000,
+        "rapport T1 2025 ; 407 M en base etait faux"),
+    ("SDSC.ci", 2025, "T4"): (92_004_268_000, 784_970_000,
+        "exercice 2025 = comptes annuels"),
+    ("UNXC.ci", 2025, "T4"): (29_031_700_000, -624_111_000,
+        "exercice 2025 en perte = comptes annuels"),
 }
 
 
