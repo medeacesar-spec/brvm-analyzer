@@ -129,9 +129,14 @@ def main() -> int:
         if any(p["report_type"] in ANNUELS for p in parus) or not parus:
             _lancer("2a. Etats financiers et rapports annuels",
                     [python, "scripts/extract_pdfs.py"], journal)
-        if any(p["report_type"] in PERIODES for p in parus) or not parus:
-            _lancer("2b. Rapports de periode",
-                    [python, "scripts/extraire_periodes.py"], journal)
+        # 2b. Rapports de periode : COUPE le 03/10/2026, sur decision du
+        # donneur d'ordre. La lecture automatique ecrivait sans relecture
+        # dans quarterly_data ; la plupart des erreurs corrigees ce jour-la
+        # en venaient. Les periodes nouvelles sont listees ci-dessus et
+        # passent par le releve au PDF, recoupe, puis ecrit.
+        if any(p["report_type"] in PERIODES for p in parus):
+            print("\n2b. Rapports de periode : lecture automatique coupee "
+                  "(03/10/2026) — a relever au PDF.")
 
         # 3. COLLECTER ------------------------------------------------------
         _lancer("3. Avis de paiement de dividendes",
