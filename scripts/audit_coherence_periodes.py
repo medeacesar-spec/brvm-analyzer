@@ -119,6 +119,12 @@ VERIFIEES = {
         "exercice 2025 = comptes annuels"),
     ("UNXC.ci", 2025, "T4"): (29_031_700_000, -624_111_000,
         "exercice 2025 en perte = comptes annuels"),
+    ("BNBC.ci", 2024, "T4"): (45_312_422_329, 7_313_440,
+        "exercice 2024 a 7 M de resultat = comptes annuels"),
+    ("FTSC.ci", 2025, "T1"): (5_745_000_000, -179_000_000,
+        "trimestre en perte ; RN connu par le comparatif du rapport T1 2026"),
+    ("SIVC.ci", 2024, "T1"): (2_150_944_000, 31_885_000,
+        "petit trimestre ; comparatif du rapport T1 2025"),
 }
 
 
