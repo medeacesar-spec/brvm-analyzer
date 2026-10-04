@@ -1998,13 +1998,16 @@ def get_data_gaps() -> pd.DataFrame:
 
     # Trimestres attendus — règle UEMOA : 45 jours après fin de trimestre.
     # Q1 (fin mars) → attendu vers mi-mai → on l'attend à partir de juin.
-    # Q2/S1 (fin juin) → attendu vers mi-août → on l'attend à partir de septembre.
+    # Q2/S1 (fin juin) → le SEMESTRE a quatre mois, jusqu'a fin octobre (SETAO :
+    #   « delai legal fin octobre » ; BICI CI publiait son S1 2025 le 21/10).
+    #   Attendu a partir de NOVEMBRE — en septembre, vingt titres etaient
+    #   signales a tort (04/10/2026).
     # Q3 (fin sept) → attendu vers mi-nov → on l'attend à partir de décembre.
     # Q4/annuel (fin déc) → attendu vers avril → géré par expected_annual.
     expected_quarter_year = year
     if month >= 12:
         expected_quarter = 3
-    elif month >= 9:
+    elif month >= 11:
         expected_quarter = 2
     elif month >= 6:
         expected_quarter = 1
@@ -2039,8 +2042,15 @@ def get_data_gaps() -> pd.DataFrame:
     # 2) Dernier trimestre en DB par ticker + set des quarters utilisés
     # (utile pour détecter la cadence : ticker qui n'a jamais eu Q=1 ou Q=3
     # publie probablement seulement semestriellement)
+    # Le trimestre CALENDAIRE de l'arrete, lu sur le libelle : en base, un
+    # S1 porte quarter = 1 (premier semestre) et un S2 quarter = 2. Lus tels
+    # quels, un S1 2026 passait pour un T1 et l'ecart « Trim. 2026 Q2 » restait
+    # ouvert alors que le semestre etait en base (BOA Burkina, 04/10/2026).
+    _trim_cal = ("CASE periode WHEN 'T1' THEN 1 WHEN 'S1' THEN 2 WHEN 'T2' THEN 2 "
+                 "WHEN 'T3' THEN 3 WHEN 'T4' THEN 4 WHEN 'S2' THEN 4 "
+                 "ELSE quarter END")
     qtr = read_sql_df(
-        """SELECT ticker, MAX(fiscal_year * 10 + quarter) AS latest_q
+        f"""SELECT ticker, MAX(fiscal_year * 10 + {_trim_cal}) AS latest_q
            FROM quarterly_data
            GROUP BY ticker"""
     )
@@ -2051,8 +2061,8 @@ def get_data_gaps() -> pd.DataFrame:
             qtr_map[qr["ticker"]] = (code // 10, code % 10)
 
     qtr_hist = read_sql_df(
-        """SELECT ticker, quarter, COUNT(*) AS n
-           FROM quarterly_data GROUP BY ticker, quarter"""
+        f"""SELECT ticker, {_trim_cal} AS quarter, COUNT(*) AS n
+           FROM quarterly_data GROUP BY ticker, {_trim_cal}"""
     )
     # Pour chaque ticker : set des quarters vus historiquement
     quarters_seen = {}
