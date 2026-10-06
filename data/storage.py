@@ -1510,6 +1510,32 @@ def save_position(ticker: str, company_name: str, quantity: float, avg_price: fl
     d'une ligne = quantity × avg_price + fees."""
     uid = _resolve_user(user_id)
     conn = get_connection()
+    # UNE LIGNE PAR TITRE ET PAR JOUR D'ACHAT (demande du 06/10/2026). Deux
+    # ordres du meme jour sont deux transactions mais une seule position :
+    # ils rejoignent la ligne existante (quantites additionnees, prix pondere,
+    # frais additionnes). Des achats de jours differents restent des lignes
+    # distinctes : c'est ce qui permet de suivre la performance de chacun.
+    existante = None
+    if purchase_date:
+        existante = conn.execute(
+            "SELECT id, quantity, avg_price, fees, notes FROM portfolio "
+            "WHERE user_id = ? AND ticker = ? AND purchase_date = ? "
+            "ORDER BY id LIMIT 1",
+            (uid, ticker, purchase_date)).fetchone()
+    if existante:
+        e = dict(existante)
+        q0, p0 = float(e["quantity"] or 0), float(e["avg_price"] or 0)
+        q = q0 + float(quantity)
+        prix = (q0 * p0 + float(quantity) * float(avg_price)) / q if q else float(avg_price)
+        note = " ; ".join(n for n in (e.get("notes"), notes) if n)
+        conn.execute(
+            "UPDATE portfolio SET quantity = ?, avg_price = ?, fees = ?, notes = ? "
+            "WHERE id = ? AND user_id = ?",
+            (q, round(prix, 4), float(e["fees"] or 0) + float(fees or 0),
+             note or None, int(e["id"]), uid))
+        conn.commit()
+        conn.close()
+        return int(e["id"])
     cursor = conn.execute(
         """INSERT INTO portfolio
            (user_id, ticker, company_name, quantity, avg_price, purchase_date,
@@ -1522,6 +1548,49 @@ def save_position(ticker: str, company_name: str, quantity: float, avg_price: fl
     row_id = cursor.lastrowid
     conn.close()
     return row_id
+
+
+def regrouper_lots_du_jour(user_id: str, simuler: bool = True) -> list:
+    """Fusionne les lignes d'un meme titre achetees le meme jour.
+
+    Rend la liste des regroupements (ticker, date, ids, quantite, prix
+    pondere, frais). `simuler=True` n'ecrit rien. Les lignes sans date ne
+    sont jamais fusionnees : rien ne dit qu'elles sont du meme jour.
+    """
+    conn = get_connection()
+    try:
+        lignes = [dict(l) for l in conn.execute(
+            "SELECT id, ticker, quantity, avg_price, purchase_date, fees, notes "
+            "FROM portfolio WHERE user_id = ? AND purchase_date IS NOT NULL "
+            "ORDER BY ticker, purchase_date, id", (user_id,)).fetchall()]
+        groupes = {}
+        for l in lignes:
+            groupes.setdefault((l["ticker"], str(l["purchase_date"])), []).append(l)
+        sortie = []
+        for (tk, jour), lot in groupes.items():
+            if len(lot) < 2:
+                continue
+            q = sum(float(l["quantity"] or 0) for l in lot)
+            prix = sum(float(l["quantity"] or 0) * float(l["avg_price"] or 0)
+                       for l in lot) / q
+            frais = sum(float(l["fees"] or 0) for l in lot)
+            notes = " ; ".join(l["notes"] for l in lot if l.get("notes")) or None
+            garde, autres = lot[0]["id"], [l["id"] for l in lot[1:]]
+            sortie.append({"ticker": tk, "date": jour, "ids": [garde] + autres,
+                           "quantite": q, "prix": round(prix, 4), "frais": frais})
+            if not simuler:
+                conn.execute(
+                    "UPDATE portfolio SET quantity = ?, avg_price = ?, fees = ?, "
+                    "notes = ? WHERE id = ? AND user_id = ?",
+                    (q, round(prix, 4), frais, notes, garde, user_id))
+                conn.execute(
+                    "DELETE FROM portfolio WHERE user_id = ? AND id IN ({})".format(
+                        ",".join("?" * len(autres))), (user_id, *autres))
+        if not simuler:
+            conn.commit()
+        return sortie
+    finally:
+        conn.close()
 
 
 def get_portfolio(user_id: Optional[str] = None) -> pd.DataFrame:
