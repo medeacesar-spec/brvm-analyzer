@@ -1092,8 +1092,9 @@ def _render_courbe_performance(portfolio, price_map):
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     st.caption(
         "Performance **pondérée par le temps** : chaque jour compte le rendement des lignes "
-        "déjà détenues ; un achat entre à son coût et ne crée pas de saut. Elle peut différer "
-        "du gain sur le montant investi (cartes et tableau ci-dessous), qui pèse davantage un "
+        "détenues la veille, et les jours s'enchaînent. Un achat entre au cours de clôture de "
+        "son jour : ni ses frais ni l'écart avec ce cours ne comptent comme performance. Elle "
+        "diffère donc du gain sur le montant investi (cartes), qui inclut les frais et pèse davantage un "
         "achat fait juste avant une hausse. Cours seuls, dividendes non compris ; Composite "
         "sur les mêmes jours.")
 
@@ -1102,9 +1103,9 @@ def _render_performance_periodes(portfolio, price_map):
     """La performance sur dix periodes, du jour au maximum.
 
     Demande du 03/10/2026 : l'onglet ne donnait que la performance depuis le
-    premier achat. Une ligne achetee pendant la periode compte depuis son prix
-    d'achat ; la reference place les memes montants aux memes dates dans le
-    Composite (analysis/performance_portefeuille.py).
+    premier achat. Depuis le 06/10/2026, performance ponderee par le temps :
+    rendements quotidiens enchaines, un achat entre au cours de cloture de son
+    jour (analysis/performance_portefeuille.py). Meme serie que la courbe.
     """
     from utils.ui_helpers import section_heading
     from analysis.performance_portefeuille import performance_par_periode, PERIODES
@@ -1142,7 +1143,7 @@ def _render_performance_periodes(portfolio, price_map):
         html += f"<th style='{entete}'>{p}{etoile}</th>"
     html += "</tr>"
     for cle, nom, gras, teinter in (("portefeuille", "Portefeuille", True, True),
-                                    ("indice", "BRVM Composite, mêmes montants", False, False),
+                                    ("indice", "BRVM Composite", False, False),
                                     ("ecart", "Écart", False, True)):
         html += f"<tr><td style='{cell};white-space:nowrap;{'font-weight:600;' if gras else ''}'>{nom}</td>"
         for p in colonnes:
@@ -1155,13 +1156,15 @@ def _render_performance_periodes(portfolio, price_map):
         f"</div>", unsafe_allow_html=True)
 
     notes = [f"Cours au {r['derniere_seance']:%d/%m/%Y}, dividendes non compris "
-             "(ils sont dans le Total Return). Une ligne achetée pendant la "
-             "période compte depuis son prix d'achat, frais compris. Le "
-             "Composite reçoit les mêmes montants aux mêmes dates : l'écart "
-             "mesure le choix des titres."]
+             "(ils sont dans le Total Return). Performance **pondérée par le "
+             "temps** : chaque jour, le rendement des lignes détenues la veille, "
+             "jours enchaînés — un achat n'abaisse pas la performance des lignes "
+             "déjà en portefeuille. Une ligne entre au cours de clôture de son "
+             "jour d'achat ; ses frais et l'écart avec ce cours restent dans le "
+             "gain sur montant investi (cartes). Composite sur les mêmes jours."]
     if any(per[p]["depuis_achat"] for p in colonnes):
-        notes.append("\\* Toutes les lignes ont été achetées pendant la période : "
-                     "la mesure est celle depuis l'achat, égale à Max.")
+        notes.append("\\* Le portefeuille est plus jeune que la période : "
+                     "la mesure part du premier achat, égale à Max.")
     st.caption(" ".join(notes))
 
     # Par ligne : le meme decoupage, titre par titre.
