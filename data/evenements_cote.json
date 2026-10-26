@@ -1,5 +1,5 @@
 {
-  "_lisez_moi": "Suspensions et radiations d'actions relevees dans les avis de brvm.org (https://www.brvm.org/fr/marche/avis-et-publications/avis), releves le 26/09/2026. L'archive n'est complete qu'a partir d'octobre 2016 : les evenements anterieurs (radiations de 1998 a 2016 notamment) n'y figurent pas. « fin » vide : evenement en cours, ou levee non publiee. Les obligations et les droits (DPS, droits d'attribution) sont exclus.",
+  "_lisez_moi": "Suspensions et radiations d'actions relevees dans les avis de brvm.org (https://www.brvm.org/fr/marche/avis-et-publications/avis), releves le 26/09/2026. L'archive n'est complete qu'a partir d'octobre 2016 : les evenements anterieurs (radiations de 1998 a 2016 notamment) n'y figurent pas. « fin » vide : evenement en cours, ou levee non publiee. Les obligations et les droits (DPS, droits d'attribution) sont exclus. Type « fractionnement » (depuis le 26/10/2026) : « ratio » actions nouvelles pour une ancienne, « debut » = premiere seance cotee apres l'operation. Les cours, volumes, lignes de portefeuille et donnees par action anterieurs sont ajustes une fois par scripts/appliquer_fractionnements.py (table evenements_appliques).",
   "evenements": [
     {
       "ticker": "UNLC.ci",
@@ -141,6 +141,16 @@
       "motif": "Non-respect des obligations de diffusion d'informations financières périodiques",
       "avis": "avis 268-2026",
       "source": "https://www.brvm.org/sites/default/files/20260916_-_avis_ndeg268_brvmdg_-_suspension_-_sicor_ci.pdf"
+    },
+    {
+      "ticker": "SNTS.sn",
+      "type": "fractionnement",
+      "ratio": 10,
+      "debut": "2026-10-26",
+      "fin": null,
+      "motif": "Fractionnement : dix actions nouvelles pour une ancienne ; cours de référence 4 385 FCFA (43 850 / 10)",
+      "avis": "avis 304-2026 et 309-2026",
+      "source": "https://www.brvm.org/sites/default/files/20261023_-_avis_ndeg309_brvmdg_-_fractionnement_dactions_valeur_theorique_-_sonatel_sn.pdf"
     }
   ]
 }
