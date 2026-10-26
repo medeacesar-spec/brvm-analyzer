@@ -386,19 +386,36 @@ def render():
                                   CURRENCY),
                          unsafe_allow_html=True)
         with c2:
-            ret_sign = "−" if total_return < 0 else "+"
-            ret_str = f"{ret_sign}{abs(total_return):,.0f}"
+            # LA performance du portefeuille : ponderee par le temps,
+            # dividendes compris — la meme que la courbe et le tableau
+            # (demande du 06/10/2026 : « harmoniser »). Le gain en francs,
+            # frais compris, reste dessous.
+            perf_tp = None
+            try:
+                from analysis.performance_portefeuille import serie_performance
+                _s = serie_performance(portfolio.to_dict("records"), price_map)
+                if _s is not None and len(_s):
+                    perf_tp = float(_s["portefeuille"].iloc[-1]) * 100
+            except Exception:                           # noqa: BLE001
+                perf_tp = None
             pnl_sign_txt = "−" if total_pnl < 0 else "+"
-            parts = [
-                f"{'−' if total_return_pct < 0 else '+'}{abs(total_return_pct):.2f}%",
-                f"PV {pnl_sign_txt}{abs(total_pnl):,.0f}",
-            ]
+            ret_sign = "−" if total_return < 0 else "+"
+            if perf_tp is not None:
+                ret_str = f"{'−' if perf_tp < 0 else '+'}{abs(perf_tp):.2f} %".replace(".", ",")
+                parts = [f"Gain {ret_sign}{abs(total_return):,.0f}",
+                         f"PV {pnl_sign_txt}{abs(total_pnl):,.0f}"]
+            else:
+                ret_str = f"{ret_sign}{abs(total_return):,.0f}"
+                parts = [
+                    f"{'−' if total_return_pct < 0 else '+'}{abs(total_return_pct):.2f}%",
+                    f"PV {pnl_sign_txt}{abs(total_pnl):,.0f}",
+                ]
             if total_dividends_received > 0:
                 parts.append(f"Div +{total_dividends_received:,.0f}")
             if total_account_fees > 0:
                 parts.append(f"Frais −{total_account_fees:,.0f}")
             ret_sub = " · ".join(parts)
-            ret_tone = "up" if total_return >= 0 else "down"
+            ret_tone = "up" if (perf_tp if perf_tp is not None else total_return) >= 0 else "down"
             st.markdown(_kpi_card("Total Return", ret_str, ret_sub, ret_tone),
                          unsafe_allow_html=True)
         with c3:
@@ -1053,6 +1070,13 @@ def _render_courbe_performance(portfolio, price_map):
              "6 mois": fin - pd.DateOffset(months=6), "YTD": pd.Timestamp(fin.year - 1, 12, 31),
              "1 an": fin - pd.DateOffset(years=1), "5 ans": fin - pd.DateOffset(years=5)}.get(choix)
     vue = s if debut is None or debut <= s.index[0] else s[s.index >= s[s.index <= debut].index[-1]]
+    # La reference : le Composite Total Return quand sa serie couvre toute la
+    # vue (le portefeuille compte ses dividendes), le Composite de cours sinon.
+    if "indice_tr" in vue.columns and vue["indice_tr"].notna().all():
+        vue = vue.assign(indice=vue["indice_tr"])
+        nom_ref = "Composite Total Return"
+    else:
+        nom_ref = "Composite (cours, hors dividendes)"
     # Rebase au debut de la periode : la courbe part de 0 %.
     base_p, base_i = 1 + vue["portefeuille"].iloc[0], 1 + vue["indice"].iloc[0]
     if vue.index[0] == s.index[0] and (debut is None or debut <= s.index[0]):
@@ -1067,7 +1091,7 @@ def _render_courbe_performance(portfolio, price_map):
         f"<span style='font-size:34px;font-weight:600;letter-spacing:-0.02em;"
         f"color:{couleur};font-variant-numeric:tabular-nums;'>"
         f"{total:+.2f} %".replace(".", ",") + "</span>"
-        f"<span style='font-size:13px;color:var(--ink-3);'>Composite "
+        f"<span style='font-size:13px;color:var(--ink-3);'>{nom_ref} "
         f"{indice:+.2f} %".replace(".", ",") + f" · écart {total - indice:+.2f} pts".replace(".", ",")
         + f"</span></div><div style='font-size:12.5px;color:var(--ink-3);margin-bottom:4px;'>"
         f"En date du {fin:%d/%m/%Y}.</div>", unsafe_allow_html=True)
@@ -1079,9 +1103,9 @@ def _render_courbe_performance(portfolio, price_map):
         fillcolor="rgba(31,42,68,0.12)",
         hovertemplate="%{x|%d/%m/%Y}<br>Portefeuille %{y:+.2f} %<extra></extra>"))
     fig.add_trace(go.Scatter(
-        x=i_serie.index, y=i_serie.values, name="BRVM Composite", mode="lines",
+        x=i_serie.index, y=i_serie.values, name=nom_ref, mode="lines",
         line=dict(color="#9aa3b2", width=1.4, dash="dot"),
-        hovertemplate="%{x|%d/%m/%Y}<br>Composite %{y:+.2f} %<extra></extra>"))
+        hovertemplate="%{x|%d/%m/%Y}<br>Référence %{y:+.2f} %<extra></extra>"))
     fig.update_layout(
         template="plotly_white", height=330, margin=dict(l=0, r=0, t=6, b=0),
         legend=dict(orientation="h", y=1.08, x=0, font=dict(size=11)),
@@ -1091,12 +1115,13 @@ def _render_courbe_performance(portfolio, price_map):
         xaxis=dict(showgrid=False))
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     st.caption(
-        "Performance **pondérée par le temps** : chaque jour compte le rendement des lignes "
-        "détenues la veille, et les jours s'enchaînent. Un achat entre au cours de clôture de "
-        "son jour : ni ses frais ni l'écart avec ce cours ne comptent comme performance. Elle "
-        "diffère donc du gain sur le montant investi (cartes), qui inclut les frais et pèse davantage un "
-        "achat fait juste avant une hausse. Cours seuls, dividendes non compris ; Composite "
-        "sur les mêmes jours.")
+        "Performance **pondérée par le temps**, la même que la carte Total Return et le "
+        "tableau : chaque jour compte le rendement des lignes détenues la veille, **dividendes "
+        "compris** à leur date de paiement, et les jours s'enchaînent. Un achat entre au cours "
+        "de clôture de son jour : ni ses frais ni l'écart avec ce cours ne comptent comme "
+        "performance. Référence : le Composite Total Return dès que sa série couvre la période "
+        "(elle s'accumule depuis le 06/10/2026), le Composite de cours sinon — qui, lui, ne "
+        "compte pas les dividendes.")
 
 
 def _render_performance_periodes(portfolio, price_map):
@@ -1142,8 +1167,11 @@ def _render_performance_periodes(portfolio, price_map):
         etoile = "*" if per[p]["depuis_achat"] else ""
         html += f"<th style='{entete}'>{p}{etoile}</th>"
     html += "</tr>"
+    _refs = {per[p].get("reference") for p in colonnes}
+    nom_ref = ("Composite Total Return" if _refs == {"BRVMC_TR"} else
+               "Composite (cours)" if _refs == {"BRVMC"} else "Composite (TR ou cours)")
     for cle, nom, gras, teinter in (("portefeuille", "Portefeuille", True, True),
-                                    ("indice", "BRVM Composite", False, False),
+                                    ("indice", nom_ref, False, False),
                                     ("ecart", "Écart", False, True)):
         html += f"<tr><td style='{cell};white-space:nowrap;{'font-weight:600;' if gras else ''}'>{nom}</td>"
         for p in colonnes:
@@ -1155,13 +1183,16 @@ def _render_performance_periodes(portfolio, price_map):
         f"<table style='width:100%;border-collapse:collapse;'>{html}</table>"
         f"</div>", unsafe_allow_html=True)
 
-    notes = [f"Cours au {r['derniere_seance']:%d/%m/%Y}, dividendes non compris "
-             "(ils sont dans le Total Return). Performance **pondérée par le "
-             "temps** : chaque jour, le rendement des lignes détenues la veille, "
-             "jours enchaînés — un achat n'abaisse pas la performance des lignes "
-             "déjà en portefeuille. Une ligne entre au cours de clôture de son "
-             "jour d'achat ; ses frais et l'écart avec ce cours restent dans le "
-             "gain sur montant investi (cartes). Composite sur les mêmes jours."]
+    notes = [f"Cours au {r['derniere_seance']:%d/%m/%Y}, dividendes "
+             "compris, à leur date de paiement. Performance **pondérée par le "
+             "temps**, la même que la carte Total Return et la courbe : chaque "
+             "jour, le rendement des lignes détenues la veille, jours enchaînés — "
+             "un achat n'abaisse pas la performance des lignes déjà en "
+             "portefeuille. Une ligne entre au cours de clôture de son jour "
+             "d'achat ; ses frais restent dans le gain en francs. Référence : "
+             "Composite Total Return quand sa série couvre la période (depuis le "
+             "06/10/2026), Composite de cours sinon, qui ne compte pas les "
+             "dividendes."]
     if any(per[p]["depuis_achat"] for p in colonnes):
         notes.append("\\* Le portefeuille est plus jeune que la période : "
                      "la mesure part du premier achat, égale à Max.")

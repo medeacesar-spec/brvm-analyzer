@@ -62,6 +62,13 @@ INDICES = {
     "BRVM30": {"libelle": "BRVM 30", "famille": "general",
                "fichier": "brvm-30.csv",
                "debut": date(2023, 1, 2), "fin": None},
+    # Composite TOTAL RETURN (dividendes reinvestis). Seule la valeur du jour
+    # etait conservee, ecrasee chaque jour : la serie s'accumule depuis le
+    # 06/10/2026 (rafraichissement de seance). Un export RichBourse de ce nom
+    # remplirait l'historique anterieur.
+    "BRVMC_TR": {"libelle": "BRVM Composite Total Return", "famille": "general",
+                 "fichier": "brvm-composite-total-return.csv",
+                 "debut": date(2026, 10, 6), "fin": None},
     "IDX_PRESTIGE": {"libelle": "BRVM Prestige", "famille": "general",
                      "fichier": "brvm-prestige.csv",
                      "debut": date(2023, 1, 2), "fin": None},
@@ -137,7 +144,7 @@ FIN_EXPORT = date(2026, 9, 9)
 
 # Les indices qu'un collecteur rafraichit aujourd'hui : ceux de brvm.org.
 INDICES_A_JOUR = frozenset({
-    "BRVMC", "BRVM30", "IDX_PRESTIGE", "IDX_PRINCIPAL", "IDX_CONSO_BASE",
+    "BRVMC", "BRVMC_TR", "BRVM30", "IDX_PRESTIGE", "IDX_PRINCIPAL", "IDX_CONSO_BASE",
     "IDX_CONSO_DISCRETIONNAIRE", "IDX_ENERGIE", "IDX_INDUSTRIELS",
     "IDX_SERVICES_PUBLICS_N", "IDX_TELECOM"})
 
@@ -175,6 +182,7 @@ def par_famille(famille: str) -> list:
 # l'autre : la comparaison se fait sur une forme repliee.
 LIBELLES_SITE = {
     "brvm composite": "BRVMC",
+    "brvm composite total return": "BRVMC_TR",
     "brvm 30": "BRVM30",
     "brvm prestige": "IDX_PRESTIGE",
     "brvm principal": "IDX_PRINCIPAL",
