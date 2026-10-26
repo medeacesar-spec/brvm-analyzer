@@ -665,6 +665,16 @@ def build_all(collecte: bool = True) -> dict:
         ingested = ingest_today_prices(conn)
         result["ingested_prices"] = ingested
 
+        # ── Étape 0 : fractionnements / regroupements du registre ──
+        # Avant tout calcul : un titre fractionne doit avoir son historique en
+        # actions nouvelles (Sonatel, 10 pour 1, 26/10/2026). Idempotent : un
+        # evenement deja applique ne l'est pas deux fois.
+        try:
+            from scripts.appliquer_fractionnements import main as _fractionnements
+            _fractionnements(ecrire=True)
+        except Exception as e:
+            print(f"  [fractionnements] KO (non bloquant): {e}")
+
         # ── Étape 0 bis : le mensuel, depuis les seances du jour ──
         # Mesures de risque et optimisation lisent price_monthly ; sans cette
         # etape, il s'arretait au dernier import manuel.
