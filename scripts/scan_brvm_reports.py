@@ -108,9 +108,16 @@ _RAPPORT_CA = re.compile(
     r"rapport[_-]du[_-](?:ca|conseil[_-]d[_-]?administration)[_-]"
     r"(?:a[_-])?l?[_-]?(?:ago|assembl[eé]e)", re.I)
 _SEMESTRE = re.compile(
-    r"1er[_-]semestre|premier[_-]semestre"
-    r"|2(?:nd|[eé]me|d)[_-]semestre|second[_-]semestre|deuxi[eè]me[_-]semestre", re.I)
-_TRIMESTRE = re.compile(r"[1-4](?:er|[eé]me|nd|d)?[_-]trimestre|trimestriel", re.I)
+    r"1(?:er|re|e)[_-]semestre|premier[_-]semestre"
+    r"|2(?:nd|[eéè]me|e|d)[_-]semestre|second[_-]semestre|deuxi[eè]me[_-]semestre", re.I)
+# « 3e trimestre » (09/11/2026) : les rapports du troisieme trimestre 2026
+# ont ete deposes sous la graphie courte « 3e_trimestre », que le motif ne
+# reconnaissait pas. Vingt d'entre eux sont tombes dans la derniere branche
+# (« rapport d'activites » sans autre mention = annuel) et ont cree un
+# « exercice 2026 » dans les fondamentaux.
+_RANG = r"(?:[1-4](?:er|re|[eéè]me|i[eè]me|e|nd|d)?|premier|deuxi[eè]me|troisi[eè]me|quatri[eè]me)"
+_TRIMESTRE = re.compile(
+    _RANG + r"[_-]trimestre|trimestriel|(?:neuf|9)[_-]mois", re.I)
 _ACTIVITES = re.compile(r"rapport[_-]dactivit[eé]s?", re.I)
 _ANNEE_APRES_ETAT = re.compile(
     r"(?:etats?[_-]financiers?|resultats?[_-]financiers?"
@@ -190,8 +197,30 @@ def _classify_pdf(url: str):
 
     if not genre:
         return None, None
+    annee = _annee_du_document(fichier, corps, exercice, genre)
+    if annee is None:
+        return None, None
+    # Un document ANNUEL de l'exercice N parait en N+1. Publie l'annee meme
+    # de son exercice, ce n'est pas un annuel : un motif de periode a manque.
+    # On l'ecarte plutot que de creer un exercice qui n'existe pas encore.
+    publication = re.match(r"^((?:19|20)\d{2})\d{4}", fichier)
+    if genre in ("rapport_annuel", "etats_financiers") and publication \
+            and annee >= int(publication.group(1)):
+        # « etats_financiers_2017_onatel_approuves_agm_17_05_2018 » : la
+        # derniere annee du nom est celle de l'assemblee, l'exercice suit
+        # le libelle des etats.
+        apres = _ANNEE_APRES_ETAT.search(corps)
+        if genre == "etats_financiers" and apres \
+                and int(apres.group(1)) < int(publication.group(1)):
+            return genre, int(apres.group(1))
+        return None, None
+    return genre, annee
+
+
+def _annee_du_document(fichier: str, corps: str, exercice, genre: str):
+    """L'exercice que porte le document, ou None."""
     if exercice:
-        return genre, int(exercice.group(1))
+        return int(exercice.group(1))
     annees = _ANNEE.findall(corps)
     if not annees:
         # SANS ANNEE DANS LE NOM (26/09/2026) : « rapport_des_cac_sur_les_
@@ -204,9 +233,9 @@ def _classify_pdf(url: str):
         # Les seuls ETATS : un « tableau d'activites » publie en septembre est
         # un semestriel (Palm CI), qu'aucun nom ne distingue d'un annuel.
         if publication and genre == "etats_financiers":
-            return genre, int(publication.group(1)) - 1
-        return None, None
-    return genre, int(annees[-1])
+            return int(publication.group(1)) - 1
+        return None
+    return int(annees[-1])
 
 
 def _make_title(report_type: str, year: int, ticker: str) -> str:

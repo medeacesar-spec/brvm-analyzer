@@ -78,6 +78,10 @@ def main(jours: int = 20, tout: bool = False):
         limite = datetime.utcnow() - timedelta(days=jours)
         df = df[df["created_at"] >= limite]
         df = df[df["fiscal_year"] >= datetime.utcnow().year - 1]
+    # Jamais un exercice non clos, meme avec --tout : un « annuel » de l'annee
+    # en cours est un trimestriel mal classe (09/11/2026 : vingt rapports du
+    # 3e trimestre 2026 ecrits comme exercice 2026).
+    df = df[df["fiscal_year"] < datetime.utcnow().year]
     df = df.reset_index(drop=True)
     print(f"Documents annuels a lire : {len(df)}"
           + ("" if tout else f" (recenses depuis {jours} jours)"))

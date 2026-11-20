@@ -25,7 +25,9 @@ from data.db import get_connection
 from data.pdf_extractor import download_and_extract
 from data.storage import save_quarterly_data
 
-_RANGS = {"1er": 1, "1": 1, "premier": 1, "2eme": 2, "2ème": 2, "2nd": 2,
+_RANGS = {"1er": 1, "1re": 1, "1e": 1, "1": 1, "premier": 1,
+          "2e": 2, "3e": 3, "4e": 4, "2ieme": 2, "3ieme": 3, "4ieme": 4, "2": 2, "3": 3, "4": 4,
+          "2eme": 2, "2ème": 2, "2nd": 2,
           "deuxieme": 2, "deuxième": 2, "second": 2, "3eme": 3, "3ème": 3,
           "troisieme": 3, "troisième": 3, "4eme": 4, "4ème": 4,
           "quatrieme": 4, "quatrième": 4}
@@ -35,13 +37,13 @@ def periode_du_nom(url: str):
     """Retourne ('T1'|'S1'|…, rang) ou (None, None)."""
     nom = url.rsplit("/", 1)[-1].lower()
     semestre = re.search(
-        r"(1er|premier|2eme|2ème|2nd|second|deuxieme|deuxième)[_\- ]*semestre", nom)
+        r"(1er|1re|premier|2eme|2ème|2nd|second|deuxieme|deuxième|1e|2e)[_\- ]*semestre", nom)
     if semestre:
         rang = _RANGS.get(semestre.group(1), 1)
         return f"S{rang}", rang
     trimestre = re.search(
-        r"(1er|2eme|2ème|3eme|3ème|4eme|4ème|premier|deuxieme|troisieme|quatrieme)"
-        r"[_\- ]*trimestre", nom)
+        r"(1er|2eme|2ème|3eme|3ème|4eme|4ème|premier|deuxieme|troisieme|quatrieme"
+        r"|2ieme|3ieme|4ieme|1e|2e|3e|4e|1|2|3|4)[_\- ]*trimestre", nom)
     if trimestre:
         rang = _RANGS.get(trimestre.group(1), 1)
         return f"T{rang}", rang
