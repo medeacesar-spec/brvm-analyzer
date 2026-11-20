@@ -926,7 +926,9 @@ def exercices_annuels(tickers=None) -> dict:
     for ligne in lignes:
         d = dict(ligne)
         annee = d.get("fiscal_year")
-        if d.get("ticker") and annee:
+        # Un document « annuel » d'un exercice non clos est un trimestriel
+        # mal classe : il ne prouve rien.
+        if d.get("ticker") and annee and exercice_clos(annee):
             sortie.setdefault(d["ticker"], set()).add(int(annee))
     return sortie
 
@@ -995,6 +997,21 @@ def _est_un_trimestre(candidat: dict, trimestres: list) -> bool:
     return False
 
 
+def exercice_clos(annee, aujourd_hui=None) -> bool:
+    """Un exercice N n'est clos qu'au 31/12/N : pendant l'annee N, il n'existe
+    que des trimestres. Le 09/11/2026, vingt rapports du « 3e trimestre 2026 »
+    ont ete ranges comme rapports ANNUELS 2026 (la graphie « 3e » n'etait pas
+    reconnue) ; la ligne « exercice 2026 » ainsi creee, sans dividende, est
+    devenue l'exercice de reference et le rendement du portefeuille est tombe
+    de 4,7 % a 0,77 %. Aucun document, aucune ligne ne peut faire d'un
+    exercice non clos l'exercice de reference."""
+    from datetime import date
+    try:
+        return int(annee) < (aujourd_hui or date.today()).year
+    except (TypeError, ValueError):
+        return False
+
+
 def _choisir_exercice(candidats: list, annuels: set, trimestres: dict = None) -> Optional[dict]:
     """L'exercice de reference d'un titre — LA regle, et la seule.
 
@@ -1018,6 +1035,7 @@ def _choisir_exercice(candidats: list, annuels: set, trimestres: dict = None) ->
     sur cette ligne, leur rendement tombait a 0 % dans le portefeuille, et le
     screening le remplacait par le rendement scrape, faux pour Sonatel.
     """
+    candidats = [c for c in (candidats or []) if exercice_clos(c.get("fiscal_year"))]
     if not candidats:
         return None
 
@@ -1096,9 +1114,10 @@ def meilleurs_exercices() -> dict:
         choix = _choisir_exercice(complets, annuels.get(ticker, set()),
                                   trimestres=par_exercice)
         if choix is None:
-            partiels = [e for e in exercices
+            clos = [e for e in exercices if exercice_clos(e.get("fiscal_year"))]
+            partiels = [e for e in clos
                         if e.get("revenue") or e.get("net_income")]
-            choix = partiels[0] if partiels else exercices[0]
+            choix = partiels[0] if partiels else (clos or exercices)[0]
         sortie[ticker] = int(choix["fiscal_year"])
     return sortie
 
@@ -1155,12 +1174,14 @@ def get_fundamentals(ticker: str, fiscal_year: Optional[int] = None) -> Optional
                 candidats, exercices_annuels([ticker]).get(ticker, set()),
                 trimestres=par_exercice)
         if not row:
+            from datetime import date
             row = conn.execute(
                 """SELECT * FROM fundamentals WHERE ticker=?
                    AND (revenue IS NOT NULL AND revenue != 0
                         OR net_income IS NOT NULL AND net_income != 0)
+                   AND fiscal_year < ?
                    ORDER BY fiscal_year DESC LIMIT 1""",
-                (ticker,),
+                (ticker, date.today().year),
             ).fetchone()
         if not row:
             row = conn.execute(
@@ -1900,6 +1921,18 @@ def get_all_stocks_for_analysis() -> pd.DataFrame:
                 non_null = sub_ref[sub_ref[fld].notna() & (sub_ref[fld] != 0)]
                 if not non_null.empty:
                     df.at[i, fld] = non_null.iloc[0][fld]
+
+            # Dividende : le dernier PUBLIE. Entre la publication des comptes
+            # (printemps) et l'assemblee qui fixe le dividende, l'exercice de
+            # reference n'en porte pas encore : on garde celui de l'exercice
+            # precedent plutot qu'un rendement nul. Un dividende nul VOTE (0)
+            # reste nul ; seul un dividende inconnu est complete.
+            if (pd.isna(row.get("dps")) or row.get("dps") is None) \
+                    and "dps" in sub_ref.columns:
+                prec = sub_ref[(sub_ref["fiscal_year"] == int(ref_year) - 1)
+                               & sub_ref["dps"].notna()]
+                if not prec.empty:
+                    df.at[i, "dps"] = prec.iloc[0]["dps"]
 
             # Historique N-3..N0 : 4 années les plus récentes avec revenue/net_income
             hist = sub_ref[
